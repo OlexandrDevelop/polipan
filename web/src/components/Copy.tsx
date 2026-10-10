@@ -5,7 +5,7 @@ import { Button } from '@/components/ui'
 import { t } from '@/i18n'
 
 // The clipboard API needs a secure page. On plain http the old way still works.
-async function copyText(text: string): Promise<void> {
+export async function copyText(text: string): Promise<void> {
   if (navigator.clipboard) {
     await navigator.clipboard.writeText(text)
     return

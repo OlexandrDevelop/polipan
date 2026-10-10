@@ -54,7 +54,7 @@ export function Button({
           }
           onClick?.(event)
         }}
-        className={`inline-flex min-h-8 items-center justify-center gap-2 rounded-sm border px-3 py-1 text-sm ${touch} ${variants[variant]} disabled:cursor-not-allowed disabled:opacity-60 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 ${className}`}
+        className={`inline-flex min-h-8 items-center justify-center gap-2 rounded-sm border px-3 py-1 text-sm ${touch} ${variants[variant]} aria-pressed:border-primary aria-pressed:bg-surface aria-pressed:font-semibold disabled:cursor-not-allowed disabled:opacity-60 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 ${className}`}
       >
         {children}
       </button>
