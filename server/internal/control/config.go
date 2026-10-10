@@ -55,6 +55,12 @@ type serviceConfig struct {
 	PostDeploy      []string `json:"post_deploy"`
 	StopGracePeriod *int     `json:"stop_grace_period"`
 	RetainStopped   *int     `json:"retain_stopped"`
+	Replicas        int      `json:"replicas"`
+	Placement       struct {
+		Nodes  []string          `json:"nodes"`
+		Labels map[string]string `json:"labels"`
+		Spread *bool             `json:"spread"`
+	} `json:"placement"`
 	StrategyOptions struct {
 		DrainSeconds               *int  `json:"drain_seconds"`
 		AllowDowntimeOnLowCapacity bool  `json:"allow_downtime_on_low_capacity"`
@@ -141,3 +147,14 @@ func (c serviceConfig) resourceSpec() *pb.Resources {
 	}
 	return &pb.Resources{CpuLimitMillis: c.Resources.CPUMillis, MemoryLimitBytes: c.Resources.MemoryBytes}
 }
+
+// replicas is the number of copies of the service (default 1).
+func (c serviceConfig) replicas() int {
+	if c.Replicas > 0 {
+		return c.Replicas
+	}
+	return 1
+}
+
+// spread is placement.spread (default true).
+func (c serviceConfig) spread() bool { return c.Placement.Spread == nil || *c.Placement.Spread }

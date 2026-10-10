@@ -90,7 +90,7 @@ func (e *Env) AddToken(t *testing.T, name string, ttl time.Duration) string {
 	t.Helper()
 	token := "pj_" + gateway.NewID("t")
 	_, err := e.Pool.Exec(context.Background(),
-		`INSERT INTO node_join_tokens (id, org_id, token_hash, node_name, labels, expires_at) VALUES ($1,$2,$3,$4,'{"a":"b"}',$5)`,
+		`INSERT INTO node_join_tokens (id, org_id, token_hash, node_name, labels, expires_at) VALUES ($1,$2,$3,$4,'{"a":"b","ingress":"true"}',$5)`,
 		gateway.NewID("jtk"), e.OrgID, gateway.HashToken(token), name, e.Clock.Now().Add(ttl))
 	if err != nil {
 		t.Fatal(err)

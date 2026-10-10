@@ -52,6 +52,11 @@ type deployOptions struct {
 	DrainSeconds               int  `json:"drain_seconds"`
 	AllowDowntimeOnLowCapacity bool `json:"allow_downtime_on_low_capacity"`
 	AllowOverlap               bool `json:"allow_overlap"`
+	// M7: where a move or a failover starts from, and how the data of a volume goes along.
+	MoveFrom     string   `json:"move_from,omitempty"`
+	FailoverFrom []string `json:"failover_from,omitempty"`
+	VolumeCopy   string   `json:"volume_copy,omitempty"`
+	Cause        string   `json:"cause,omitempty"`
 }
 
 func resolveOptions(cfg serviceConfig, p orchestrator.DeployParams) deployOptions {
@@ -65,6 +70,7 @@ func resolveOptions(cfg serviceConfig, p orchestrator.DeployParams) deployOption
 	if p.AllowOverlap != nil {
 		o.AllowOverlap = *p.AllowOverlap
 	}
+	o.MoveFrom, o.FailoverFrom, o.VolumeCopy, o.Cause = p.MoveFrom, p.FailoverFrom, p.VolumeCopy, p.Cause
 	return o
 }
 
@@ -87,6 +93,13 @@ func (c *Control) plan(ctx context.Context, s *svcInfo, cfg serviceConfig, p orc
 	}
 
 	var hasDomain, singleWriter bool
+	localVolume := false
+	if p.Trigger == "move" || p.Trigger == "failover" {
+		var err error
+		if localVolume, err = c.hasLocalVolume(ctx, c.DB, s.id); err != nil {
+			return plan, err
+		}
+	}
 	if err := c.DB.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM domains WHERE service_id = $1),
 		EXISTS (SELECT 1 FROM volumes WHERE service_id = $1 AND kind <> 'tmpfs' AND access_mode = 'single_writer')`, s.id).Scan(&hasDomain, &singleWriter); err != nil {
 		return plan, err
@@ -94,6 +107,8 @@ func (c *Control) plan(ctx context.Context, s *svcInfo, cfg serviceConfig, p orc
 	// Forced recreate (REQ-DEPLOY-104): the first reason is the one shown.
 	var reason string
 	switch {
+	case localVolume:
+		reason = "the data of the volume is copied to the other node while the service is stopped"
 	case singleWriter:
 		reason = "the service has a volume with one writer"
 	case s.typ == "database":
@@ -113,6 +128,10 @@ func (c *Control) plan(ctx context.Context, s *svcInfo, cfg serviceConfig, p orc
 	case strategy == "":
 		strategy = "blue_green"
 	}
+	// A failover has no old container to drain: one replica is a recreate, more are blue-green (09 section 9).
+	if p.Trigger == "failover" && strategy == "blue_green" && cfg.replicas() == 1 {
+		strategy = "recreate"
+	}
 	if strategy == "recreate" {
 		plan.ExpectedDowntime = "short"
 	}
@@ -121,7 +140,9 @@ func (c *Control) plan(ctx context.Context, s *svcInfo, cfg serviceConfig, p orc
 			Message: "pre_deploy runs while the old version still serves. A migration must work with the old and the new code."})
 	}
 	plan.Strategy = strategy
-	if n, err := c.pickNodeForService(ctx, s.id); err == nil {
+	if p.TargetNodeID != "" {
+		plan.Nodes = []string{p.TargetNodeID}
+	} else if n, err := c.pickNodeForService(ctx, s.id); err == nil {
 		plan.Nodes = []string{n.id}
 	}
 	return plan, nil

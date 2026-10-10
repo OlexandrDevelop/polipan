@@ -11,6 +11,7 @@ import (
 
 	pb "github.com/polipan/polipan/proto/agentv1"
 	"github.com/polipan/polipan/server/internal/dbengine"
+	"github.com/polipan/polipan/server/internal/gateway"
 	"github.com/polipan/polipan/server/internal/orchestrator"
 )
 
@@ -36,11 +37,21 @@ func ContainerName(placementID string) string { return "pp-" + placementID }
 
 // buildDesiredState makes the full document of a node from the database.
 func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, version int64) (*pb.DesiredState, error) {
-	ds := &pb.DesiredState{Version: version, Ingress: &pb.IngressSpec{AcmeEmail: c.Config.ACMEEmail, AcmeCa: "letsencrypt"}}
+	ds := &pb.DesiredState{Version: version, Ingress: &pb.IngressSpec{AcmeEmail: c.Config.ACMEEmail, AcmeCa: "letsencrypt"}, MeshCidr: c.Config.MeshCIDR}
+
+	var orgID, nodeState string
+	var nodeLabels []byte
+	if err := q.QueryRow(ctx, `SELECT org_id, state, labels FROM nodes WHERE id = $1`, nodeID).Scan(&orgID, &nodeState, &nodeLabels); err != nil {
+		return nil, err
+	}
+	var err error
+	if ds.Peers, err = gateway.MeshPeers(ctx, q, orgID, nodeID, c.Config.WireguardPort); err != nil {
+		return nil, err
+	}
 
 	rows, err := q.Query(ctx,
 		`SELECT p.id, p.service_id, s.environment_id, p.release_id, p.color, p.role, p.health, s.desired_state,
-		        r.image_ref, r.config_snapshot
+		        r.image_ref, r.config_snapshot, COALESCE(host(p.ip), '')
 		   FROM placements p
 		   JOIN services s ON s.id = p.service_id AND s.deleted_at IS NULL
 		   JOIN releases r ON r.id = p.release_id
@@ -49,12 +60,10 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 	if err != nil {
 		return nil, err
 	}
-	type live = liveReplica
-	liveBySvc := map[string][]live{}
 	for rows.Next() {
-		var pid, sid, eid, rid, color, role, health, svcState, imageRef string
+		var pid, sid, eid, rid, color, role, health, svcState, imageRef, ip string
 		var raw []byte
-		if err := rows.Scan(&pid, &sid, &eid, &rid, &color, &role, &health, &svcState, &imageRef, &raw); err != nil {
+		if err := rows.Scan(&pid, &sid, &eid, &rid, &color, &role, &health, &svcState, &imageRef, &raw, &ip); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -72,6 +81,7 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 			StopGraceSeconds: uint32(cfg.stopGraceSeconds()),
 			RestartPolicy:    cfg.RestartPolicy,
 			NetworkAliases:   []string{name, dbengine.Alias(sid)},
+			Ip:               ip,
 			Resources:        cfg.resourceSpec(),
 			Labels: map[string]string{
 				"polipan.service": sid, "polipan.placement": pid, "polipan.release": rid, "polipan.managed": "true",
@@ -84,9 +94,6 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 			w.Ports = []*pb.PortSpec{{ContainerPort: cfg.Port, Protocol: "tcp", HostPort: cfg.HostPort}}
 		}
 		ds.Workloads = append(ds.Workloads, w)
-		if role == "live" && svcState == "running" {
-			liveBySvc[sid] = append(liveBySvc[sid], live{pid, rid, color, health})
-		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -114,39 +121,155 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 		})
 	}
 
+	if err := c.addIngressRoutes(ctx, q, nodeID, nodeState, nodeLabels, ds); err != nil {
+		return nil, err
+	}
+	if err := c.addRemoteEndpoints(ctx, q, nodeID, ds); err != nil {
+		return nil, err
+	}
+	return ds, nil
+}
+
+// remoteLive is a live replica of a service, wherever it runs.
+type remoteLive struct {
+	liveReplica
+	node, ip string
+}
+
+// servesIngress tells if a node in this state gets the routes of the domains (09 section 6: maintenance serves none).
+func servesIngress(state string) bool {
+	return state != "maintenance" && state != "pending"
+}
+
+// addIngressRoutes adds the routes of the domains this node serves. The upstreams are the live replicas of the
+// service on any node: a replica on this node by its alias, any other by its mesh address (09 section 8).
+// A replica on a node that is down is dropped (09 section 6).
+func (c *Control) addIngressRoutes(ctx context.Context, q dbq, nodeID, nodeState string, nodeLabels []byte, ds *pb.DesiredState) error {
+	if !servesIngress(nodeState) {
+		return nil
+	}
+	var labels map[string]string
+	_ = json.Unmarshal(nodeLabels, &labels)
+	isIngress := labels["ingress"] == "true"
+	type dom struct {
+		id, host, prefix, redirect, sid string
+		port                            int
+		https                           bool
+		cfg                             serviceConfig
+	}
 	drows, err := q.Query(ctx,
 		`SELECT d.id, d.host, d.path_prefix, d.container_port, d.https, COALESCE(d.redirect_www,''), d.service_id, s.config
 		   FROM domains d JOIN services s ON s.id = d.service_id AND s.deleted_at IS NULL
-		  WHERE d.ingress_node_ids IS NULL OR $1 = ANY(d.ingress_node_ids)
-		  ORDER BY d.created_at, d.id`, nodeID)
+		  WHERE (d.ingress_node_ids IS NULL AND $2) OR $1 = ANY(d.ingress_node_ids)
+		  ORDER BY d.created_at, d.id`, nodeID, isIngress)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer drows.Close()
+	var doms []dom
+	svcIDs := map[string]bool{}
 	for drows.Next() {
-		var id, host, prefix, redirect, sid string
-		var port int
-		var https bool
+		var d dom
 		var svcRaw []byte
-		if err := drows.Scan(&id, &host, &prefix, &port, &https, &redirect, &sid, &svcRaw); err != nil {
-			return nil, err
+		if err := drows.Scan(&d.id, &d.host, &d.prefix, &d.port, &d.https, &d.redirect, &d.sid, &svcRaw); err != nil {
+			drows.Close()
+			return err
 		}
-		var svcCfg serviceConfig
-		_ = json.Unmarshal(svcRaw, &svcCfg)
-		if orchestrator.IsPanelHost(c.Config.ExternalURL, host) {
+		_ = json.Unmarshal(svcRaw, &d.cfg)
+		if orchestrator.IsPanelHost(c.Config.ExternalURL, d.host) {
 			continue // old rows: a service never gets the host of the panel
 		}
-		route := &pb.Route{
-			RouteId: id, Hosts: []string{host}, PathPrefix: prefix, Https: https, RedirectWww: redirect, ServiceId: sid,
-			Upstreams:               []*pb.Upstream{}, // empty: the agent answers 503 (AC-DOM-04)
-			StreamCloseDelaySeconds: uint32(svcCfg.drainSeconds()),
+		doms = append(doms, d)
+		svcIDs[d.sid] = true
+	}
+	drows.Close()
+	if err := drows.Err(); err != nil {
+		return err
+	}
+	if len(doms) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(svcIDs))
+	for id := range svcIDs {
+		ids = append(ids, id)
+	}
+	lrows, err := q.Query(ctx,
+		`SELECT p.service_id, p.id, p.release_id, p.color, p.health, p.node_id, COALESCE(host(p.ip), '')
+		   FROM placements p JOIN nodes n ON n.id = p.node_id JOIN services s ON s.id = p.service_id
+		  WHERE p.service_id = ANY($1) AND p.role = 'live' AND s.desired_state = 'running'
+		    AND n.state NOT IN ('down','pending','maintenance')
+		  ORDER BY p.replica_index, p.id`, ids)
+	if err != nil {
+		return err
+	}
+	liveBySvc := map[string][]remoteLive{}
+	for lrows.Next() {
+		var sid string
+		var l remoteLive
+		if err := lrows.Scan(&sid, &l.placement, &l.release, &l.color, &l.health, &l.node, &l.ip); err != nil {
+			lrows.Close()
+			return err
 		}
-		for _, l := range routable(liveBySvc[sid]) {
-			route.Upstreams = append(route.Upstreams, &pb.Upstream{
-				Address: fmt.Sprintf("%s:%d", ContainerName(l.placement), port), Weight: 100, ReleaseId: l.release, Color: l.color,
-			})
+		liveBySvc[sid] = append(liveBySvc[sid], l)
+	}
+	lrows.Close()
+	if err := lrows.Err(); err != nil {
+		return err
+	}
+	for _, d := range doms {
+		route := &pb.Route{
+			RouteId: d.id, Hosts: []string{d.host}, PathPrefix: d.prefix, Https: d.https, RedirectWww: d.redirect, ServiceId: d.sid,
+			Upstreams:               []*pb.Upstream{}, // empty: the agent answers 503 (AC-DOM-04)
+			StreamCloseDelaySeconds: uint32(d.cfg.drainSeconds()),
+		}
+		all := liveBySvc[d.sid]
+		flat := make([]liveReplica, len(all))
+		for i, l := range all {
+			flat[i] = l.liveReplica
+		}
+		keep := map[string]bool{}
+		for _, l := range routable(flat) {
+			keep[l.placement] = true
+		}
+		for _, l := range all {
+			if !keep[l.placement] {
+				continue
+			}
+			addr := fmt.Sprintf("%s:%d", ContainerName(l.placement), d.port)
+			if l.node != nodeID {
+				if l.ip == "" {
+					continue // a replica on another node without a mesh address cannot be reached
+				}
+				addr = fmt.Sprintf("%s:%d", l.ip, d.port)
+			}
+			route.Upstreams = append(route.Upstreams, &pb.Upstream{Address: addr, Weight: 100, ReleaseId: l.release, Color: l.color})
 		}
 		ds.Ingress.Routes = append(ds.Ingress.Routes, route)
 	}
-	return ds, drows.Err()
+	return nil
+}
+
+// addRemoteEndpoints adds the workloads of other nodes that are in the same environments as the workloads of this
+// node: the names for the internal DNS and the addresses for the environment firewall (REQ-NODE-009, REQ-SEC-106).
+// Only names, addresses and ids go out: no env, no secret (REQ-SEC-100).
+func (c *Control) addRemoteEndpoints(ctx context.Context, q dbq, nodeID string, ds *pb.DesiredState) error {
+	rows, err := q.Query(ctx,
+		`SELECT p.id, p.service_id, s.environment_id, host(p.ip)
+		   FROM placements p JOIN services s ON s.id = p.service_id AND s.deleted_at IS NULL JOIN nodes n ON n.id = p.node_id
+		  WHERE p.node_id <> $1 AND p.ip IS NOT NULL AND p.role IN ('live','candidate','draining') AND n.state <> 'down'
+		    AND s.environment_id IN (SELECT s2.environment_id FROM placements p2 JOIN services s2 ON s2.id = p2.service_id WHERE p2.node_id = $1)
+		  ORDER BY p.created_at, p.id`, nodeID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var pid, sid, eid, ip string
+		if err := rows.Scan(&pid, &sid, &eid, &ip); err != nil {
+			return err
+		}
+		ds.RemoteEndpoints = append(ds.RemoteEndpoints, &pb.Endpoint{
+			Names: []string{ContainerName(pid), dbengine.Alias(sid)}, Ip: ip, EnvironmentId: eid, ServiceId: sid,
+		})
+	}
+	return rows.Err()
 }

@@ -26,7 +26,8 @@ type ingressTarget struct {
 func (c *Control) ingressTargets(ctx context.Context, serviceID string) ([]ingressTarget, error) {
 	rows, err := c.DB.Query(ctx, `SELECT n.id, d.host, d.path_prefix, d.https FROM nodes n
 		JOIN domains d ON d.service_id = $1 AND (d.ingress_node_ids IS NULL OR n.id = ANY(d.ingress_node_ids))
-		WHERE n.state = 'ready' ORDER BY n.id, d.host`, serviceID)
+		WHERE n.state IN ('ready','cordoned','draining') AND (d.ingress_node_ids IS NOT NULL OR n.labels->>'ingress' = 'true')
+		ORDER BY n.id, d.host`, serviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -114,6 +115,23 @@ func (r *run) commitSwitch(ctx context.Context) error {
 		if _, err := tx.Exec(ctx, `UPDATE services SET live_release_id = $2, desired_state = 'running', updated_at = now() WHERE id = $1`, d.serviceID, *d.releaseID); err != nil {
 			return nil, err
 		}
+		if len(r.dead) > 0 {
+			// The replicas of a failed node are gone for good. When the node returns, its desired state has no
+			// workload of them, so reconcile removes the old containers (split-brain guard, REQ-NODE-012).
+			if _, err := tx.Exec(ctx, `DELETE FROM placements WHERE id = ANY($1)`, ids(r.dead)); err != nil {
+				return nil, err
+			}
+		}
+		if r.dataCopy {
+			if _, err := tx.Exec(ctx, `UPDATE volumes SET node_id = $2 WHERE service_id = $1 AND kind <> 'tmpfs'`, d.serviceID, r.node); err != nil {
+				return nil, err
+			}
+		}
+		if d.trigger == "failover" {
+			if _, err := tx.Exec(ctx, `UPDATE services SET failover_state = 'moved', failover_reason = NULL, failover_at = now() WHERE id = $1`, d.serviceID); err != nil {
+				return nil, err
+			}
+		}
 		return c.allNodeIDs(ctx, tx)
 	})
 }
@@ -197,6 +215,8 @@ func (r *run) afterCommit(ctx context.Context, skipAck bool) *deployErr {
 			}
 		}
 		r.stopBlue(ctx)
+	} else if d.strategy == "recreate" && d.trigger == "move" && len(r.blue) > 0 {
+		r.stopBlue(ctx) // the old container was stopped at the start. A moved container is removed, not kept.
 	}
 	return r.finalize(ctx)
 }
@@ -236,6 +256,21 @@ func (r *run) probeRoutes(ctx context.Context, dur time.Duration) (total, failed
 // stopBlue stops the old containers with the stop grace period and keeps them (REQ-DEPLOY-009).
 func (r *run) stopBlue(ctx context.Context) {
 	c := r.c
+	if r.d.trigger == "move" {
+		// A moved replica is not kept: its container goes (the volume data stays on the old node, see orphan volumes).
+		for _, b := range r.blue {
+			c.removeContainer(ctx, b.node, b.id)
+		}
+		if err := c.change(ctx, func(tx pgx.Tx) ([]string, error) {
+			if _, err := tx.Exec(ctx, `DELETE FROM placements WHERE id = ANY($1)`, ids(r.blue)); err != nil {
+				return nil, err
+			}
+			return c.allNodeIDs(ctx, tx)
+		}); err != nil {
+			c.Log.Warn("remove the moved containers", "deployment", r.d.id, "err", err)
+		}
+		return
+	}
 	for _, b := range r.blue {
 		r.stopOne(ctx, b)
 	}
@@ -281,7 +316,8 @@ func (r *run) finalize(ctx context.Context) *deployErr {
 		return e
 	}
 	c.prune(ctx, r.svc, r.cfg)
-	if len(r.cfg.PostDeploy) > 0 {
+	r.recordMove(ctx)
+	if len(r.cfg.PostDeploy) > 0 && d.trigger != "move" && d.trigger != "failover" {
 		if e := r.oneOff(ctx, "post_deploy", r.cfg.PostDeploy, "post_deploy_failed"); e != nil {
 			warn, _ := json.Marshal([]map[string]string{{"code": "post_deploy_failed", "message": e.detail}})
 			_, _ = c.DB.Exec(ctx, `UPDATE deployments SET warnings = warnings || $2::jsonb WHERE id = $1`, d.id, warn)

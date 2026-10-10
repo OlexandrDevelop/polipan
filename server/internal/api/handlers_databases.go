@@ -137,6 +137,7 @@ func (h *Handlers) groupFailed(w http.ResponseWriter, r *http.Request, err error
 
 // decorateService adds the database and template fields of a service.
 func (h *Handlers) decorateService(ctx context.Context, out gen.Service, s *store.Service) gen.Service {
+	out = h.failoverStatus(ctx, out, s.ID)
 	m, err := h.Store.GetServiceM4(ctx, s.ID)
 	if err != nil {
 		logging.From(ctx).Warn("service m4 fields", "service_id", s.ID, "error", err)

@@ -89,26 +89,26 @@ func (r *run) prepareRollback(ctx context.Context) *deployErr {
 	if err != nil {
 		return fail(ReasonInternal, "read placements: %v", err)
 	}
-	if len(kept) > 0 && c.Sender != nil && c.Sender.Connected(kept[0].node) {
-		r.fast, r.green, r.node = true, kept[:1], kept[0].node
-		return r.checkCapacity(ctx)
+	if want := r.cfg.replicas(); len(kept) >= want && c.Sender != nil {
+		ok := true
+		for _, k := range kept[:want] {
+			ok = ok && c.Sender.Connected(k.node)
+		}
+		if ok {
+			r.fast, r.green = true, kept[:want]
+			for _, k := range r.green {
+				r.nodes = append(r.nodes, k.node)
+			}
+			r.node = r.nodes[0]
+			return r.checkCapacity(ctx)
+		}
 	}
-	node, err := r.pickNodeFor(ctx)
-	if err != nil {
-		return fail(ReasonNodeUnavailable, "no ready node (or the node of the volumes is not ready)")
-	}
-	r.node = node
-	if c.Sender == nil || !c.Sender.Connected(node) {
-		return fail(ReasonNodeUnavailable, "node %s is not connected", node)
-	}
-	if e := r.checkCapacity(ctx); e != nil {
+	if e := r.placeReplicas(ctx); e != nil {
 		return e
 	}
-	if _, err := c.DB.Exec(ctx, `UPDATE volumes SET node_id = $2 WHERE service_id = $1 AND node_id IS NULL AND kind <> 'tmpfs'`, d.serviceID, node); err != nil {
+	if _, err := c.DB.Exec(ctx, `UPDATE volumes SET node_id = $2 WHERE service_id = $1 AND node_id IS NULL AND kind <> 'tmpfs'`, d.serviceID, r.node); err != nil {
 		return fail(ReasonInvalidConfig, "pin volumes: %v", err)
 	}
-	if _, _, e := r.pull(ctx, r.imageRef); e != nil {
-		return e
-	}
-	return nil
+	_, _, e := r.pullAll(ctx, r.imageRef)
+	return e
 }

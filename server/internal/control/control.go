@@ -62,6 +62,8 @@ type Deps struct {
 	PostSwitchCheck time.Duration
 	// FailedGreenKeep is how long the stopped containers of a failed deployment stay (default 10 min, failed_green_keep).
 	FailedGreenKeep time.Duration
+	// Mover copies volume data between nodes for a move and a failover (M7). Nil: a service with a volume cannot move.
+	Mover DataMover
 	// Max5xxRate is the failure rate of the post-switch check that triggers a rollback (default 0.02, canary_max_5xx_rate).
 	Max5xxRate float64
 }
@@ -78,8 +80,14 @@ type Control struct {
 	stop   context.CancelFunc
 	wg     sync.WaitGroup
 
-	mu     sync.Mutex
-	active map[string]*activeDep // deployments run by this process
+	mu       sync.Mutex
+	active   map[string]*activeDep // deployments run by this process
+	draining map[string]bool       // nodes whose drain runs in this process
+	failing  map[string]bool       // nodes whose failover runs in this process
+
+	monMu    sync.Mutex
+	lastDown string // the down nodes of the last monitor pass, to send new routes when it changes
+	downInit bool
 }
 
 var _ orchestrator.Orchestrator = (*Control)(nil)
@@ -123,6 +131,7 @@ func (c *Control) Run(ctx context.Context) error {
 	if err := c.recoverDeployments(ctx); err != nil {
 		return err
 	}
+	c.resumeDrains(ctx)
 	t := time.NewTicker(c.MonitorInterval)
 	defer t.Stop()
 	for {
@@ -133,6 +142,7 @@ func (c *Control) Run(ctx context.Context) error {
 			if err := c.CheckNodes(ctx); err != nil && ctx.Err() == nil {
 				c.Log.Error("node monitor", "err", err)
 			}
+			c.failoverTick(ctx)
 			c.sweepExpired(ctx)
 		}
 	}
@@ -212,7 +222,7 @@ func (c *Control) bumpNodes(ctx context.Context, tx pgx.Tx, ids []string) (map[s
 }
 
 func (c *Control) allNodeIDs(ctx context.Context, q dbq) ([]string, error) {
-	return queryStrings(ctx, q, `SELECT id FROM nodes ORDER BY id`)
+	return queryStrings(ctx, q, `SELECT id FROM nodes WHERE deleted_at IS NULL ORDER BY id`)
 }
 
 func queryStrings(ctx context.Context, q dbq, sql string, args ...any) ([]string, error) {

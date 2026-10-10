@@ -100,6 +100,8 @@ var imageConfigKeys = map[string]bool{
 	// M3: deploy settings
 	"host_port": true, "resources": true, "pre_deploy": true, "post_deploy": true,
 	"stop_grace_period": true, "retain_stopped": true, "strategy_options": true,
+	// M7: many servers
+	"replicas": true, "placement": true,
 }
 
 // buildImageConfig checks the config of an image service and fills the defaults.
@@ -216,6 +218,12 @@ func checkDeployConfig(cfg map[string]any) error {
 	if err := num("retain_stopped", 0, 10); err != nil {
 		return err
 	}
+	if err := num("replicas", 0, 100); err != nil {
+		return err
+	}
+	if err := checkPlacement(cfg); err != nil {
+		return err
+	}
 	if v, ok := cfg["host_port"]; ok {
 		p, ok := asPort(v)
 		if !ok {
@@ -270,6 +278,49 @@ func checkDeployConfig(cfg map[string]any) error {
 			default:
 				return fmt.Errorf("config.strategy_options.%s is not available in this version", k)
 			}
+		}
+	}
+	return nil
+}
+
+// checkPlacement checks config.placement (REQ-NODE-004): node names, required labels and spread.
+func checkPlacement(cfg map[string]any) error {
+	v, ok := cfg["placement"]
+	if !ok {
+		return nil
+	}
+	p, ok := v.(map[string]any)
+	if !ok {
+		return errors.New("config.placement must be an object")
+	}
+	for k, v := range p {
+		switch k {
+		case "nodes":
+			list, ok := v.([]any)
+			if !ok || len(list) > 100 {
+				return errors.New("config.placement.nodes must be a list of node names")
+			}
+			for _, item := range list {
+				if s, ok := item.(string); !ok || !nodeNameRe.MatchString(s) {
+					return errors.New("config.placement.nodes must be a list of node names")
+				}
+			}
+		case "labels":
+			m, ok := v.(map[string]any)
+			if !ok || len(m) > 20 {
+				return errors.New("config.placement.labels must be an object of text values (at most 20)")
+			}
+			for lk, lv := range m {
+				if s, ok := lv.(string); !ok || lk == "" || len(lk) > 63 || len(s) > 63 {
+					return errors.New("config.placement.labels must be an object of text values (at most 20)")
+				}
+			}
+		case "spread":
+			if _, ok := v.(bool); !ok {
+				return errors.New("config.placement.spread must be true or false")
+			}
+		default:
+			return fmt.Errorf("config.placement.%s is not available", k)
 		}
 	}
 	return nil

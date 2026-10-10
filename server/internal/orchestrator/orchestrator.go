@@ -26,7 +26,41 @@ var (
 	ErrDomainPortMismatch  = errors.New("orchestrator: a domain points to a port the release does not expose") // 409 domain_port_mismatch
 	ErrStrategyUnavailable = errors.New("orchestrator: the strategy is not available")                         // 422
 	ErrNoLiveRelease       = errors.New("orchestrator: the service has no live container")                     // 409
+
+	// M7 errors.
+	ErrNodeState    = errors.New("orchestrator: the node state does not allow this") // 409 conflict
+	ErrNodeNotEmpty = errors.New("orchestrator: the node has workloads")             // 409 node_not_empty
+	ErrNodeOffline  = errors.New("orchestrator: the node is not connected")          // 409 conflict
 )
+
+// NodeManager is an optional part of the Orchestrator: the node actions and the move (REQ-NODE-003, REQ-NODE-006,
+// REQ-NODE-008). The Control implements it.
+type NodeManager interface {
+	// CordonNode stops scheduling on the node (ready to cordoned). UncordonNode undoes it.
+	CordonNode(ctx context.Context, orgID, nodeID, actorID string) error
+	UncordonNode(ctx context.Context, orgID, nodeID, actorID string) error
+	// DrainNode moves every workload away. It returns at once, the move goes on in the background.
+	DrainNode(ctx context.Context, orgID, nodeID, actorID string) error
+	// SetMaintenance puts a cordoned or drained node into maintenance, or takes it out.
+	SetMaintenance(ctx context.Context, orgID, nodeID string, enabled bool, actorID string) error
+	// DeleteNode removes a node. With workloads it gives ErrNodeNotEmpty unless force is set.
+	DeleteNode(ctx context.Context, orgID, nodeID string, force bool, actorID string) error
+	// NodesChanged sends a new desired state to every node (after a label or name change).
+	NodesChanged(ctx context.Context) error
+	// SelfCheck asks the agent to test Docker, Caddy and WireGuard.
+	SelfCheck(ctx context.Context, orgID, nodeID string) (SelfCheckResult, error)
+	// MoveService moves the replicas of a service to the target node and returns the deployment id.
+	MoveService(ctx context.Context, serviceID, targetNodeID, volumeCopy, actorID string) (string, []Warning, error)
+}
+
+// SelfCheckResult is the answer of the node self-check.
+type SelfCheckResult struct {
+	Docker      bool     `json:"docker"`
+	Caddy       bool     `json:"caddy"`
+	Wireguard   bool     `json:"wireguard"`
+	ClockSkewMS int64    `json:"clock_skew_ms"`
+	Errors      []string `json:"errors,omitempty"`
+}
 
 // Warning is a note in a plan or a deployment (zero_downtime_not_available, migration_compat, domain_port_mismatch).
 type Warning struct {
@@ -50,6 +84,16 @@ type DeployParams struct {
 	RollbackReleaseID string
 	// Force accepts the warning domain_port_mismatch of a rollback.
 	Force bool
+
+	// M7. Trigger move: TargetNodeID is the node to move to (empty: the scheduler picks), MoveFrom the node the
+	// replicas leave (empty: every replica). VolumeCopy is backup for a service with a local volume.
+	TargetNodeID string
+	MoveFrom     string
+	VolumeCopy   string
+	// FailoverFrom lists the nodes that failed (trigger failover).
+	FailoverFrom []string
+	// Cause says why a move happens: manual (default) or drain. It goes into the audit event.
+	Cause string
 }
 
 // Plan is what a deployment would do (REQ-DEPLOY-007).

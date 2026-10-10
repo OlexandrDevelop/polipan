@@ -78,6 +78,10 @@ func (r *Runner) Restore(ctx context.Context, cmd *pb.RestoreSnapshot) error {
 // restoreVolume replaces the files of a volume with the snapshot. The service is stopped.
 func (r *Runner) restoreVolume(ctx context.Context, rp *repo, cmd *pb.RestoreSnapshot) error {
 	v, err := r.Docker.VolumeInspect(ctx, cmd.Source.VolumeName)
+	if err != nil && !cmd.StopContainer {
+		// A move or a failover: the volume does not exist on this node yet. The files go into a new volume.
+		v, err = r.Docker.VolumeCreate(ctx, cmd.Source.VolumeName, map[string]string{"polipan.managed": "true", "polipan.service": cmd.ServiceId})
+	}
 	if err != nil {
 		return fail(CodeRestoreFailed, "volume %s: %v", cmd.Source.VolumeName, err)
 	}

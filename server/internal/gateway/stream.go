@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"strings"
 	"time"
 
@@ -246,15 +247,17 @@ func (g *Gateway) onHello(ctx context.Context, nodeID string, h *pb.Hello) error
 	_, err = g.DB.Exec(ctx,
 		`UPDATE nodes SET
 		   state = CASE WHEN state IN ('pending','suspect','down') THEN 'ready' ELSE state END,
+		   down_at = CASE WHEN state IN ('pending','suspect','down') THEN NULL ELSE down_at END,
 		   last_heartbeat_at = $2,
 		   acked_state_version = GREATEST(acked_state_version, $3),
 		   os = COALESCE(NULLIF($4,''), os), arch = COALESCE(NULLIF($5,''), arch),
 		   docker_version = COALESCE(NULLIF($6,''), docker_version),
 		   agent_version = COALESCE(NULLIF($7,''), agent_version),
+		   public_ip = COALESCE(NULLIF($8,'')::inet, public_ip),
 		   updated_at = $2
 		 WHERE id = $1`,
 		nodeID, g.Clock.Now(), h.GetLastAppliedStateVersion(),
-		info.GetOs(), info.GetArch(), info.GetDockerVersion(), info.GetAgentVersion())
+		info.GetOs(), info.GetArch(), info.GetDockerVersion(), info.GetAgentVersion(), validIP(info.GetPublicIp()))
 	if err != nil {
 		return err
 	}
@@ -297,15 +300,25 @@ func (g *Gateway) handle(ctx context.Context, s *session, m *pb.AgentMessage) {
 	}
 }
 
+// validIP returns s when it is an IP address, else "".
+func validIP(s string) string {
+	if ip := net.ParseIP(s); ip != nil {
+		return ip.String()
+	}
+	return ""
+}
+
 func (g *Gateway) onHeartbeat(ctx context.Context, nodeID string, h *pb.Heartbeat) error {
 	var before string
+	usage, _ := json.Marshal(map[string]uint64{"cpu_millis": h.GetCpuUsedMillis(), "memory_bytes": h.GetMemoryUsedBytes(), "disk_bytes": h.GetDiskUsedBytes()})
 	err := g.DB.QueryRow(ctx,
 		`WITH old AS (SELECT state FROM nodes WHERE id = $1)
-		 UPDATE nodes SET last_heartbeat_at = $2, updated_at = $2,
+		 UPDATE nodes SET last_heartbeat_at = $2, updated_at = $2, usage = $4,
 		   acked_state_version = GREATEST(acked_state_version, $3),
-		   state = CASE WHEN state IN ('suspect','down') THEN 'ready' ELSE state END
+		   state = CASE WHEN state IN ('suspect','down') THEN 'ready' ELSE state END,
+		   down_at = CASE WHEN state IN ('suspect','down') THEN NULL ELSE down_at END
 		 WHERE id = $1 RETURNING (SELECT state FROM old)`,
-		nodeID, g.Clock.Now(), h.GetAppliedStateVersion()).Scan(&before)
+		nodeID, g.Clock.Now(), h.GetAppliedStateVersion(), usage).Scan(&before)
 	if err != nil {
 		return err
 	}

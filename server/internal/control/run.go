@@ -28,7 +28,12 @@ type run struct {
 	svc *svcInfo
 	cfg serviceConfig // config of the new release
 
-	node        string
+	node        string   // the node of the first replica (pre_deploy runs there)
+	nodes       []string // the node of every new replica, in order
+	keep        []plc    // live replicas that this deployment does not touch (move of one node, failover)
+	dead        []plc    // replicas on a node that failed: removed at the switch (failover)
+	exclude     []string // nodes the scheduler must not use
+	dataCopy    bool     // move or failover of a service with a local volume: the data goes to the new node
 	releaseID   string
 	imageRef    string
 	green, blue []plc
@@ -122,11 +127,48 @@ func (r *run) load(ctx context.Context) *deployErr {
 	if _, err := c.DB.Exec(ctx, `UPDATE deployments SET previous_release_id = $2, updated_at = now() WHERE id = $1`, r.d.id, svc.liveRelease); err != nil {
 		return fail(ReasonInternal, "database: %v", err)
 	}
-	if r.blue, err = c.placementList(ctx, `SELECT id, node_id FROM placements WHERE service_id = $1 AND role IN ('live','draining')
-		AND deployment_id IS DISTINCT FROM $2 ORDER BY node_id, replica_index, id`, r.d.serviceID, r.d.id); err != nil {
+	live, err := c.placementList(ctx, `SELECT id, node_id FROM placements WHERE service_id = $1 AND role IN ('live','draining')
+		AND deployment_id IS DISTINCT FROM $2 ORDER BY node_id, replica_index, id`, r.d.serviceID, r.d.id)
+	if err != nil {
 		return fail(ReasonInternal, "read placements: %v", err)
 	}
+	switch r.d.trigger {
+	case "move":
+		// Only the replicas on the node that is left move. The others stay live.
+		for _, p := range live {
+			if r.d.opts.MoveFrom == "" || p.node == r.d.opts.MoveFrom {
+				r.blue = append(r.blue, p)
+			} else {
+				r.keep = append(r.keep, p)
+			}
+		}
+		r.exclude = []string{}
+		if r.d.opts.MoveFrom != "" {
+			r.exclude = []string{r.d.opts.MoveFrom}
+		}
+	case "failover":
+		// A replica on a failed node is replaced. There is nothing to drain on that node (09 section 9).
+		failed := map[string]bool{}
+		for _, n := range r.d.opts.FailoverFrom {
+			failed[n] = true
+		}
+		r.exclude = r.d.opts.FailoverFrom
+		for _, p := range live {
+			if failed[p.node] {
+				r.dead = append(r.dead, p)
+			} else {
+				r.keep = append(r.keep, p)
+			}
+		}
+	default:
+		r.blue = live
+	}
 	r.hadBlue = len(r.blue) > 0
+	if r.d.trigger == "move" || r.d.trigger == "failover" {
+		if r.dataCopy, err = c.hasLocalVolume(ctx, c.DB, r.d.serviceID); err != nil {
+			return fail(ReasonInternal, "volumes: %v", err)
+		}
+	}
 	if r.green, err = c.placementList(ctx, `SELECT id, node_id FROM placements WHERE deployment_id = $1 ORDER BY id`, r.d.id); err != nil {
 		return fail(ReasonInternal, "read placements: %v", err)
 	}
@@ -150,29 +192,14 @@ func (c *Control) placementList(ctx context.Context, sql string, args ...any) ([
 	return out, rows.Err()
 }
 
-// pickNodeFor keeps the node of blue when it is free to choose (08 section 4.2).
-func (r *run) pickNodeFor(ctx context.Context) (string, error) {
-	c := r.c
-	n, err := c.pickNodeForService(ctx, r.svc.id)
-	if err != nil {
-		return "", err
-	}
-	var pinned bool
-	_ = c.DB.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM volumes WHERE service_id = $1 AND kind <> 'tmpfs' AND node_id IS NOT NULL)`, r.svc.id).Scan(&pinned)
-	if !pinned && len(r.blue) > 0 {
-		var ok bool
-		if c.DB.QueryRow(ctx, `SELECT state = 'ready' FROM nodes WHERE id = $1`, r.blue[0].node).Scan(&ok) == nil && ok {
-			return r.blue[0].node, nil
-		}
-	}
-	return n.id, nil
-}
-
-// prepare builds (git), picks the node, checks the capacity, makes the Release and pulls the image.
+// prepare builds (git), schedules the replicas, checks the capacity, makes the Release and pulls the image.
 func (r *run) prepare(ctx context.Context) *deployErr {
 	c, d := r.c, r.d
 	if d.trigger == "rollback" && d.releaseID != nil {
 		return r.prepareRollback(ctx)
+	}
+	if d.trigger == "move" || d.trigger == "failover" {
+		return r.prepareSameRelease(ctx)
 	}
 	built, berr := c.buildIfGit(ctx, d.id, d.serviceID)
 	if berr != nil {
@@ -193,23 +220,15 @@ func (r *run) prepare(ctx context.Context) *deployErr {
 		// Only a build of this service may use it: an image service must not pull built images of others.
 		return fail(ReasonInvalidConfig, "an image service cannot use an image of the built-in registry")
 	}
-	node, err := r.pickNodeFor(ctx)
-	if err != nil {
-		return fail(ReasonNodeUnavailable, "no ready node (or the node of the volumes is not ready)")
-	}
-	r.node = node
-	if c.Sender == nil || !c.Sender.Connected(node) {
-		return fail(ReasonNodeUnavailable, "node %s is not connected", node)
-	}
-	if e := r.checkCapacity(ctx); e != nil {
+	if e := r.placeReplicas(ctx); e != nil {
 		return e
 	}
 	// Variables, secret versions and volumes of the release (M2). A missing reference fails here, before the pull.
-	snap, derr := c.resolveRelease(ctx, d.serviceID, node)
+	snap, derr := c.resolveRelease(ctx, d.serviceID, r.node)
 	if derr != nil {
 		return derr
 	}
-	imageRef, digest, e := r.pull(ctx, r.cfg.Image)
+	imageRef, digest, e := r.pullAll(ctx, r.cfg.Image)
 	if e != nil {
 		return e
 	}
@@ -221,10 +240,83 @@ func (r *run) prepare(ctx context.Context) *deployErr {
 	return nil
 }
 
-// pull pulls an image on the node and returns the reference by digest.
-func (r *run) pull(ctx context.Context, image string) (imageRef, digest string, e *deployErr) {
+// placeReplicas schedules the new replicas, checks that every node is connected and has room.
+func (r *run) placeReplicas(ctx context.Context) *deployErr {
 	c := r.c
-	ack, err := c.sendCmd(ctx, r.node, r.d.id, "pull-"+r.node+"-"+image, &pb.Command{Body: &pb.Command_PullImage{
+	nodes, e := r.schedule(ctx)
+	if e != nil {
+		return e
+	}
+	r.nodes, r.node = nodes, nodes[0]
+	for _, n := range distinct(nodes) {
+		if c.Sender == nil || !c.Sender.Connected(n) {
+			return fail(ReasonNodeUnavailable, "node %s is not connected", n)
+		}
+	}
+	return r.checkCapacity(ctx)
+}
+
+func distinct(list []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range list {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// prepareSameRelease is the start of a move or a failover: the live Release starts again on the new nodes. No build
+// runs and no Release is made (09 section 7).
+func (r *run) prepareSameRelease(ctx context.Context) *deployErr {
+	c, d := r.c, r.d
+	if r.svc.liveRelease == nil {
+		return fail(ReasonInvalidConfig, "the service has no live release")
+	}
+	if d.trigger == "failover" {
+		if e := r.ensureNodeStillDown(ctx); e != nil {
+			return e
+		}
+	}
+	var raw []byte
+	if err := c.DB.QueryRow(ctx, `SELECT image_ref, config_snapshot FROM releases WHERE id = $1`, *r.svc.liveRelease).Scan(&r.imageRef, &raw); err != nil {
+		return fail(ReasonInvalidConfig, "release not found: %v", err)
+	}
+	if err := json.Unmarshal(raw, &r.cfg); err != nil {
+		return fail(ReasonInvalidConfig, "release config: %v", err)
+	}
+	r.releaseID = *r.svc.liveRelease
+	d.releaseID = &r.releaseID
+	if _, err := c.DB.Exec(ctx, `UPDATE deployments SET release_id = $2, updated_at = now() WHERE id = $1`, d.id, r.releaseID); err != nil {
+		return fail(ReasonInternal, "database: %v", err)
+	}
+	if e := r.placeReplicas(ctx); e != nil {
+		return e
+	}
+	_, _, e := r.pullAll(ctx, r.imageRef)
+	return e
+}
+
+// pullAll pulls the image on every node that gets a replica. The first answer gives the reference by digest.
+func (r *run) pullAll(ctx context.Context, image string) (imageRef, digest string, e *deployErr) {
+	for i, n := range distinct(r.nodes) {
+		ref, dig, err := r.pull(ctx, n, image)
+		if err != nil {
+			return "", "", err
+		}
+		if i == 0 {
+			imageRef, digest = ref, dig
+		}
+	}
+	return imageRef, digest, nil
+}
+
+// pull pulls an image on the node and returns the reference by digest.
+func (r *run) pull(ctx context.Context, node, image string) (imageRef, digest string, e *deployErr) {
+	c := r.c
+	ack, err := c.sendCmd(ctx, node, r.d.id, "pull-"+node+"-"+image, &pb.Command{Body: &pb.Command_PullImage{
 		PullImage: &pb.PullImage{ImageRef: image, RegistryAuthRef: c.registryAuthRef(image)}}}, 10*time.Minute)
 	if err != nil {
 		return "", "", fail(ReasonNodeUnavailable, "pull command: %v", err)
@@ -264,45 +356,53 @@ func (r *run) pull(ctx context.Context, image string) (imageRef, digest string, 
 	return imageRef, digest, nil
 }
 
-// checkCapacity checks that the node has room for blue and green at the same time (REQ-DEPLOY-010).
+// checkCapacity checks that every node has room for blue and green at the same time (REQ-DEPLOY-010).
 func (r *run) checkCapacity(ctx context.Context) *deployErr {
 	c := r.c
 	if r.d.strategy != "blue_green" {
-		return nil
-	}
-	var capRaw []byte
-	if err := c.DB.QueryRow(ctx, `SELECT capacity FROM nodes WHERE id = $1`, r.node).Scan(&capRaw); err != nil || len(capRaw) == 0 {
-		return nil
-	}
-	var capa struct {
-		CPU uint64 `json:"cpu_millis"`
-		Mem uint64 `json:"memory_bytes"`
-	}
-	if json.Unmarshal(capRaw, &capa) != nil {
 		return nil
 	}
 	want := r.cfg.resourceSpec()
 	if want == nil {
 		return nil
 	}
-	var usedCPU, usedMem float64
-	if err := c.DB.QueryRow(ctx, `SELECT COALESCE(SUM((r.config_snapshot->'resources'->>'cpu_millis')::numeric),0),
-		COALESCE(SUM((r.config_snapshot->'resources'->>'memory_bytes')::numeric),0)
-		FROM placements p JOIN releases r ON r.id = p.release_id WHERE p.node_id = $1 AND p.role IN ('live','candidate','draining')`, r.node).Scan(&usedCPU, &usedMem); err != nil {
+	per := map[string]int{}
+	for _, n := range r.nodes {
+		per[n]++
+	}
+	for _, node := range distinct(r.nodes) {
+		var capRaw []byte
+		if err := c.DB.QueryRow(ctx, `SELECT capacity FROM nodes WHERE id = $1`, node).Scan(&capRaw); err != nil || len(capRaw) == 0 {
+			continue
+		}
+		var capa struct {
+			CPU uint64 `json:"cpu_millis"`
+			Mem uint64 `json:"memory_bytes"`
+		}
+		if json.Unmarshal(capRaw, &capa) != nil {
+			continue
+		}
+		var usedCPU, usedMem float64
+		if err := c.DB.QueryRow(ctx, `SELECT COALESCE(SUM((r.config_snapshot->'resources'->>'cpu_millis')::numeric),0),
+			COALESCE(SUM((r.config_snapshot->'resources'->>'memory_bytes')::numeric),0)
+			FROM placements p JOIN releases r ON r.id = p.release_id WHERE p.node_id = $1 AND p.role IN ('live','candidate','draining')`, node).Scan(&usedCPU, &usedMem); err != nil {
+			continue
+		}
+		n := float64(per[node])
+		tooMuch := (capa.Mem > 0 && usedMem+n*float64(want.MemoryLimitBytes) > float64(capa.Mem)) ||
+			(capa.CPU > 0 && usedCPU+n*float64(want.CpuLimitMillis) > float64(capa.CPU))
+		if !tooMuch {
+			continue
+		}
+		if !r.d.opts.AllowDowntimeOnLowCapacity {
+			return fail(ReasonNodeUnavailable, "node %s has no room for the old and the new container at the same time", node)
+		}
+		r.d.strategy = "recreate"
+		warn, _ := json.Marshal([]map[string]string{{"code": WarnZeroDowntime,
+			"message": "The node has room for one copy only, so the old container stops before the new one starts."}})
+		_, _ = c.DB.Exec(ctx, `UPDATE deployments SET strategy = 'recreate', warnings = warnings || $2::jsonb WHERE id = $1`, r.d.id, warn)
 		return nil
 	}
-	tooMuch := (capa.Mem > 0 && usedMem+float64(want.MemoryLimitBytes) > float64(capa.Mem)) ||
-		(capa.CPU > 0 && usedCPU+float64(want.CpuLimitMillis) > float64(capa.CPU))
-	if !tooMuch {
-		return nil
-	}
-	if !r.d.opts.AllowDowntimeOnLowCapacity {
-		return fail(ReasonNodeUnavailable, "node %s has no room for the old and the new container at the same time", r.node)
-	}
-	r.d.strategy = "recreate"
-	warn, _ := json.Marshal([]map[string]string{{"code": WarnZeroDowntime,
-		"message": "The node has room for one copy only, so the old container stops before the new one starts."}})
-	_, _ = c.DB.Exec(ctx, `UPDATE deployments SET strategy = 'recreate', warnings = warnings || $2::jsonb WHERE id = $1`, r.d.id, warn)
 	return nil
 }
 
@@ -312,7 +412,7 @@ func (r *run) startContainers(ctx context.Context) *deployErr {
 	if e := r.step(ctx, "starting", "starting the new containers", map[string]any{"release_id": r.releaseID, "strategy": d.strategy}); e != nil {
 		return e
 	}
-	if len(r.cfg.PreDeploy) > 0 && d.trigger != "rollback" { // a rollback never runs the migration again
+	if len(r.cfg.PreDeploy) > 0 && d.trigger != "rollback" && d.trigger != "move" && d.trigger != "failover" { // the same release never runs the migration again
 		if e := r.oneOff(ctx, "pre_deploy", r.cfg.PreDeploy, ReasonPreDeployFailed); e != nil {
 			return e
 		}
@@ -349,6 +449,11 @@ func (r *run) startContainers(ctx context.Context) *deployErr {
 			}
 		}
 	}
+	if r.dataCopy {
+		if e := r.copyData(ctx); e != nil {
+			return e
+		}
+	}
 	// A kept stopped container of the release is started again (fast rollback), else a new placement is made.
 	err := c.change(ctx, func(tx pgx.Tx) ([]string, error) {
 		if r.fast {
@@ -357,12 +462,19 @@ func (r *run) startContainers(ctx context.Context) *deployErr {
 				return nil, err
 			}
 		} else {
-			id := gateway.NewID("plc")
-			r.green = []plc{{id, r.node}}
-			if _, err := tx.Exec(ctx,
-				`INSERT INTO placements (id, service_id, node_id, release_id, replica_index, color, role, deployment_id)
-				 VALUES ($1,$2,$3,$4,0,$5,$6,$7)`, id, d.serviceID, r.node, r.releaseID, color, role, d.id); err != nil {
-				return nil, err
+			r.green = nil
+			for i, node := range r.nodes {
+				id := gateway.NewID("plc")
+				ip, err := allocIP(ctx, tx, node)
+				if err != nil {
+					return nil, err
+				}
+				r.green = append(r.green, plc{id, node})
+				if _, err := tx.Exec(ctx,
+					`INSERT INTO placements (id, service_id, node_id, release_id, replica_index, color, role, deployment_id, ip)
+					 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,'')::inet)`, id, d.serviceID, node, r.releaseID, i, color, role, d.id, ip); err != nil {
+					return nil, err
+				}
 			}
 		}
 		if _, err := tx.Exec(ctx, `UPDATE services SET desired_state = 'running', updated_at = now() WHERE id = $1`, d.serviceID); err != nil {

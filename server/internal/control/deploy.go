@@ -79,6 +79,7 @@ var errUserCancel = errors.New("cancelled by the user")
 type deployment struct {
 	id, serviceID, envID, trigger, strategy, state string
 	releaseID, prevReleaseID                       *string
+	targetNode                                     string
 	actorID                                        string
 	opts                                           deployOptions
 	created                                        time.Time
@@ -120,8 +121,10 @@ func (c *Control) DeployWith(ctx context.Context, p orchestrator.DeployParams) (
 	if err != nil {
 		return "", nil, err
 	}
-	if _, err := c.pickNodeForService(ctx, s.id); err != nil {
-		return "", nil, orchestrator.ErrNoNode
+	if trigger != "move" && trigger != "failover" {
+		if _, err := c.pickNodeForService(ctx, s.id); err != nil {
+			return "", nil, orchestrator.ErrNoNode
+		}
 	}
 	cfg := s.cfg
 	var rollbackTo *string
@@ -133,6 +136,7 @@ func (c *Control) DeployWith(ctx context.Context, p orchestrator.DeployParams) (
 		cfg, rollbackTo = rel.cfg, &rel.id
 	}
 	opts := resolveOptions(cfg, p)
+	p.Trigger = trigger
 	plan, err := c.plan(ctx, s, cfg, p, opts)
 	if err != nil {
 		return "", nil, err
@@ -168,9 +172,9 @@ func (c *Control) DeployWith(ctx context.Context, p orchestrator.DeployParams) (
 		actor = &p.ActorID
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO deployments (id, service_id, environment_id, trigger, strategy, strategy_options, state, actor_id, release_id, warnings)
-		 VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9)`,
-		id, s.id, s.envID, trigger, plan.Strategy, optsJSON, actor, rollbackTo, warnings); err != nil {
+		`INSERT INTO deployments (id, service_id, environment_id, trigger, strategy, strategy_options, state, actor_id, release_id, warnings, target_node_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,NULLIF($10,''))`,
+		id, s.id, s.envID, trigger, plan.Strategy, optsJSON, actor, rollbackTo, warnings, p.TargetNodeID); err != nil {
 		return "", nil, err
 	}
 	if err := saveBuildRequest(ctx, tx, id); err != nil { // commit and no_cache of a git deploy (build.go)
@@ -263,12 +267,15 @@ func (c *Control) startRun(id string) {
 
 func (c *Control) loadDeployment(ctx context.Context, id string) (*deployment, error) {
 	var d deployment
-	var actor *string
+	var actor, target *string
 	var opts []byte
-	err := c.DB.QueryRow(ctx, `SELECT id, service_id, environment_id, trigger, strategy, state, release_id, previous_release_id, actor_id, strategy_options, created_at
-		FROM deployments WHERE id = $1`, id).Scan(&d.id, &d.serviceID, &d.envID, &d.trigger, &d.strategy, &d.state, &d.releaseID, &d.prevReleaseID, &actor, &opts, &d.created)
+	err := c.DB.QueryRow(ctx, `SELECT id, service_id, environment_id, trigger, strategy, state, release_id, previous_release_id, actor_id, strategy_options, created_at, target_node_id
+		FROM deployments WHERE id = $1`, id).Scan(&d.id, &d.serviceID, &d.envID, &d.trigger, &d.strategy, &d.state, &d.releaseID, &d.prevReleaseID, &actor, &opts, &d.created, &target)
 	if err != nil {
 		return nil, err
+	}
+	if target != nil {
+		d.targetNode = *target
 	}
 	if actor != nil {
 		d.actorID = *actor

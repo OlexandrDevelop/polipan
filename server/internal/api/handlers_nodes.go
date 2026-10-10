@@ -22,6 +22,7 @@ func nodeJSON(n *store.Node) gen.Node {
 	if json.Unmarshal(n.Labels, &labels) == nil && labels != nil {
 		out.Labels = &labels
 	}
+	out.MeshSubnet, out.DrainNote, out.Usage = n.MeshSubnet, n.DrainNote, nodeUsage(n.Usage)
 	if len(n.Capacity) > 0 {
 		var c struct {
 			CPUMillis   *int `json:"cpu_millis"`
@@ -58,7 +59,7 @@ func (h *Handlers) GetNode(w http.ResponseWriter, r *http.Request, nodeID gen.No
 	if fail(w, r, err) {
 		return
 	}
-	WriteJSON(w, http.StatusOK, nodeJSON(n))
+	WriteJSON(w, http.StatusOK, h.nodeDetail(r, n))
 }
 
 var safeHostRe = regexp.MustCompile(`^[A-Za-z0-9.\-]+(:[0-9]{1,5})?$`)

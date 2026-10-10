@@ -115,16 +115,25 @@ func (s *joinServer) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRes
 		`INSERT INTO events (org_id, topic, object_id, payload) VALUES ($1,'node',$2,$3)`, orgID, nodeID, payload); err != nil {
 		return nil, status.Error(codes.Internal, "database error")
 	}
+	peers, err := MeshPeers(ctx, tx, orgID, nodeID, g.Config.WireguardPort)
+	if err != nil {
+		g.Log.Error("join: peers", "err", err)
+		return nil, status.Error(codes.Internal, "database error")
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, status.Error(codes.Internal, "database error")
 	}
 	g.Log.Info("node joined", "node", nodeID, "name", nodeName)
+	if g.Joined != nil {
+		g.Joined(ctx, nodeID)
+	}
 	return &pb.JoinResponse{
 		NodeId:        nodeID,
 		ClientCertPem: cert.PEM,
 		CaCertPem:     g.CA.CertPEM(),
 		MeshIp:        meshIP,
 		MeshSubnet:    subnet,
+		Peers:         peers,
 	}, nil
 }
 

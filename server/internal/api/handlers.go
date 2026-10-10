@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/polipan/polipan/api/gen"
@@ -144,6 +145,12 @@ func (h *Handlers) orchestratorFailed(w http.ResponseWriter, r *http.Request, er
 		WriteError(w, r, http.StatusConflict, CodeConflict, "the service has no live container", map[string]any{"reason": "no_live_release"})
 	case errors.Is(err, orchestrator.ErrStrategyUnavailable):
 		invalid(w, r, "strategy", "this strategy is not available in this version (use recreate or blue_green)")
+	case errors.Is(err, orchestrator.ErrNodeNotEmpty):
+		WriteError(w, r, http.StatusConflict, CodeNodeNotEmpty, "the node has workloads. Drain it first, or delete it with force=true", nil)
+	case errors.Is(err, orchestrator.ErrNodeState):
+		WriteError(w, r, http.StatusConflict, CodeConflict, strings.TrimPrefix(err.Error(), "orchestrator: the node state does not allow this: "), map[string]any{"reason": "node_state"})
+	case errors.Is(err, orchestrator.ErrNodeOffline):
+		WriteError(w, r, http.StatusConflict, CodeConflict, "the node is not connected", map[string]any{"reason": "node_offline"})
 	case errors.Is(err, orchestrator.ErrDeployRunning):
 		WriteError(w, r, http.StatusConflict, CodeConflict, "a deployment of this service is running", map[string]any{"reason": "deploy_running"})
 	default:

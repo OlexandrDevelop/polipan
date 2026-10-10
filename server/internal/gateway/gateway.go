@@ -46,6 +46,8 @@ type Deps struct {
 	State  StateProvider
 	// Health is told when the health of a placement changes (optional). Control sets it after New.
 	Health HealthHook
+	// Joined is called after a node joined, so every other node gets the new peer (09 section 2 step 5). Optional.
+	Joined func(ctx context.Context, nodeID string)
 	// PingInterval (default 15 s) and IdleTimeout (default 30 s) can be changed by tests.
 	PingInterval time.Duration
 	IdleTimeout  time.Duration

@@ -410,6 +410,8 @@ message RestoreSnapshot {
   string snapshot_id = 5;
   // stop_container: for redis and volumes (files). The agent stops source.container, restores the files and starts it again.
   bool stop_container = 6;
+  // service_id labels a new volume that a move or a failover restores into (the volume does not exist on the node yet).
+  string service_id = 7;
 }
 message ExecSession { string placement_id = 1; repeated string command = 2; bool tty = 3; uint32 rows = 4; uint32 cols = 5; }
 // ExecInput goes to a running exec session (command_id of the ExecSession): keys, a resize or the end.

@@ -32,6 +32,9 @@ const (
 	CodeNotCancellable      = "deployment_not_cancellable" // 409
 	CodeDomainPortMismatch  = "domain_port_mismatch"       // 409
 	CodeIdempotencyKeyReuse = "idempotency_key_reuse"      // 409
+
+	// M7 code.
+	CodeNodeNotEmpty = "node_not_empty" // 409
 )
 
 // WriteError writes the error object {code, message, details, request_id}.

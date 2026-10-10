@@ -46,6 +46,8 @@ type Config struct {
 	AgentHosts []string `yaml:"agent_hosts"`
 	// MeshCIDR is the pool of mesh subnets, one /24 per node.
 	MeshCIDR string `yaml:"mesh_cidr"`
+	// WireguardPort is the UDP port of the mesh on every node (glossary wireguard_port).
+	WireguardPort int `yaml:"wireguard_port"`
 	// HeartbeatInterval, NodeSuspectAfter, NodeDownAfter and JoinTokenTTL are the glossary defaults.
 	HeartbeatInterval time.Duration `yaml:"heartbeat_interval"`
 	NodeSuspectAfter  time.Duration `yaml:"node_suspect_after"`
@@ -76,6 +78,7 @@ func Default() Config {
 		AgentListen:        ":9443",
 		MeshCIDR:           "10.210.0.0/16",
 		HeartbeatInterval:  5 * time.Second,
+		WireguardPort:      51820,
 		NodeSuspectAfter:   15 * time.Second,
 		NodeDownAfter:      60 * time.Second,
 		JoinTokenTTL:       time.Hour,
@@ -141,6 +144,25 @@ func applyEnv(cfg *Config, getenv func(string) string) error {
 	}
 	if v := getenv("POLIPAN_AGENT_HOSTS"); v != "" {
 		cfg.AgentHosts = strings.Split(v, ",")
+	}
+	for env, dst := range map[string]*time.Duration{
+		"POLIPAN_NODE_SUSPECT_AFTER": &cfg.NodeSuspectAfter,
+		"POLIPAN_NODE_DOWN_AFTER":    &cfg.NodeDownAfter,
+	} {
+		if v := getenv(env); v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil || d <= 0 {
+				return fmt.Errorf("%s: not a duration", env)
+			}
+			*dst = d
+		}
+	}
+	if v := getenv("POLIPAN_WIREGUARD_PORT"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 65535 {
+			return fmt.Errorf("POLIPAN_WIREGUARD_PORT: not a port")
+		}
+		cfg.WireguardPort = n
 	}
 	if v := getenv("POLIPAN_SHUTDOWN_TIMEOUT"); v != "" {
 		d, err := time.ParseDuration(v)

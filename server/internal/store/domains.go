@@ -122,16 +122,20 @@ type Node struct {
 	Capacity        json.RawMessage
 	LastHeartbeatAt *time.Time
 	WorkloadCount   int
+	MeshSubnet      *string
+	DrainNote       *string
+	Usage           json.RawMessage
 }
 
 const nodeCols = `n.id, n.name, n.state, n.labels, host(n.public_ip), host(n.mesh_ip), n.os, n.arch, n.docker_version, n.agent_version,
 	n.capacity, n.last_heartbeat_at,
-	(SELECT count(*) FROM placements pl WHERE pl.node_id = n.id AND pl.role IN ('live','candidate','draining'))`
+	(SELECT count(*) FROM placements pl WHERE pl.node_id = n.id AND pl.role IN ('live','candidate','draining')),
+	host(network(n.mesh_subnet)) || '/' || masklen(n.mesh_subnet), n.drain_note, n.usage`
 
 func scanNode(row pgx.Row) (*Node, error) {
 	var n Node
 	if err := row.Scan(&n.ID, &n.Name, &n.State, &n.Labels, &n.PublicIP, &n.MeshIP, &n.OS, &n.Arch, &n.DockerVersion, &n.AgentVersion,
-		&n.Capacity, &n.LastHeartbeatAt, &n.WorkloadCount); err != nil {
+		&n.Capacity, &n.LastHeartbeatAt, &n.WorkloadCount, &n.MeshSubnet, &n.DrainNote, &n.Usage); err != nil {
 		return nil, notFound(err)
 	}
 	return &n, nil
@@ -139,7 +143,7 @@ func scanNode(row pgx.Row) (*Node, error) {
 
 // ListNodes lists the nodes of the org.
 func (s *Store) ListNodes(ctx context.Context, orgID string) ([]Node, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT `+nodeCols+` FROM nodes n WHERE n.org_id = $1 ORDER BY n.created_at, n.id`, orgID)
+	rows, err := s.Pool.Query(ctx, `SELECT `+nodeCols+` FROM nodes n WHERE n.org_id = $1 AND n.deleted_at IS NULL ORDER BY n.created_at, n.id`, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +152,7 @@ func (s *Store) ListNodes(ctx context.Context, orgID string) ([]Node, error) {
 	for rows.Next() {
 		var n Node
 		if err := rows.Scan(&n.ID, &n.Name, &n.State, &n.Labels, &n.PublicIP, &n.MeshIP, &n.OS, &n.Arch, &n.DockerVersion, &n.AgentVersion,
-			&n.Capacity, &n.LastHeartbeatAt, &n.WorkloadCount); err != nil {
+			&n.Capacity, &n.LastHeartbeatAt, &n.WorkloadCount, &n.MeshSubnet, &n.DrainNote, &n.Usage); err != nil {
 			return nil, err
 		}
 		out = append(out, n)
@@ -158,7 +162,7 @@ func (s *Store) ListNodes(ctx context.Context, orgID string) ([]Node, error) {
 
 // GetNode reads a node of the org.
 func (s *Store) GetNode(ctx context.Context, orgID, id string) (*Node, error) {
-	return scanNode(s.Pool.QueryRow(ctx, `SELECT `+nodeCols+` FROM nodes n WHERE n.id = $1 AND n.org_id = $2`, id, orgID))
+	return scanNode(s.Pool.QueryRow(ctx, `SELECT `+nodeCols+` FROM nodes n WHERE n.id = $1 AND n.org_id = $2 AND n.deleted_at IS NULL`, id, orgID))
 }
 
 // NodeNameUsed tells if a node of the org has the name.
