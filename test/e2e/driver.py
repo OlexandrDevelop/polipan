@@ -5,7 +5,7 @@ AC-DEPLOY-01, 02, 09, AC-REL-01, 02, 07, AC-HC-01, 03, 04, 05 and the chaos kill
 It runs inside the test Docker host with host networking. The panel is reached through the
 Caddy of the node (Host: panel.test), so the panel route is tested too.
 Usage: driver.py flow | gitflow | rollback | zerodowntime | chaos-start | chaos-end | serving | after
-M4 (run-m4.sh): m4-setup | m4-backup | m4-restore | m4-check-corrupt | m4-volume | m4-controlplane | m4-template
+M4 (run-m4.sh): m4-redis-start | m4-redis-backup | m4-redis-restore | m4-setup | m4-backup | m4-restore | m4-check-corrupt | m4-volume | m4-controlplane | m4-template
 """
 import http.client
 import json
@@ -926,6 +926,44 @@ def m4_controlplane():
     print("M4 CONTROLPLANE PASSED")
 
 
+def m4_redis_start():
+    p = m4_panel()
+    st = m4_state()
+    _, cache = p.call("POST", f"/environments/{st['env']}/services", {"name": "cache", "type": "database", "db_engine": "redis"}, expect=201)
+    deploy_wait(p, cache["id"], timeout=300)
+    m4_save(cache=cache["id"])
+    print("M4 REDIS STARTED")
+
+
+def m4_redis_backup():
+    """Redis: an RDB snapshot is the dump, the check loads it into a temporary Redis and compares DBSIZE."""
+    p = m4_panel()
+    st = m4_state()
+    _, pol = p.call("POST", f"/services/{st['cache']}/backup-policies", {"target_ids": [st["minio"]], "retention": {"keep_daily": 7}}, expect=201)
+    p.call("POST", f"/backup-policies/{pol['id']}/run", expect=202)
+    r = wait_run(p, pol["id"])
+    if r["manifest"].get("keys") != 100:
+        fail(f"redis manifest: {r['manifest']}")
+    c = wait_check(p, pol["id"], "passed")
+    ok(f"redis restore check passed: {[x['name'] + ':' + x.get('detail', '') for x in c['checks']]}")
+    m4_save(cache_policy=pol["id"], cache_run=r["id"])
+    print("M4 REDIS BACKUP PASSED")
+
+
+def m4_redis_restore():
+    p = m4_panel()
+    st = m4_state()
+    _, out = p.call("POST", f"/backup-runs/{st['cache_run']}/restore", {"target_id": st["minio"], "mode": "in_place", "confirm": "cache"}, expect=202)
+
+    def done():
+        _, j = p.call("GET", f"/backup-restores/{out['job_id']}", expect=200)
+        return j if j["state"] in ("succeeded", "failed") else None
+    j = wait("redis restore in place", done, timeout=300, every=3)
+    if j["state"] != "succeeded":
+        fail(f"redis restore: {j}")
+    print("M4 REDIS RESTORE PASSED")
+
+
 def m4_template():
     """AC-TPL-01 in a real stack: WordPress and MySQL, the password is a generated secret, both go live."""
     p = m4_panel()
@@ -948,4 +986,4 @@ if __name__ == "__main__":
     {"flow": flow, "serving": serving, "after": after, "gitflow": gitflow, "rollback": rollback, "zerodowntime": zerodowntime,
      "chaos-start": chaos_start, "chaos-end": chaos_end, "m4-setup": m4_setup, "m4-backup": m4_backup, "m4-restore": m4_restore,
      "m4-restore-inplace": m4_restore_inplace, "m4-check-corrupt": m4_check_corrupt, "m4-volume": m4_volume,
-     "m4-volume-backup": m4_volume_backup, "m4-controlplane": m4_controlplane, "m4-template": m4_template}[sys.argv[1]]()
+     "m4-volume-backup": m4_volume_backup, "m4-controlplane": m4_controlplane, "m4-template": m4_template, "m4-redis-start": m4_redis_start, "m4-redis-backup": m4_redis_backup, "m4-redis-restore": m4_redis_restore}[sys.argv[1]]()

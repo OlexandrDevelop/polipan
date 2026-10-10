@@ -24,7 +24,7 @@ start_free=$(free_gb)
 [ "$start_free" -ge 5 ] || { echo "only $start_free GB free: stop"; exit 1; }
 
 cleanup() {
-  [ -n "${KEEP:-}" ] || docker rm -f "$host" >/dev/null 2>&1 || true
+  [ -n "${KEEP:-}" ] || docker rm -fv "$host" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -36,7 +36,7 @@ if [ -z "${SKIP_BUILD:-}" ]; then
 fi
 
 step "Start the test Docker host"
-docker rm -f "$host" >/dev/null 2>&1 || true
+docker rm -fv "$host" >/dev/null 2>&1 || true
 docker run -d --privileged --name "$host" -e DOCKER_TLS_CERTDIR= docker:27-dind >/dev/null
 i=0
 until dx docker version >/dev/null 2>&1; do
@@ -89,7 +89,7 @@ driver m4-setup
 api=$(st api)
 url=$(dx docker exec "$(ctr "$api")" printenv DATABASE_URL)
 dx docker run --rm --network polipan postgres:16-alpine psql "$url" -tA -c 'select 1' | grep -q '^1$'
-echo "ok: the reference ${{db.main.URL}} gives a working connection from the other service"
+echo 'ok: the reference ${{db.main.URL}} gives a working connection from the other service'
 dx docker run --rm --network polipan postgres:16-alpine psql "$url" -q -c "create table items (id int primary key, name text); insert into items select g, 'row ' || g from generate_series(1, 500) g"
 db=$(st db)
 
@@ -153,6 +153,23 @@ key=$(dx cat /etc/polipan/master.key)
 if dx docker exec agent grep -c -F "$key" /tmp/cp.dump >/dev/null 2>&1; then echo "FAIL: the master key is in the dump"; exit 1; fi
 dx docker exec agent sh -c 'test -s /tmp/cp.dump'
 echo "ok: the control-plane dump holds no master key"
+
+step "Redis: dump, restore check and restore in place (the agent stops and starts the container)"
+driver m4-redis-start
+cache=$(st cache)
+rexec() { dx docker exec "$(ctr "$cache")" sh -c "$1"; }
+rexec 'i=1; while [ $i -le 100 ]; do echo "SET k$i v$i"; i=$((i+1)); done | REDISCLI_AUTH=$DB_PASSWORD redis-cli --pipe' >/dev/null
+[ "$(rexec 'REDISCLI_AUTH=$DB_PASSWORD redis-cli dbsize')" = 100 ]
+driver m4-redis-backup
+rexec 'REDISCLI_AUTH=$DB_PASSWORD redis-cli flushall' >/dev/null
+[ "$(rexec 'REDISCLI_AUTH=$DB_PASSWORD redis-cli dbsize')" = 0 ]
+driver m4-redis-restore
+i=0
+until [ "$(rexec 'REDISCLI_AUTH=$DB_PASSWORD redis-cli dbsize' 2>/dev/null || true)" = 100 ]; do
+  i=$((i + 1)); [ "$i" -lt 30 ] || { echo "FAIL: redis has not 100 keys after the restore"; exit 1; }
+  sleep 2
+done
+echo "ok: redis has its 100 keys again after the restore in place"
 
 if [ -z "${SKIP_TEMPLATE:-}" ]; then
   step "AC-TPL-01: WordPress with MySQL goes live"
