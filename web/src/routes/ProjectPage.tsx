@@ -230,6 +230,13 @@ export function ProjectPage() {
                 {t('roles.link')}
               </Link>
             )}
+            <Link
+              to="/o/$org/p/$project/config"
+              params={{ org: orgSlug, project: project.slug ?? '' }}
+              className="inline-flex min-h-8 items-center rounded-sm border border-border-strong px-3 py-1 text-sm coarse:min-h-11"
+            >
+              {t('config.link')}
+            </Link>
             {canCreateEnv === 'allow' && (
               <Button onClick={() => setCreating(true)}>{t('env.create')}</Button>
             )}

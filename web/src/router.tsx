@@ -9,6 +9,7 @@ import {
   ResetPasswordPage,
   SetupPage,
 } from '@/routes/Auth'
+import { ConfigAsCodePage } from '@/routes/ConfigAsCode'
 import { AuditPage } from '@/routes/Audit'
 import { MembersPage } from '@/routes/Members'
 import { ProjectRolesPage } from '@/routes/ProjectRoles'
@@ -145,6 +146,11 @@ const projectRolesRoute = createRoute({
   path: 'p/$project/roles',
   component: ProjectRolesPage,
 })
+const projectConfigRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'p/$project/config',
+  component: ConfigAsCodePage,
+})
 const projectRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'p/$project',
@@ -211,6 +217,7 @@ const routeTree = rootRoute.addChildren([
     tokensRoute,
     auditRoute,
     projectRolesRoute,
+    projectConfigRoute,
     projectRoute,
     environmentRoute,
     newServiceRoute,

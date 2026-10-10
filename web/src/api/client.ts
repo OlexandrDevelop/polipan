@@ -38,6 +38,33 @@ export async function postYaml<T>(path: string, text: string): Promise<T> {
       code?: string
       message?: string
       request_id?: string
+      details?: Record<string, unknown>
+    }
+    throw new ApiError(
+      res.status,
+      body.code ?? 'unknown',
+      body.message ?? res.statusText,
+      undefined,
+      body.request_id,
+      body.details,
+    )
+  }
+  return (await res.json()) as T
+}
+
+// GET that answers text (the YAML export).
+export async function getText(path: string): Promise<string> {
+  let res: Response
+  try {
+    res = await fetch('/api/v1' + path, { credentials: 'same-origin' })
+  } catch {
+    throw new ApiError(0, 'network', 'The server did not answer.')
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as {
+      code?: string
+      message?: string
+      request_id?: string
     }
     throw new ApiError(
       res.status,
@@ -47,7 +74,7 @@ export async function postYaml<T>(path: string, text: string): Promise<T> {
       body.request_id,
     )
   }
-  return (await res.json()) as T
+  return res.text()
 }
 
 const changesState = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
