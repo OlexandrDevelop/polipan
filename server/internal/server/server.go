@@ -8,13 +8,17 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/polipan/polipan/server/internal/api"
 	"github.com/polipan/polipan/server/internal/config"
+	"github.com/polipan/polipan/server/internal/control"
 	"github.com/polipan/polipan/server/internal/db"
+	"github.com/polipan/polipan/server/internal/gateway"
+	"github.com/polipan/polipan/server/internal/pki"
 	"github.com/polipan/polipan/server/internal/queue"
 	"github.com/polipan/polipan/server/internal/shared/clock"
 	"github.com/polipan/polipan/server/internal/web"
@@ -36,12 +40,56 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	log.Info("migrations done", "applied", applied)
 
 	clk := clock.Real{}
+	kek, err := pki.LoadKEK(cfg.MasterKeyFile, os.Getenv)
+	if err != nil {
+		return err
+	}
+	ca, err := pki.Load(ctx, pool, kek)
+	if err != nil {
+		return err
+	}
+	// The gateway sends commands for the control side, and the control side gives the
+	// desired state to the gateway, so the gateway is created first and gets its state later.
+	gw, err := gateway.New(gateway.Deps{DB: pool, CA: ca, Config: cfg, Clock: clk, Log: log})
+	if err != nil {
+		return fmt.Errorf("server: %w", err)
+	}
+	ctl := control.New(control.Deps{DB: pool, Clock: clk, Log: log, Config: cfg, CA: ca, Sender: gw})
+	gw.State = ctl
+
 	handler, err := api.NewRouter(api.Deps{
-		Log: log, DB: pool, Clock: clk, RateLimit: cfg.APIRateLimit, Web: web.Handler(),
+		Log: log, DB: pool, Pool: pool, Clock: clk, RateLimit: cfg.APIRateLimit, Web: web.Handler(),
+		Orchestrator: ctl, ExternalURL: cfg.ExternalURL, AgentListen: cfg.AgentListen,
+		SetupToken: pki.SetupToken(kek), SessionTTL: cfg.SessionTTL, SessionAbsoluteTTL: cfg.SessionAbsoluteTTL,
 	})
 	if err != nil {
 		return fmt.Errorf("server: %w", err)
 	}
+
+	gwListener, err := net.Listen("tcp", cfg.AgentListen)
+	if err != nil {
+		return fmt.Errorf("server: agent gateway: %w", err)
+	}
+	runCtx, cancelRun := context.WithCancel(ctx)
+	gwDone := make(chan struct{})
+	go func() {
+		defer close(gwDone)
+		if err := gw.Serve(runCtx, gwListener); err != nil {
+			log.Error("agent gateway stopped", "error", err)
+		}
+	}()
+	ctlDone := make(chan struct{})
+	go func() {
+		defer close(ctlDone)
+		if err := ctl.Run(runCtx); err != nil {
+			log.Error("control stopped", "error", err)
+		}
+	}()
+	defer func() {
+		cancelRun()
+		<-gwDone
+		<-ctlDone
+	}()
 
 	host, _ := os.Hostname()
 	worker := &queue.Worker{
@@ -59,11 +107,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		worker.Run(workerCtx)
 	}()
 
-	srv := &http.Server{
-		Addr:              cfg.Listen,
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	srv := api.NewHTTPServer(cfg.Listen, handler)
 	errCh := make(chan error, 1)
 	go func() {
 		log.Info("server listening", "addr", cfg.Listen)

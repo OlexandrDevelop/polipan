@@ -1,0 +1,350 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package ingress
+
+import (
+	"encoding/json"
+	"errors"
+	"sort"
+	"strings"
+
+	"github.com/polipan/polipan/proto/agentv1"
+)
+
+const (
+	// AdminListen is the Caddy admin address inside the container. It is a unix socket, never TCP (REQ-AGENT-010).
+	AdminListen = "unix//run/caddy-admin/admin.sock|0660"
+
+	defaultMaxBody = 100 << 20 // 100 MiB (REQ-DOM-008)
+
+	letsEncryptCA = "https://acme-v02.api.letsencrypt.org/directory"
+	zeroSSLCA     = "https://acme.zerossl.com/v2/DV90"
+
+	stoppedPage = `<!doctype html><html><head><meta charset="utf-8"><title>Polipan</title></head>` +
+		`<body style="font-family:sans-serif;text-align:center;padding-top:15vh">` +
+		`<h1>Polipan</h1><p>Service is stopped or not deployed yet</p></body></html>`
+)
+
+// Options changes how BuildConfig works.
+type Options struct {
+	ACMECAURL        string // when set, the only ACME issuer is this directory URL
+	ACMETrustedRoots string // PEM file (path inside the Caddy container) that trusts ACMECAURL
+	MaxBodyBytes     int64  // request body limit, 0 = 100 MiB
+}
+
+type obj = map[string]any
+
+// BuildConfig builds the full Caddy JSON from spec. The output is deterministic:
+// the same spec in a different order gives the same bytes.
+func BuildConfig(spec *agentv1.IngressSpec, opts Options) ([]byte, error) {
+	if spec == nil {
+		spec = &agentv1.IngressSpec{}
+	}
+	maxBody := opts.MaxBodyBytes
+	if maxBody <= 0 {
+		maxBody = defaultMaxBody
+	}
+
+	var redirects, mains []routeItem
+	httpsHosts := map[string]bool{}
+	plainHosts := map[string]bool{}
+	for _, r := range spec.GetRoutes() {
+		hosts := cleanHosts(r.GetHosts())
+		if len(hosts) == 0 {
+			continue
+		}
+		prefix, err := cleanPrefix(r.GetPathPrefix())
+		if err != nil {
+			return nil, err
+		}
+		scheme := "http"
+		if r.GetHttps() {
+			scheme = "https"
+		}
+		serve := hosts
+		switch r.GetRedirectWww() {
+		case "":
+		case "to_www", "to_apex":
+			var from []string
+			serve, from = wwwSplit(hosts, r.GetRedirectWww() == "to_www")
+			for i, f := range from {
+				redirects = append(redirects, routeItem{
+					key: f,
+					route: obj{
+						"match":    []any{obj{"host": []string{f}}},
+						"handle":   []any{redirectHandler(scheme + "://" + serve[i] + "{http.request.uri}")},
+						"terminal": true,
+					},
+				})
+			}
+			all := append(append([]string{}, serve...), from...)
+			markHosts(r.GetHttps(), all, httpsHosts, plainHosts)
+		default:
+			return nil, errors.New("ingress: bad redirect_www: " + r.GetRedirectWww())
+		}
+		markHosts(r.GetHttps(), serve, httpsHosts, plainHosts)
+
+		match := obj{"host": serve}
+		if prefix != "/" {
+			match["path"] = []string{prefix, prefix + "/*"}
+		}
+		mains = append(mains, routeItem{
+			key:    strings.Join(serve, ",") + "|" + r.GetRouteId(),
+			length: len(prefix),
+			route: obj{
+				"match":    []any{match},
+				"handle":   handlers(r, maxBody),
+				"terminal": true,
+			},
+		})
+	}
+	sort.SliceStable(redirects, func(i, j int) bool { return redirects[i].key < redirects[j].key })
+	// Longer path prefixes first, so /api wins over /.
+	sort.SliceStable(mains, func(i, j int) bool {
+		if mains[i].length != mains[j].length {
+			return mains[i].length > mains[j].length
+		}
+		return mains[i].key < mains[j].key
+	})
+
+	routes := []any{}
+	// Plain HTTP for a host that has HTTPS goes to HTTPS (REQ-DOM-002). The server listens on
+	// both ports, so Caddy does not add this redirect by itself.
+	if len(httpsHosts) > 0 {
+		hs := make([]string, 0, len(httpsHosts))
+		for h := range httpsHosts {
+			hs = append(hs, h)
+		}
+		sort.Strings(hs)
+		routes = append(routes, obj{
+			"match":    []any{obj{"host": hs, "protocol": "http"}},
+			"handle":   []any{redirectHandler("https://{http.request.host}{http.request.uri}")},
+			"terminal": true,
+		})
+	}
+	for _, it := range redirects {
+		routes = append(routes, it.route)
+	}
+	for _, it := range mains {
+		routes = append(routes, it.route)
+	}
+	// Catch-all for unknown hosts. It has no host matcher, so Caddy never asks for a certificate for it.
+	routes = append(routes, obj{"handle": []any{obj{
+		"handler":     "static_response",
+		"status_code": 404,
+		"headers":     obj{"Content-Type": []string{"text/plain; charset=utf-8"}},
+		"body":        "no such site",
+	}}})
+
+	server := obj{
+		"listen": []string{":80", ":443"},
+		"routes": routes,
+		"logs":   obj{},
+	}
+	var skip []string
+	for h := range plainHosts {
+		if !httpsHosts[h] {
+			skip = append(skip, h)
+		}
+	}
+	if len(skip) > 0 {
+		sort.Strings(skip)
+		server["automatic_https"] = obj{"skip": skip}
+	}
+	if spec.GetMetricsEnabled() {
+		server["metrics"] = obj{}
+	}
+
+	apps := obj{"http": obj{"servers": obj{"polipan": server}}}
+	if len(httpsHosts) > 0 {
+		subjects := make([]string, 0, len(httpsHosts))
+		for h := range httpsHosts {
+			subjects = append(subjects, h)
+		}
+		sort.Strings(subjects)
+		apps["tls"] = obj{"automation": obj{"policies": []any{obj{
+			"subjects": subjects,
+			"issuers":  issuers(spec, opts),
+		}}}}
+	}
+
+	cfg := obj{
+		"admin":   obj{"listen": AdminListen},
+		"storage": obj{"module": "file_system", "root": "/data"},
+		"logging": obj{"logs": obj{"default": obj{
+			"writer":  obj{"output": "stdout"},
+			"encoder": obj{"format": "json"},
+			"level":   "INFO",
+		}}},
+		"apps": apps,
+	}
+	return json.Marshal(cfg) // map keys are sorted by encoding/json
+}
+
+// initialConfig is the first config of the container: only the admin socket.
+func initialConfig() []byte {
+	b, _ := json.Marshal(obj{"admin": obj{"listen": AdminListen}})
+	return b
+}
+
+type routeItem struct {
+	key    string
+	length int
+	route  obj
+}
+
+func markHosts(https bool, hosts []string, httpsHosts, plainHosts map[string]bool) {
+	for _, h := range hosts {
+		if https {
+			httpsHosts[h] = true
+		} else {
+			plainHosts[h] = true
+		}
+	}
+}
+
+func redirectHandler(location string) obj {
+	return obj{
+		"handler":     "static_response",
+		"status_code": 308,
+		"headers":     obj{"Location": []string{location}},
+	}
+}
+
+// wwwSplit returns the hosts that are served and the hosts that redirect to them (same index).
+func wwwSplit(hosts []string, toWWW bool) (serve, from []string) {
+	seen := map[string]bool{}
+	for _, h := range hosts {
+		apex := strings.TrimPrefix(h, "www.")
+		s, f := apex, "www."+apex
+		if toWWW {
+			s, f = f, apex
+		}
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		serve = append(serve, s)
+		from = append(from, f)
+	}
+	return serve, from
+}
+
+func handlers(r *agentv1.Route, maxBody int64) []any {
+	ups := append([]*agentv1.Upstream{}, r.GetUpstreams()...)
+	if len(ups) == 0 {
+		return []any{obj{
+			"handler":     "static_response",
+			"status_code": 503,
+			"headers": obj{
+				"Content-Type":  []string{"text/html; charset=utf-8"},
+				"Cache-Control": []string{"no-store"},
+			},
+			"body": stoppedPage,
+		}}
+	}
+	sort.SliceStable(ups, func(i, j int) bool { return ups[i].GetAddress() < ups[j].GetAddress() })
+	dial := make([]any, 0, len(ups))
+	weights := make([]int, 0, len(ups))
+	weighted := false
+	for _, u := range ups {
+		dial = append(dial, obj{"dial": u.GetAddress()})
+		w := int(u.GetWeight())
+		if w > 0 {
+			weighted = true
+		} else {
+			w = 100
+		}
+		weights = append(weights, w)
+	}
+	policy := obj{"policy": "round_robin"}
+	if weighted {
+		policy = obj{"policy": "weighted_round_robin", "weights": weights}
+	}
+	proxy := obj{
+		"handler":        "reverse_proxy",
+		"upstreams":      dial,
+		"flush_interval": -1, // WebSocket and SSE pass without buffering
+		"load_balancing": obj{"selection_policy": policy},
+		"headers": obj{"request": obj{"set": obj{
+			"X-Forwarded-For":   []string{"{http.request.remote.host}"},
+			"X-Forwarded-Proto": []string{"{http.request.scheme}"},
+			"X-Forwarded-Host":  []string{"{http.request.host}"},
+		}}},
+	}
+	return []any{
+		obj{
+			"handler": "encode",
+			"encodings": obj{
+				"zstd": obj{},
+				"gzip": obj{},
+			},
+			"prefer": []string{"zstd", "gzip"},
+			// Only text-like types are compressed, so event streams stay unbuffered.
+			"match": obj{"headers": obj{"Content-Type": []string{
+				"text/html*", "text/plain*", "text/css*", "text/javascript*", "text/xml*",
+				"application/json*", "application/javascript*", "application/xml*",
+				"application/wasm*", "image/svg+xml*",
+			}}},
+		},
+		obj{"handler": "request_body", "max_size": maxBody},
+		proxy,
+	}
+}
+
+func issuers(spec *agentv1.IngressSpec, opts Options) []any {
+	email := spec.GetAcmeEmail()
+	acme := func(ca string) obj {
+		o := obj{"module": "acme"}
+		if ca != "" {
+			o["ca"] = ca
+		}
+		if email != "" {
+			o["email"] = email
+		}
+		return o
+	}
+	if opts.ACMECAURL != "" {
+		o := acme(opts.ACMECAURL)
+		if opts.ACMETrustedRoots != "" {
+			o["trusted_roots_pem_files"] = []string{opts.ACMETrustedRoots}
+		}
+		return []any{o}
+	}
+	// ZeroSSL through the ACME module: Caddy creates the EAB itself from the email.
+	zero := acme(zeroSSLCA)
+	if spec.GetAcmeCa() == "zerossl" {
+		return []any{zero, acme(letsEncryptCA)}
+	}
+	return []any{acme(letsEncryptCA), zero}
+}
+
+func cleanHosts(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, h := range in {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h == "" || seen[h] {
+			continue
+		}
+		seen[h] = true
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func cleanPrefix(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if p == "" || p == "/" {
+		return "/", nil
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	p = strings.TrimRight(p, "/")
+	if strings.ContainsAny(p, "*?") {
+		return "", errors.New("ingress: bad path_prefix: " + p)
+	}
+	return p, nil
+}

@@ -98,8 +98,8 @@ func TestM0_FirstMigrationMatchesSpecDDL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(applied) != 1 || applied[0] != 1 {
-		t.Fatalf("applied %v, want [1]", applied)
+	if len(applied) != 2 || applied[0] != 1 || applied[1] != 2 {
+		t.Fatalf("applied %v, want [1 2]", applied)
 	}
 	again, err := db.Migrate(ctx, migrated)
 	if err != nil || len(again) != 0 {

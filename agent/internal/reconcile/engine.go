@@ -1,0 +1,467 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Package reconcile makes the node match the desired state and runs the commands of the server.
+package reconcile
+
+import (
+	"context"
+	"crypto/sha256"
+	"errors"
+	"fmt"
+	"log/slog"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/polipan/polipan/agent/internal/docker"
+	"github.com/polipan/polipan/agent/internal/state"
+	"github.com/polipan/polipan/proto/agentv1"
+	"google.golang.org/protobuf/proto"
+)
+
+// Label keys of the containers the agent manages.
+const (
+	LabelManaged   = "polipan.managed"
+	LabelService   = "polipan.service"
+	LabelPlacement = "polipan.placement"
+	LabelRelease   = "polipan.release"
+	LabelColor     = "polipan.color"
+)
+
+// Ingress is the part of ingress.Manager that the engine uses.
+type Ingress interface {
+	Start(ctx context.Context) error
+	Apply(ctx context.Context, spec *agentv1.IngressSpec) (string, error)
+	DomainStatus(ctx context.Context, spec *agentv1.IngressSpec) []*agentv1.DomainStatus
+}
+
+// DNSTable receives the name to IP table of local workloads.
+type DNSTable interface{ Set(table map[string]string) }
+
+// Firewall applies the node rules for the desired state.
+type Firewall interface {
+	Apply(ctx context.Context, ds *agentv1.DesiredState) error
+}
+
+// Sink sends messages to the server. It returns false when there is no connection.
+type Sink interface {
+	Send(msg *agentv1.AgentMessage) bool
+}
+
+// Engine is the reconciler.
+type Engine struct {
+	Docker   docker.Client
+	Ingress  Ingress  // optional
+	DNS      DNSTable // optional
+	Firewall Firewall // optional
+	Store    *state.Store
+	Sink     Sink // optional
+	Network  string
+	// DNSServers are set in the DNS field of the containers.
+	DNSServers []string
+	// Infra runs until it succeeds before containers are touched (network, DNS, Caddy). Optional.
+	Infra    func(ctx context.Context) error
+	Log      *slog.Logger
+	Interval time.Duration // default 30 s
+
+	mu         sync.Mutex
+	desired    *agentv1.DesiredState
+	applied    int64
+	running    uint32
+	hold       bool
+	suppressed map[string]bool
+	pulled     map[string]bool
+	ingSpec    [32]byte
+	ingHash    string
+	errs       []string
+	inflight   map[string]bool
+	infraOK    bool
+	trigger    chan struct{}
+	runMu      sync.Mutex
+}
+
+// New creates an engine. It holds back all changes until the server answers or is found unreachable (REQ-AGENT-009).
+func New(d docker.Client, store *state.Store, network string, log *slog.Logger) *Engine {
+	if log == nil {
+		log = slog.Default()
+	}
+	return &Engine{Docker: d, Store: store, Network: network, Log: log, hold: true,
+		suppressed: map[string]bool{}, pulled: map[string]bool{}, inflight: map[string]bool{},
+		trigger: make(chan struct{}, 1)}
+}
+
+// Load reads the persisted desired state and the stored command acks.
+func (e *Engine) Load() error {
+	if err := e.Store.LoadCommands(); err != nil {
+		return err
+	}
+	ds, err := e.Store.LoadDesired()
+	if err != nil {
+		return err
+	}
+	e.mu.Lock()
+	e.desired = ds
+	e.mu.Unlock()
+	return nil
+}
+
+// Version returns the version of the desired state that the agent holds.
+func (e *Engine) Version() int64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.desired == nil {
+		return 0
+	}
+	return e.desired.Version
+}
+
+// Applied returns the last applied version and the number of running containers.
+func (e *Engine) Applied() (int64, uint32) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.applied, e.running
+}
+
+func (e *Engine) kick() {
+	select {
+	case e.trigger <- struct{}{}:
+	default:
+	}
+}
+
+// OnConnect is called when the stream is open. Nothing is started until the first desired state arrives.
+func (e *Engine) OnConnect() {
+	e.mu.Lock()
+	e.hold = true
+	e.mu.Unlock()
+}
+
+// OnUnreachable is called when the server cannot be reached. The persisted state runs (offline mode).
+func (e *Engine) OnUnreachable() {
+	e.mu.Lock()
+	was := e.hold
+	e.hold = false
+	e.mu.Unlock()
+	if was {
+		e.kick()
+	}
+}
+
+// SetDesired accepts a desired state from the server. Only a higher version replaces the stored one.
+func (e *Engine) SetDesired(ds *agentv1.DesiredState) {
+	e.mu.Lock()
+	newer := e.desired == nil || ds.Version > e.desired.Version
+	if newer {
+		if _, err := e.Store.SaveDesired(ds); err != nil {
+			e.Log.Error("cannot save desired state", "error", err)
+		}
+		e.desired = ds
+		e.suppressed = map[string]bool{}
+	}
+	e.hold = false
+	e.mu.Unlock()
+	e.kick()
+}
+
+// Run reconciles on every new state and on a timer, until ctx ends.
+func (e *Engine) Run(ctx context.Context) {
+	iv := e.Interval
+	if iv == 0 {
+		iv = 30 * time.Second
+	}
+	t := time.NewTicker(iv)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		case <-e.trigger:
+		}
+		e.Reconcile(ctx)
+	}
+}
+
+func hashSpec(s *agentv1.IngressSpec) [32]byte {
+	b, _ := proto.MarshalOptions{Deterministic: true}.Marshal(s)
+	return sha256.Sum256(b)
+}
+
+// Reconcile runs one pass and reports the actual state.
+func (e *Engine) Reconcile(ctx context.Context) {
+	e.runMu.Lock()
+	defer e.runMu.Unlock()
+	e.mu.Lock()
+	ds, hold := e.desired, e.hold
+	e.mu.Unlock()
+	if hold || ds == nil {
+		return
+	}
+	var errs []string
+	if e.Infra != nil && !e.infraOK {
+		if err := e.Infra(ctx); err != nil {
+			errs = append(errs, "infra: "+err.Error())
+			e.finish(ctx, ds, errs, false)
+			return
+		}
+		e.infraOK = true
+	}
+	managed, err := e.Docker.List(ctx, map[string]string{LabelManaged: "true"})
+	if err != nil {
+		errs = append(errs, codeFor(err, "internal_error")+": "+err.Error())
+		e.finish(ctx, ds, errs, false)
+		return
+	}
+	byName := map[string]docker.Container{}
+	for _, c := range managed {
+		byName[c.Name] = c
+	}
+	wanted := map[string]bool{}
+	for _, w := range ds.Workloads {
+		wanted[w.ContainerName] = true
+		e.mu.Lock()
+		skip := e.suppressed[w.PlacementId]
+		e.mu.Unlock()
+		if skip {
+			continue
+		}
+		var ex *docker.Container
+		if c, ok := byName[w.ContainerName]; ok {
+			ex = &c
+		}
+		if err := e.ensure(ctx, w, ex); err != nil {
+			e.Log.Error("workload failed", "placement", w.PlacementId, "error", err)
+			errs = append(errs, fmt.Sprintf("%s: placement %s: %v", codeFor(err, "container_start_failed"), w.PlacementId, err))
+		}
+	}
+	for _, c := range managed {
+		if wanted[c.Name] || c.Labels[LabelPlacement] == "" {
+			continue
+		}
+		e.Log.Info("removing container that is not in the desired state", "name", c.Name)
+		if err := e.Docker.Remove(ctx, c.ID, true); err != nil && !errors.Is(err, docker.ErrNotFound) {
+			errs = append(errs, fmt.Sprintf("remove %s: %v", c.Name, err))
+		}
+	}
+	e.finish(ctx, ds, errs, true)
+}
+
+// finish does ingress, DNS, firewall and sends the actual state.
+func (e *Engine) finish(ctx context.Context, ds *agentv1.DesiredState, errs []string, docked bool) {
+	spec := ds.Ingress
+	if spec == nil {
+		spec = &agentv1.IngressSpec{}
+	}
+	var domains []*agentv1.DomainStatus
+	if docked && e.Ingress != nil {
+		h := hashSpec(spec)
+		e.mu.Lock()
+		changed := h != e.ingSpec || e.ingHash == ""
+		e.mu.Unlock()
+		if changed {
+			if err := e.Ingress.Start(ctx); err != nil {
+				errs = append(errs, "caddy_load_failed: "+err.Error())
+			} else if nh, err := e.Ingress.Apply(ctx, spec); err != nil {
+				errs = append(errs, "caddy_load_failed: "+err.Error())
+			} else {
+				e.mu.Lock()
+				e.ingSpec, e.ingHash = h, nh
+				e.mu.Unlock()
+			}
+		}
+		domains = e.Ingress.DomainStatus(ctx, spec)
+	}
+	actual := e.actual(ctx, ds)
+	if e.Firewall != nil {
+		if err := e.Firewall.Apply(ctx, ds); err != nil {
+			e.Log.Warn("firewall not applied", "error", err)
+		}
+	}
+	e.mu.Lock()
+	actual.CaddyConfigHash = e.ingHash
+	if docked && len(errs) == 0 {
+		e.applied = ds.Version
+	}
+	actual.AppliedStateVersion = e.applied
+	e.errs = errs
+	e.mu.Unlock()
+	if len(errs) > 0 {
+		e.Log.Warn("reconcile finished with errors", "errors", errs)
+		time.AfterFunc(5*time.Second, e.kick) // try again soon, do not wait for the timer
+	}
+	actual.Errors = errs
+	actual.Domains = domains
+	if e.Sink != nil {
+		e.Sink.Send(&agentv1.AgentMessage{Body: &agentv1.AgentMessage_ActualState{ActualState: actual}})
+	}
+}
+
+// actual reads the containers and updates the DNS table.
+func (e *Engine) actual(ctx context.Context, ds *agentv1.DesiredState) *agentv1.ActualState {
+	out := &agentv1.ActualState{}
+	managed, err := e.Docker.List(ctx, map[string]string{LabelManaged: "true"})
+	if err != nil {
+		return out
+	}
+	byName := map[string]docker.Container{}
+	var running uint32
+	for _, c := range managed {
+		byName[c.Name] = c
+		st := &agentv1.ContainerStatus{PlacementId: c.Labels[LabelPlacement], ContainerId: c.ID,
+			ReleaseId: c.Labels[LabelRelease], Color: c.Labels[LabelColor], State: c.State, Health: "unknown"}
+		if ic, err := e.Docker.Inspect(ctx, c.ID); err == nil {
+			st.ExitCode = int32(ic.ExitCode)
+			if !ic.StartedAt.IsZero() {
+				st.StartedUnixMs = ic.StartedAt.UnixMilli()
+			}
+			switch ic.Health {
+			case "healthy", "unhealthy", "starting":
+				st.Health = ic.Health
+			}
+		}
+		if c.State == "running" {
+			running++
+		}
+		out.Containers = append(out.Containers, st)
+	}
+	sort.Slice(out.Containers, func(i, j int) bool { return out.Containers[i].PlacementId < out.Containers[j].PlacementId })
+	table := map[string]string{}
+	for _, w := range ds.Workloads {
+		if c, ok := byName[w.ContainerName]; ok && c.State == "running" && c.IP != "" {
+			table[w.ContainerName] = c.IP
+			for _, a := range w.NetworkAliases {
+				table[a] = c.IP
+			}
+		}
+	}
+	if e.DNS != nil {
+		e.DNS.Set(table)
+	}
+	e.mu.Lock()
+	e.running = running
+	e.mu.Unlock()
+	return out
+}
+
+func buildLabels(w *agentv1.WorkloadSpec) map[string]string {
+	l := map[string]string{}
+	for k, v := range w.Labels {
+		l[k] = v
+	}
+	l[LabelManaged] = "true"
+	l[LabelService] = w.ServiceId
+	l[LabelPlacement] = w.PlacementId
+	l[LabelRelease] = w.ReleaseId
+	if w.Color != "" {
+		l[LabelColor] = w.Color
+	}
+	return l
+}
+
+func (e *Engine) containerSpec(w *agentv1.WorkloadSpec) docker.ContainerSpec {
+	aliases := []string{w.ContainerName}
+	for _, a := range w.NetworkAliases {
+		if a != w.ContainerName {
+			aliases = append(aliases, a)
+		}
+	}
+	sp := docker.ContainerSpec{
+		Name: w.ContainerName, Image: w.ImageRef, Cmd: w.Command, Entrypoint: w.Entrypoint,
+		Env: w.Env, Labels: buildLabels(w), Network: e.Network, Aliases: aliases,
+		RestartPolicy: w.RestartPolicy, StopTimeout: int(w.StopGraceSeconds), DNS: e.DNSServers,
+	}
+	if sp.RestartPolicy == "" {
+		sp.RestartPolicy = "always"
+	}
+	for _, m := range w.Mounts {
+		if m.Kind != "bind" && m.Kind != "volume" {
+			continue
+		}
+		b := m.Source + ":" + m.Target
+		if m.ReadOnly {
+			b += ":ro"
+		}
+		sp.Binds = append(sp.Binds, b)
+	}
+	for _, p := range w.Ports {
+		proto := p.Protocol
+		if proto == "" {
+			proto = "tcp"
+		}
+		sp.Ports = append(sp.Ports, docker.PortBinding{HostPort: int(p.HostPort), ContainerPort: int(p.ContainerPort), Proto: proto})
+	}
+	if r := w.Resources; r != nil {
+		sp.NanoCPUs = int64(r.CpuLimitMillis) * 1_000_000
+		sp.MemoryBytes = int64(r.MemoryLimitBytes)
+	}
+	return sp
+}
+
+// ensure brings one workload to its role. ex is the existing container or nil.
+func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker.Container) error {
+	stopped := w.Role == "stopped"
+	if ex != nil && (ex.Image != w.ImageRef || ex.Labels[LabelRelease] != w.ReleaseId ||
+		(ex.State == "running" && ex.IP == "" && e.Network != "host")) {
+		e.Log.Info("recreating container", "name", w.ContainerName)
+		if err := e.Docker.Remove(ctx, ex.ID, true); err != nil && !errors.Is(err, docker.ErrNotFound) {
+			return err
+		}
+		ex = nil
+	}
+	if stopped {
+		if ex != nil && ex.State == "running" {
+			return e.Docker.Stop(ctx, ex.ID, int(w.StopGraceSeconds))
+		}
+		return nil
+	}
+	if ex == nil {
+		e.mu.Lock()
+		done := e.pulled[w.ImageRef]
+		e.mu.Unlock()
+		if !done {
+			if _, err := e.Docker.PullImage(ctx, w.ImageRef, w.RegistryAuthRef); err != nil {
+				return &codedErr{"image_pull_failed", err}
+			}
+			e.mu.Lock()
+			e.pulled[w.ImageRef] = true
+			e.mu.Unlock()
+		}
+		if _, err := e.Docker.CreateAndStart(ctx, e.containerSpec(w)); err != nil {
+			return &codedErr{"container_start_failed", err}
+		}
+		return nil
+	}
+	switch ex.State {
+	case "running", "restarting", "paused", "removing":
+		return nil
+	}
+	if err := e.Docker.Start(ctx, ex.ID); err != nil {
+		return &codedErr{"container_start_failed", err}
+	}
+	return nil
+}
+
+type codedErr struct {
+	code string
+	err  error
+}
+
+func (c *codedErr) Error() string { return c.err.Error() }
+func (c *codedErr) Unwrap() error { return c.err }
+
+// codeFor maps an error to an agent error code (09-multi-server, section 4).
+func codeFor(err error, def string) string {
+	var ce *codedErr
+	switch {
+	case errors.Is(err, docker.ErrUnavailable):
+		return "docker_unavailable"
+	case strings.Contains(err.Error(), "port is already allocated") || strings.Contains(err.Error(), "address already in use"):
+		return "port_conflict"
+	case strings.Contains(err.Error(), "no space left"):
+		return "out_of_resources"
+	case errors.As(err, &ce):
+		return ce.code
+	}
+	return def
+}

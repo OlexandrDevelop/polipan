@@ -8,12 +8,17 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/polipan/polipan/api"
 	"github.com/polipan/polipan/api/gen"
+	"github.com/polipan/polipan/server/internal/auth"
+	"github.com/polipan/polipan/server/internal/orchestrator"
 	"github.com/polipan/polipan/server/internal/shared/clock"
+	"github.com/polipan/polipan/server/internal/store"
 )
 
 // Deps are the parts the router needs.
@@ -21,12 +26,34 @@ type Deps struct {
 	Log   *slog.Logger
 	DB    Pinger
 	Clock clock.Clock
-	// RateLimit is the number of requests per minute per client (api_rate_limit).
+	// RateLimit is the number of requests per minute per client IP (api_rate_limit).
 	RateLimit int
 	// Web serves the web app for every path outside /api. Optional.
 	Web http.Handler
 	// Spec is the OpenAPI file. Empty means the embedded file. Tests set it.
 	Spec []byte
+
+	// Pool is the database. Without it only the operations that need no data work (health, version).
+	Pool *pgxpool.Pool
+	// Orchestrator is the deploy engine (the control package).
+	Orchestrator orchestrator.Orchestrator
+	// ExternalURL is config external_url. https sets HSTS, an empty or http value clears the Secure cookie flag.
+	ExternalURL string
+	// AgentListen is config agent_listen, for the install command of a node.
+	AgentListen string
+	// SetupToken is the one-time token for the first user. Empty means no token is checked.
+	SetupToken string
+	// SessionTTL and SessionAbsoluteTTL are config session_ttl and session_absolute_ttl.
+	SessionTTL         time.Duration
+	SessionAbsoluteTTL time.Duration
+	// MaxBodyBytes is the size limit of a request body. Default 1 MiB.
+	MaxBodyBytes int64
+}
+
+// secureCookies tells if the session cookie gets the Secure flag: always, unless
+// external_url is empty or plain http (local tests).
+func secureCookies(externalURL string) bool {
+	return externalURL != "" && !strings.HasPrefix(strings.ToLower(externalURL), "http://")
 }
 
 // NewRouter builds the router. It returns an error, and so the server does not
@@ -44,16 +71,42 @@ func NewRouter(d Deps) (http.Handler, error) {
 	if err := CheckPermissions(ops, nil); err != nil {
 		return nil, err
 	}
+	perms := make(map[Route]string, len(ops))
+	for _, o := range ops {
+		perms[Route{Method: o.Method, Pattern: normalize(o.FullPath())}] = o.Permission
+	}
+	if d.MaxBodyBytes <= 0 {
+		d.MaxBodyBytes = DefaultMaxBodyBytes
+	}
+	if d.SessionTTL <= 0 {
+		d.SessionTTL = 7 * 24 * time.Hour
+	}
+	if d.SessionAbsoluteTTL <= 0 {
+		d.SessionAbsoluteTTL = 30 * 24 * time.Hour
+	}
 
 	r := chi.NewRouter()
-	r.Use(RequestID(d.Log), AccessLog, Recover)
+	hsts := strings.HasPrefix(strings.ToLower(d.ExternalURL), "https://")
+	r.Use(RequestID(d.Log), AccessLog, Recover, SecurityHeaders(hsts), BodyLimit(d.MaxBodyBytes))
 
-	limiter := NewRateLimiter(d.Clock, d.RateLimit)
-	h := &Handlers{DB: d.DB}
+	h := &Handlers{
+		DB:       d.DB,
+		Orch:     d.Orchestrator,
+		Clock:    d.Clock,
+		Throttle: auth.NewThrottle(d.Clock),
+		Limiter:  NewRateLimiter(d.Clock, d.RateLimit),
+		Settings: Settings{ExternalURL: d.ExternalURL, AgentListen: d.AgentListen, SetupToken: d.SetupToken,
+			SessionTTL: d.SessionTTL, SessionAbsoluteTTL: d.SessionAbsoluteTTL},
+		cookieSecure: secureCookies(d.ExternalURL),
+		perms:        perms,
+	}
+	if d.Pool != nil {
+		h.Store = store.New(d.Pool)
+	}
 	gen.HandlerWithOptions(h, gen.ChiServerOptions{
 		BaseURL:     BasePath,
 		BaseRouter:  r,
-		Middlewares: []gen.MiddlewareFunc{notImplementedAsJSON, limiter.Middleware},
+		Middlewares: []gen.MiddlewareFunc{h.guard()},
 		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			WriteError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, err.Error(), nil)
 		},

@@ -3,13 +3,9 @@
 package api
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"math"
 	"net"
 	"net/http"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -83,12 +79,10 @@ func (l *RateLimiter) collect(now time.Time) {
 	}
 }
 
-// clientKey is the bearer token (hashed) or, without one, the client IP.
+// clientKey is the client IP. M1 uses only RemoteAddr. X-Forwarded-For is not read,
+// because any client can send it. A trusted proxy setting can be added later.
+// The key of a logged-in user (see Handlers.guard) is used in addition, after the session is valid.
 func clientKey(r *http.Request) string {
-	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
-		sum := sha256.Sum256([]byte(strings.TrimPrefix(auth, "Bearer ")))
-		return "tok:" + hex.EncodeToString(sum[:8])
-	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
@@ -96,16 +90,27 @@ func clientKey(r *http.Request) string {
 	return "ip:" + host
 }
 
-// Middleware answers 429 with Retry-After when the client is over the limit.
+// userKey is the extra key for a validated user.
+func userKey(userID string) string { return "usr:" + userID }
+
+// Check takes a token for the key and writes the 429 answer when there is none.
+// It returns true when the request may go on.
+func (l *RateLimiter) Check(w http.ResponseWriter, r *http.Request, key string) bool {
+	ok, wait := l.Allow(key)
+	if ok {
+		return true
+	}
+	w.Header().Set("Retry-After", retryAfter(wait))
+	WriteError(w, r, http.StatusTooManyRequests, CodeRateLimited, "rate limit exceeded",
+		map[string]any{"retry_after_seconds": int((wait + time.Second - 1) / time.Second)})
+	return false
+}
+
+// Middleware answers 429 with Retry-After when the client IP is over the limit.
 func (l *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ok, wait := l.Allow(clientKey(r))
-		if !ok {
-			secs := int(math.Ceil(wait.Seconds()))
-			w.Header().Set("Retry-After", strconv.Itoa(secs))
-			WriteError(w, r, http.StatusTooManyRequests, CodeRateLimited, "rate limit exceeded", map[string]any{"retry_after_seconds": secs})
-			return
+		if l.Check(w, r, clientKey(r)) {
+			next.ServeHTTP(w, r)
 		}
-		next.ServeHTTP(w, r)
 	})
 }

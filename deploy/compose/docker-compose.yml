@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: Apache-2.0
+# Control plane of Polipan: PostgreSQL and the server (with the web app inside).
+# The installer (deploy/install.sh) writes the .env file next to this file and starts it.
+# The agent and Caddy run on the host and are not part of this file.
+
+name: polipan
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: polipan
+      POSTGRES_DB: polipan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U polipan -d polipan"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  server:
+    image: ${POLIPAN_SERVER_IMAGE:?set in .env}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POLIPAN_DATABASE_URL: postgres://polipan:${POSTGRES_PASSWORD}@postgres:5432/polipan?sslmode=disable
+      POLIPAN_LISTEN: ":8080"
+      POLIPAN_EXTERNAL_URL: ${POLIPAN_EXTERNAL_URL:?set in .env}
+      POLIPAN_AGENT_HOSTS: ${POLIPAN_AGENT_HOSTS:-localhost}
+      POLIPAN_ACME_EMAIL: ${POLIPAN_ACME_EMAIL:-}
+      POLIPAN_MASTER_KEY_FILE: /etc/polipan/master.key
+    volumes:
+      - /etc/polipan/master.key:/etc/polipan/master.key:ro
+    ports:
+      # Only the agent on this host uses the gateway in M1.
+      - "127.0.0.1:9443:9443"
+    networks:
+      default: {}
+      polipan:
+        # The Caddy of the node reaches the panel with this name.
+        aliases: [polipan-server]
+
+volumes:
+  pgdata: {}
+
+networks:
+  # Created by the installer. The agent puts Caddy and the apps on the same network.
+  polipan:
+    external: true

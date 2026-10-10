@@ -7,7 +7,10 @@
 //	polipan-server [-config file]              run the server (default)
 //	polipan-server [-config file] migrate      apply the migrations and exit
 //	polipan-server [-config file] healthcheck  call /healthz of a running server (for container health checks)
-//	polipan-server version                     print the version
+//	polipan-server [-config file] join-token --name <node> [--label k=v]...  make a node join token
+//	polipan-server [-config file] ca-fingerprint  print the CA fingerprint
+//	polipan-server [-config file] setup-url   print the one-time setup URL for the first user
+//	polipan-server version                    print the version
 package main
 
 import (
@@ -18,12 +21,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/polipan/polipan/server/internal/config"
+	"github.com/polipan/polipan/server/internal/control"
 	"github.com/polipan/polipan/server/internal/db"
 	"github.com/polipan/polipan/server/internal/logging"
+	"github.com/polipan/polipan/server/internal/pki"
 	"github.com/polipan/polipan/server/internal/server"
 	"github.com/polipan/polipan/server/internal/version"
 )
@@ -67,6 +73,17 @@ func run() error {
 		applied, err := db.Migrate(ctx, pool)
 		log.Info("migrations done", "applied", applied)
 		return err
+	case "join-token":
+		return control.JoinTokenCommand(ctx, cfg, flag.Args()[1:], os.Stdout)
+	case "setup-url":
+		kek, err := pki.LoadKEK(cfg.MasterKeyFile, os.Getenv)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s/setup?token=%s\n", strings.TrimRight(cfg.ExternalURL, "/"), pki.SetupToken(kek))
+		return nil
+	case "ca-fingerprint":
+		return control.CAFingerprintCommand(ctx, cfg, os.Stdout)
 	case "healthcheck":
 		return healthcheck(ctx, cfg.Listen)
 	default:

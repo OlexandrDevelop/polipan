@@ -91,6 +91,14 @@ message ActualState {
   repeated ContainerStatus containers = 2;
   string caddy_config_hash = 3;
   repeated string errors = 4;
+  repeated DomainStatus domains = 5;  // TLS state of every host in the ingress spec (REQ-DOM-003)
+}
+
+message DomainStatus {
+  string host = 1;
+  string tls_status = 2;             // pending | issued | failed
+  string error = 3;                  // last ACME error text, empty when none
+  int64 expires_unix_ms = 4;         // certificate end, 0 when not issued
 }
 
 message ContainerStatus {

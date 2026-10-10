@@ -390,6 +390,17 @@ CREATE INDEX placements_node ON placements (node_id);
 CREATE INDEX placements_service ON placements (service_id);
 ```
 
+The server CA is kept in one row (M1). The private key is wrapped with the server KEK like other secrets ([10-security](10-security.md)).
+
+```sql
+CREATE TABLE server_ca (
+  id int PRIMARY KEY CHECK (id = 1),         -- one row
+  cert_pem text NOT NULL,
+  key_enc bytea NOT NULL,                    -- private key, AES-256-GCM with the server KEK
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+```
+
 ### 3.5 Domains, volumes, variables, secrets
 
 ```sql

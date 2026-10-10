@@ -135,3 +135,13 @@ func (n *notImplementedWriter) WriteHeader(code int) {
 	}
 	n.ResponseWriter.WriteHeader(code)
 }
+
+// Unwrap lets http.ResponseController reach the real writer (streams, write deadlines).
+func (n *notImplementedWriter) Unwrap() http.ResponseWriter { return n.ResponseWriter }
+
+// Flush keeps streaming responses working.
+func (n *notImplementedWriter) Flush() {
+	if f, ok := n.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}

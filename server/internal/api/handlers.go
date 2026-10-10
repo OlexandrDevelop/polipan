@@ -4,11 +4,16 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/polipan/polipan/api/gen"
+	"github.com/polipan/polipan/server/internal/auth"
 	"github.com/polipan/polipan/server/internal/logging"
+	"github.com/polipan/polipan/server/internal/orchestrator"
+	"github.com/polipan/polipan/server/internal/shared/clock"
+	"github.com/polipan/polipan/server/internal/store"
 	"github.com/polipan/polipan/server/internal/version"
 )
 
@@ -17,11 +22,34 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
+// Settings are the config values the handlers need.
+type Settings struct {
+	// ExternalURL is the public address of the panel. It sets the Secure flag of the cookie,
+	// HSTS and the install command of a node.
+	ExternalURL string
+	// AgentListen is the address of the agent gateway, for the install command. Default port 9443.
+	AgentListen string
+	// SetupToken is the one-time token for the first user. Empty means no token is checked.
+	SetupToken string
+	// SessionTTL is the sliding life of a session, SessionAbsoluteTTL the hard limit.
+	SessionTTL         time.Duration
+	SessionAbsoluteTTL time.Duration
+}
+
 // Handlers implements the operations that exist in this version.
 // Every other operation answers 501 through gen.Unimplemented.
 type Handlers struct {
 	gen.Unimplemented
-	DB Pinger
+	DB       Pinger
+	Store    *store.Store
+	Orch     orchestrator.Orchestrator
+	Clock    clock.Clock
+	Throttle *auth.Throttle
+	Limiter  *RateLimiter
+	Settings Settings
+
+	cookieSecure bool
+	perms        map[Route]string
 }
 
 // healthTimeout is the longest wait for the database in /healthz.
@@ -49,4 +77,48 @@ func (h *Handlers) GetVersion(w http.ResponseWriter, r *http.Request) {
 		"commit":  version.Commit,
 		"api":     version.APIVersion,
 	})
+}
+
+// page is a list answer with a cursor.
+type page[T any] struct {
+	Items      []T     `json:"items"`
+	NextCursor *string `json:"next_cursor"`
+}
+
+// pageLimit reads the limit parameter (1 to 200, default 50).
+func pageLimit(l *gen.Limit) int {
+	if l == nil {
+		return 50
+	}
+	return min(max(*l, 1), 200)
+}
+
+// parseCursor reads the cursor parameter. It writes 422 and returns false when it is bad.
+func parseCursor(w http.ResponseWriter, r *http.Request, c *gen.Cursor) (*store.Cursor, bool) {
+	if c == nil {
+		return nil, true
+	}
+	cur, err := store.DecodeCursor(*c)
+	if err != nil {
+		invalid(w, r, "cursor", "cursor is not valid")
+		return nil, false
+	}
+	return cur, true
+}
+
+// orchestratorFailed maps an error of the orchestrator to an answer. It returns true when it wrote one.
+func (h *Handlers) orchestratorFailed(w http.ResponseWriter, r *http.Request, err error) bool {
+	switch {
+	case err == nil:
+		return false
+	case errors.Is(err, orchestrator.ErrNotFound):
+		notFoundError(w, r)
+	case errors.Is(err, orchestrator.ErrNoNode):
+		WriteError(w, r, http.StatusConflict, CodeConflict, "no node is ready to run the service", map[string]any{"reason": "node_unavailable"})
+	case errors.Is(err, orchestrator.ErrDeployRunning):
+		WriteError(w, r, http.StatusConflict, CodeConflict, "a deployment of this service is running", map[string]any{"reason": "deploy_running"})
+	default:
+		internalError(w, r, err)
+	}
+	return true
 }

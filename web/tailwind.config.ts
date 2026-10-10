@@ -7,6 +7,12 @@ export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
+    screens: {
+      sm: '640px',
+      lg: '1024px',
+      '2xl': '1536px',
+      coarse: { raw: '(pointer: coarse)' },
+    },
     extend: {
       colors: {
         bg: 'var(--color-bg)',

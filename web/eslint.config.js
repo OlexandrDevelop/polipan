@@ -9,6 +9,7 @@ export default tseslint.config(
   { ignores: ['node_modules', '../server/internal/web/dist'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  { files: ['public/**/*.js'], languageOptions: { globals: globals.browser } },
   {
     files: ['src/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },

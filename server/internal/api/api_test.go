@@ -206,7 +206,7 @@ func TestREQ_API_004_ErrorModel(t *testing.T) {
 		status       int
 		code         string
 	}{
-		{http.MethodGet, "/api/v1/me", http.StatusNotImplemented, "internal_error"},
+		{http.MethodGet, "/api/v1/auth/sso/providers", http.StatusNotImplemented, "internal_error"},
 		{http.MethodGet, "/api/v1/nothing", http.StatusNotFound, "not_found"},
 	}
 	for _, c := range cases {
