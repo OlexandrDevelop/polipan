@@ -111,7 +111,7 @@ func (a *app) configCommands() []*cobra.Command {
 		}
 		m, _ := v.(map[string]any)
 		changes, _ := m["changes"].([]any)
-		if countActions(changes, "create", "update", "delete") == 0 {
+		if countActions(changes, "create", "update", "delete") == 0 && !(prune && countActions(changes, "unmanaged") > 0) {
 			return nil
 		}
 		if err := a.confirmYN("Apply this plan?"); err != nil {
