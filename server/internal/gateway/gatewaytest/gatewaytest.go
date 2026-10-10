@@ -13,6 +13,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -109,7 +110,10 @@ type Agent struct {
 	Commands chan *pb.Command
 	// OnCommand answers a command with an ack. If it is nil, commands go to Commands.
 	OnCommand func(*pb.Command) *pb.CommandAck
-	conn      *grpc.ClientConn
+	// Async runs each command in its own goroutine, so a slow command does not hold the others.
+	Async  bool
+	sendMu sync.Mutex
+	conn   *grpc.ClientConn
 }
 
 // NewKeyAndCSR makes a key and a CSR in PEM.
@@ -209,9 +213,18 @@ func (a *Agent) loop() {
 				a.Commands <- b.Command
 				continue
 			}
-			ack := a.OnCommand(b.Command)
-			ack.CommandId = b.Command.CommandId
-			_ = a.Stream.Send(&pb.AgentMessage{Body: &pb.AgentMessage_Ack{Ack: ack}})
+			answer := func(c *pb.Command) {
+				ack := a.OnCommand(c)
+				ack.CommandId = c.CommandId
+				a.sendMu.Lock()
+				defer a.sendMu.Unlock()
+				_ = a.Stream.Send(&pb.AgentMessage{Body: &pb.AgentMessage_Ack{Ack: ack}})
+			}
+			if a.Async {
+				go answer(b.Command)
+			} else {
+				answer(b.Command)
+			}
 		}
 	}
 }
@@ -219,6 +232,8 @@ func (a *Agent) loop() {
 // Send sends a message to the server.
 func (a *Agent) Send(t *testing.T, m *pb.AgentMessage) {
 	t.Helper()
+	a.sendMu.Lock()
+	defer a.sendMu.Unlock()
 	if err := a.Stream.Send(m); err != nil {
 		t.Fatal(err)
 	}

@@ -69,9 +69,11 @@ func (c *Control) deletePlacements(ctx context.Context, list []plc) error {
 
 // pruneReleases marks the releases beyond keep as pruned and removes their images.
 func (c *Control) pruneReleases(ctx context.Context, s *svcInfo, keep int) error {
-	rows, err := c.DB.Query(ctx, `SELECT r.id, r.image_ref FROM releases r JOIN services sv ON sv.id = r.service_id
-		WHERE r.service_id = $1 AND r.pruned_at IS NULL AND r.id IS DISTINCT FROM sv.live_release_id
-		ORDER BY r.number DESC OFFSET $2`, s.id, keep)
+	// The newest keep releases keep their image. The live release is never pruned.
+	rows, err := c.DB.Query(ctx, `SELECT id, image_ref FROM (
+		SELECT r.id, r.image_ref, sv.live_release_id, row_number() OVER (ORDER BY r.number DESC) AS rn
+		  FROM releases r JOIN services sv ON sv.id = r.service_id WHERE r.service_id = $1 AND r.pruned_at IS NULL) x
+		WHERE rn > $2 AND id IS DISTINCT FROM live_release_id ORDER BY rn`, s.id, keep)
 	if err != nil {
 		return err
 	}

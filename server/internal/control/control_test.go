@@ -23,14 +23,22 @@ type fixture struct {
 	serviceID string
 }
 
-func setup(t *testing.T) *fixture {
+func setup(t *testing.T) *fixture { return setupWith(t, nil) }
+
+// setupWith is setup with a change of the control deps (short timeouts of the tests).
+func setupWith(t *testing.T, tweak func(*control.Deps)) *fixture {
 	t.Helper()
 	env := gatewaytest.Start(t)
 	env.Cfg.ExternalURL = "https://panel.example.com"
 	env.Cfg.ACMEEmail = "ops@example.com"
-	ctl := control.New(control.Deps{DB: env.Pool, Clock: env.Clock, Config: env.Cfg, CA: env.CA, Sender: env.GW})
+	deps := control.Deps{DB: env.Pool, Clock: env.Clock, Config: env.Cfg, CA: env.CA, Sender: env.GW}
+	if tweak != nil {
+		tweak(&deps)
+	}
+	ctl := control.New(deps)
 	t.Cleanup(ctl.Close)
 	env.GW.State = ctl
+	env.GW.Health = ctl
 
 	ctx := context.Background()
 	prj, envID, svc := gateway.NewID("prj"), gateway.NewID("env"), gateway.NewID("svc")
