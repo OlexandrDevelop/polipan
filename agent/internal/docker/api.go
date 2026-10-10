@@ -37,6 +37,7 @@ type ContainerSpec struct {
 	StopTimeout   int // seconds
 	CapAdd        []string
 	DNS           []string // DNS servers for the container
+	IP            string   // fixed IPv4 address on Network (must be inside the subnet of the network). Empty = Docker picks.
 }
 
 // Mount is one entry of HostConfig.Mounts.

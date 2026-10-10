@@ -77,3 +77,21 @@ func TestLocalAndForward(t *testing.T) {
 		t.Fatalf("forwarded answer: %+v", m.Answers)
 	}
 }
+
+// REQ-NODE-009: a name that has replicas on several nodes answers with all addresses.
+func TestSetMultiAnswersEveryAddress(t *testing.T) {
+	s := &Server{Upstreams: []string{"127.0.0.1:1"}}
+	s.SetMulti(map[string][]string{"svc-api": {"10.210.2.10", "10.210.1.10"}})
+	pc, _ := net.ListenPacket("udp", "127.0.0.1:0")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.Serve(ctx, pc)
+	m := query(t, pc.LocalAddr().String(), "svc-api.polipan.internal.")
+	if len(m.Answers) != 2 {
+		t.Fatalf("answers: %v", m.Answers)
+	}
+	first := m.Answers[0].Body.(*dnsmessage.AResource).A
+	if first != [4]byte{10, 210, 1, 10} {
+		t.Fatalf("the answer order must be stable: %v", first)
+	}
+}

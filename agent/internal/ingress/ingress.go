@@ -40,6 +40,9 @@ type Config struct {
 	DataDir string // the agent data dir; Caddy storage is DataDir/caddy, the admin socket is DataDir/caddy-admin/admin.sock
 	Image   string // Caddy image, default DefaultImage
 	Network string // docker network that Caddy joins to reach the upstreams
+	// IP is the fixed address of Caddy in Network (the .2 of the mesh subnet of the node). The environment
+	// firewall of the other nodes lets this address reach every container (REQ-SEC-106). Empty = Docker picks.
+	IP string
 	// ACMECAURL overrides the ACME directory (tests use a staging or local CA). Empty = from IngressSpec.
 	ACMECAURL string
 	// ACMETrustedRoots is an optional PEM file that trusts ACMECAURL. It is mounted read-only
@@ -80,6 +83,11 @@ func (m *Manager) hashPath() string   { return filepath.Join(m.Config.DataDir, "
 func (m *Manager) Start(ctx context.Context) error {
 	c, err := m.Docker.Inspect(ctx, ContainerName)
 	switch {
+	case err == nil && m.Config.IP != "" && c.IP != "" && c.IP != m.Config.IP:
+		// An older Caddy container with another address: make it again. The data and the config stay in the data dir.
+		if err := m.Docker.Remove(ctx, c.ID, true); err != nil && !errors.Is(err, docker.ErrNotFound) {
+			return fmt.Errorf("ingress: remove caddy: %w", err)
+		}
 	case err == nil:
 		if c.State == "running" || c.State == "restarting" {
 			return nil
@@ -130,6 +138,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		Cmd:           []string{"caddy", "run", "--config", "/config/initial.json", "--resume"},
 		Labels:        map[string]string{"polipan.component": "caddy"},
 		Network:       m.Config.Network,
+		IP:            m.Config.IP,
 		Binds:         binds,
 		RestartPolicy: "always",
 		Ports: []docker.PortBinding{

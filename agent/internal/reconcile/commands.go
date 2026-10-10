@@ -129,6 +129,8 @@ func (e *Engine) run(ctx context.Context, cmd *agentv1.Command) ([]byte, string,
 			e.mu.Unlock()
 		}
 		return jsonBytes(map[string]int{"removed": removed}), "", ""
+	case *agentv1.Command_SelfCheck:
+		return e.selfCheck(ctx)
 	case *agentv1.Command_RunBackup:
 		return e.runBackup(ctx, b.RunBackup)
 	case *agentv1.Command_RunRestoreCheck:
@@ -263,4 +265,36 @@ func (e *Engine) streamLogs(ctx context.Context, cmdID string, sl *agentv1.Strea
 	e.send(&agentv1.AgentMessage{Body: &agentv1.AgentMessage_Chunk{Chunk: &agentv1.StreamChunk{
 		CommandId: cmdID, Stream: "log", Eof: true}}})
 	return []byte("{}"), "", ""
+}
+
+// selfCheck tests Docker, Caddy and WireGuard (REQ-NODE-011, the join checks of 09 section 2).
+func (e *Engine) selfCheck(ctx context.Context) ([]byte, string, string) {
+	res := struct {
+		Docker      bool     `json:"docker"`
+		Caddy       bool     `json:"caddy"`
+		Wireguard   bool     `json:"wireguard"`
+		ClockSkewMS int64    `json:"clock_skew_ms"`
+		Errors      []string `json:"errors,omitempty"`
+	}{}
+	if _, err := e.Docker.Ping(ctx); err != nil {
+		res.Errors = append(res.Errors, "docker: "+err.Error())
+	} else {
+		res.Docker = true
+	}
+	if v, ok := e.Ingress.(interface{ Version(context.Context) string }); ok {
+		res.Caddy = v.Version(ctx) != ""
+	} else {
+		res.Caddy = e.Ingress != nil
+	}
+	if !res.Caddy {
+		res.Errors = append(res.Errors, "caddy: not running")
+	}
+	if e.Mesh == nil {
+		res.Errors = append(res.Errors, "wireguard: not set up")
+	} else if err := e.Mesh.Check(ctx); err != nil {
+		res.Errors = append(res.Errors, "wireguard: "+err.Error())
+	} else {
+		res.Wireguard = true
+	}
+	return jsonBytes(res), "", ""
 }

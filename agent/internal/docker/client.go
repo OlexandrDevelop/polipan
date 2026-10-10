@@ -146,6 +146,20 @@ func gatewayOf(n networkInspect) string {
 	return ""
 }
 
+// NetworkSubnet returns the first subnet of a network, or "" when it has none.
+func (c *HTTPClient) NetworkSubnet(ctx context.Context, name string) (string, error) {
+	var n networkInspect
+	if err := c.getJSON(ctx, "/networks/"+url.PathEscape(name), nil, &n); err != nil {
+		return "", err
+	}
+	for _, cfg := range n.IPAM.Config {
+		if cfg.Subnet != "" {
+			return cfg.Subnet, nil
+		}
+	}
+	return "", nil
+}
+
 // EnsureNetwork creates the bridge network if it is missing. An existing network is not changed.
 func (c *HTTPClient) EnsureNetwork(ctx context.Context, name, subnet string) (string, error) {
 	var n networkInspect
@@ -327,10 +341,15 @@ func createBody(spec ContainerSpec) map[string]any {
 	if spec.StopTimeout > 0 {
 		body["StopTimeout"] = spec.StopTimeout
 	}
-	if spec.Network != "" && spec.Network != "host" && len(spec.Aliases) > 0 {
-		body["NetworkingConfig"] = map[string]any{"EndpointsConfig": map[string]any{
-			spec.Network: map[string]any{"Aliases": spec.Aliases},
-		}}
+	if spec.Network != "" && spec.Network != "host" && (len(spec.Aliases) > 0 || spec.IP != "") {
+		ep := map[string]any{}
+		if len(spec.Aliases) > 0 {
+			ep["Aliases"] = spec.Aliases
+		}
+		if spec.IP != "" {
+			ep["IPAMConfig"] = map[string]any{"IPv4Address": spec.IP}
+		}
+		body["NetworkingConfig"] = map[string]any{"EndpointsConfig": map[string]any{spec.Network: ep}}
 	}
 	return body
 }

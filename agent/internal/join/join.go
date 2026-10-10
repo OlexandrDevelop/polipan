@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/polipan/polipan/agent/internal/mesh"
 	"github.com/polipan/polipan/proto/agentv1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -108,6 +109,14 @@ func Run(ctx context.Context, o Options) (*NodeFile, error) {
 	if err != nil {
 		return nil, err
 	}
+	wgKey, err := mesh.LoadOrCreateKey(o.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	wgPub, err := mesh.PublicKey(wgKey)
+	if err != nil {
+		return nil, err
+	}
 	conn, err := grpc.NewClient(o.Server, grpc.WithTransportCredentials(credentials.NewTLS(PinnedTLS(host, o.CAFingerprint))))
 	if err != nil {
 		return nil, err
@@ -116,7 +125,7 @@ func Run(ctx context.Context, o Options) (*NodeFile, error) {
 	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	resp, err := agentv1.NewAgentJoinClient(conn).Join(cctx, &agentv1.JoinRequest{
-		JoinToken: o.Token, CsrPem: csr, NodeInfo: o.Info,
+		JoinToken: o.Token, CsrPem: csr, NodeInfo: o.Info, WireguardPublicKey: wgPub,
 	})
 	if err != nil {
 		if s, ok := status.FromError(err); ok {

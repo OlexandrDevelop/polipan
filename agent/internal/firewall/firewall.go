@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"log/slog"
+	"net"
 	"os/exec"
 	"sort"
 	"strings"
@@ -24,6 +25,11 @@ type Params struct {
 	AgentPort int    // server gateway port, always open so agents can reach a control plane on this host
 	TCPPorts  []int  // published host tcp ports
 	UDPPorts  []int  // published host udp ports
+
+	// Environment isolation (REQ-SEC-106). Without MeshCIDR there are no such rules.
+	MeshCIDR string              // the pool of all mesh subnets: container addresses are inside it
+	Envs     map[string][]string // environment id -> the addresses of its workloads, on this node and on other nodes
+	CaddyIPs []string            // the Caddy containers of all ingress nodes: they may reach every container
 }
 
 // PortsFromDesired returns the published host ports of the workloads.
@@ -84,6 +90,11 @@ func Ruleset(p Params) string {
 	b.WriteString("table inet polipan\n")
 	b.WriteString("delete table inet polipan\n")
 	b.WriteString("table inet polipan {\n")
+	isolation := p.MeshCIDR != ""
+	var envNames []string
+	if isolation {
+		envNames = writeSets(&b, p)
+	}
 	b.WriteString("  chain input {\n")
 	b.WriteString("    type filter hook input priority 0; policy drop;\n")
 	b.WriteString("    ct state established,related accept\n")
@@ -101,6 +112,89 @@ func Ruleset(p Params) string {
 	if udp := portSet(p.UDPPorts); len(udp) > 0 {
 		fmt.Fprintf(&b, "    udp dport { %s } accept\n", list(udp))
 	}
+	b.WriteString("  }\n")
+	if isolation {
+		// Mesh traffic that is routed (from another node, or between networks): a container may talk only to
+		// the containers of its own environment, and Caddy may talk to all (REQ-SEC-106).
+		b.WriteString("  chain forward {\n")
+		b.WriteString("    type filter hook forward priority -10; policy accept;\n")
+		b.WriteString("    ct state established,related accept\n")
+		writeIsolation(&b, p, envNames)
+		b.WriteString("  }\n")
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
+
+// envSetName is the name of the nft set of the n-th environment.
+func envSetName(n int) string { return fmt.Sprintf("env_%d", n) }
+
+func sortedEnvs(m map[string][]string) []string {
+	keys := make([]string, 0, len(m))
+	for k, v := range m {
+		if len(v) > 0 {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func addrSet(name string, ips []string) string {
+	seen := map[string]bool{}
+	var list []string
+	for _, ip := range ips {
+		if ip != "" && !seen[ip] {
+			seen[ip] = true
+			list = append(list, ip)
+		}
+	}
+	sort.Strings(list)
+	var b strings.Builder
+	fmt.Fprintf(&b, "  set %s {\n    type ipv4_addr\n", name)
+	if len(list) > 0 {
+		fmt.Fprintf(&b, "    elements = { %s }\n", strings.Join(list, ", "))
+	}
+	b.WriteString("  }\n")
+	return b.String()
+}
+
+// writeSets writes the sets of the Caddy addresses and of every environment. It returns the set names of the
+// environments, in the order of the sorted environment ids.
+func writeSets(b *strings.Builder, p Params) []string {
+	b.WriteString(addrSet("caddy", p.CaddyIPs))
+	var names []string
+	for i, env := range sortedEnvs(p.Envs) {
+		name := envSetName(i)
+		names = append(names, name)
+		b.WriteString(addrSet(name, p.Envs[env]))
+	}
+	return names
+}
+
+func writeIsolation(b *strings.Builder, p Params, envNames []string) {
+	b.WriteString("    ip saddr @caddy accept\n")
+	b.WriteString("    ip daddr @caddy accept\n")
+	for _, n := range envNames {
+		fmt.Fprintf(b, "    ip saddr @%s ip daddr @%s accept\n", n, n)
+	}
+	fmt.Fprintf(b, "    ip saddr %s ip daddr %s drop\n", p.MeshCIDR, p.MeshCIDR)
+}
+
+// BridgeRuleset isolates the environments inside one node: containers of two environments share the Docker bridge,
+// and their traffic never reaches the routing hooks. The bridge family sees it. Empty without MeshCIDR.
+func BridgeRuleset(p Params) string {
+	if p.MeshCIDR == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("table bridge polipan_iso\n")
+	b.WriteString("delete table bridge polipan_iso\n")
+	b.WriteString("table bridge polipan_iso {\n")
+	names := writeSets(&b, p)
+	b.WriteString("  chain forward {\n")
+	b.WriteString("    type filter hook forward priority -200; policy accept;\n")
+	writeIsolation(&b, p, names)
 	b.WriteString("  }\n}\n")
 	return b.String()
 }
@@ -110,7 +204,9 @@ type Firewall struct {
 	Enabled   bool
 	DNSAddr   string
 	AgentPort int
-	Log       *slog.Logger
+	// MeshSubnet is the /24 of this node. Its .2 address is the Caddy container of the node.
+	MeshSubnet string
+	Log        *slog.Logger
 	// Run executes nft with the script on stdin. Nil = the real nft binary.
 	Run func(ctx context.Context, script string) error
 
@@ -149,13 +245,61 @@ func (f *Firewall) Apply(ctx context.Context, ds *agentv1.DesiredState) error {
 		run = runNft
 	}
 	tcp, udp := PortsFromDesired(ds)
-	script := Ruleset(Params{DNSAddr: f.DNSAddr, AgentPort: f.AgentPort, TCPPorts: tcp, UDPPorts: udp})
-	h := sha256.Sum256([]byte(script))
+	p := Params{DNSAddr: f.DNSAddr, AgentPort: f.AgentPort, TCPPorts: tcp, UDPPorts: udp}
+	if ds != nil && ds.MeshCidr != "" && f.MeshSubnet != "" {
+		p.MeshCIDR, p.Envs, p.CaddyIPs = ds.MeshCidr, EnvsFromDesired(ds), CaddyIPs(f.MeshSubnet, ds)
+	}
+	script, bridge := Ruleset(p), BridgeRuleset(p)
+	h := sha256.Sum256([]byte(script + "\x00" + bridge))
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if h == f.lastHash {
 		return nil
 	}
 	f.lastHash = h // also on failure, so a node without CAP_NET_ADMIN does not retry every pass
-	return run(ctx, script)
+	err := run(ctx, script)
+	if bridge != "" {
+		// The bridge family may be missing in the kernel. The other rules are in place then, so only warn.
+		if berr := run(ctx, bridge); berr != nil && f.Log != nil {
+			f.Log.Warn("environment isolation inside the node is not applied", "error", berr)
+		}
+	}
+	return err
+}
+
+// EnvsFromDesired maps every environment to the addresses of its workloads: the ones on this node and the ones the
+// server lists as remote endpoints. A stopped workload does not count.
+func EnvsFromDesired(ds *agentv1.DesiredState) map[string][]string {
+	out := map[string][]string{}
+	for _, w := range ds.GetWorkloads() {
+		if w.Ip != "" && w.EnvironmentId != "" && w.Role != "stopped" {
+			out[w.EnvironmentId] = append(out[w.EnvironmentId], w.Ip)
+		}
+	}
+	for _, e := range ds.GetRemoteEndpoints() {
+		if e.Ip != "" && e.EnvironmentId != "" {
+			out[e.EnvironmentId] = append(out[e.EnvironmentId], e.Ip)
+		}
+	}
+	return out
+}
+
+// CaddyIPs lists the Caddy address (.2) of this node and of every peer node.
+func CaddyIPs(meshSubnet string, ds *agentv1.DesiredState) []string {
+	var out []string
+	add := func(cidr string) {
+		if _, n, err := net.ParseCIDR(strings.TrimSpace(cidr)); err == nil && n.IP.To4() != nil {
+			ip := make(net.IP, 4)
+			copy(ip, n.IP.To4())
+			ip[3] = 2
+			out = append(out, ip.String())
+		}
+	}
+	add(meshSubnet)
+	for _, peer := range ds.GetPeers() {
+		for _, a := range strings.Split(peer.AllowedIps, ",") {
+			add(a)
+		}
+	}
+	return out
 }

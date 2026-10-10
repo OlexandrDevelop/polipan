@@ -78,6 +78,10 @@ func outboundIP() string {
 	return ""
 }
 
+// PublicIPOverride is the address other nodes use to reach this node, when it is not the address of the default
+// route (a node behind NAT, or a node with several networks). The agent sets it from its config.
+var PublicIPOverride string
+
 // NodeInfo describes this node in the format of the agent protocol.
 func NodeInfo(ctx context.Context, dockerVersion, caddyVersion, dataDir string, labels map[string]string) *agentv1.NodeInfo {
 	host, _ := os.Hostname()
@@ -90,6 +94,13 @@ func NodeInfo(ctx context.Context, dockerVersion, caddyVersion, dataDir string, 
 		Hostname: host, Os: runtime.GOOS, Arch: runtime.GOARCH,
 		DockerVersion: dockerVersion, AgentVersion: version.Version, CaddyVersion: caddyVersion,
 		CpuMillis: uint64(runtime.NumCPU()) * 1000, MemoryBytes: mem, DiskBytes: disk,
-		PublicIp: outboundIP(), Labels: labels,
+		PublicIp: publicIP(), Labels: labels,
 	}
+}
+
+func publicIP() string {
+	if PublicIPOverride != "" {
+		return PublicIPOverride
+	}
+	return outboundIP()
 }

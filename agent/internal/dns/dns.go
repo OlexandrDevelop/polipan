@@ -6,9 +6,11 @@ package dns
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"net"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -26,33 +28,47 @@ type Server struct {
 	Timeout   time.Duration
 
 	mu    sync.RWMutex
-	names map[string]net.IP
+	names map[string][]net.IP
 	conn  net.PacketConn
 }
 
 // Set replaces the name to IP table.
 func (s *Server) Set(table map[string]string) {
-	m := make(map[string]net.IP, len(table))
+	multi := make(map[string][]string, len(table))
 	for n, ip := range table {
-		if p := net.ParseIP(ip).To4(); p != nil {
-			m[strings.ToLower(strings.TrimSuffix(n, "."))] = p
+		multi[n] = []string{ip}
+	}
+	s.SetMulti(multi)
+}
+
+// SetMulti replaces the table. A name can have several addresses: the replicas of a service on several nodes
+// (REQ-NODE-009). The answer lists all of them in a stable order.
+func (s *Server) SetMulti(table map[string][]string) {
+	m := make(map[string][]net.IP, len(table))
+	for n, ips := range table {
+		key := strings.ToLower(strings.TrimSuffix(n, "."))
+		for _, ip := range ips {
+			if p := net.ParseIP(ip).To4(); p != nil {
+				m[key] = append(m[key], p)
+			}
 		}
+		sort.Slice(m[key], func(i, j int) bool { return bytes.Compare(m[key][i], m[key][j]) < 0 })
 	}
 	s.mu.Lock()
 	s.names = m
 	s.mu.Unlock()
 }
 
-func (s *Server) lookup(name string) (net.IP, bool) {
+func (s *Server) lookup(name string) ([]net.IP, bool) {
 	name = strings.ToLower(strings.TrimSuffix(name, "."))
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if ip, ok := s.names[name]; ok {
-		return ip, true
+	if ips, ok := s.names[name]; ok && len(ips) > 0 {
+		return ips, true
 	}
 	if strings.HasSuffix(name, Zone) {
-		ip, ok := s.names[strings.TrimSuffix(name, Zone)]
-		return ip, ok
+		ips, ok := s.names[strings.TrimSuffix(name, Zone)]
+		return ips, ok && len(ips) > 0
 	}
 	return nil, false
 }
@@ -111,18 +127,20 @@ func (s *Server) handle(raw []byte) []byte {
 		return nil
 	}
 	if q.Class == dnsmessage.ClassINET && (q.Type == dnsmessage.TypeA || q.Type == dnsmessage.TypeAAAA) {
-		if ip, ok := s.lookup(q.Name.String()); ok {
+		if ips, ok := s.lookup(q.Name.String()); ok {
 			resp := dnsmessage.Message{
 				Header:    dnsmessage.Header{ID: h.ID, Response: true, Authoritative: true, RecursionDesired: h.RecursionDesired, RecursionAvailable: true},
 				Questions: []dnsmessage.Question{q},
 			}
 			if q.Type == dnsmessage.TypeA {
-				var a [4]byte
-				copy(a[:], ip)
-				resp.Answers = []dnsmessage.Resource{{
-					Header: dnsmessage.ResourceHeader{Name: q.Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 5},
-					Body:   &dnsmessage.AResource{A: a},
-				}}
+				for _, ip := range ips {
+					var a [4]byte
+					copy(a[:], ip)
+					resp.Answers = append(resp.Answers, dnsmessage.Resource{
+						Header: dnsmessage.ResourceHeader{Name: q.Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 5},
+						Body:   &dnsmessage.AResource{A: a},
+					})
+				}
 			}
 			out, err := resp.Pack()
 			if err != nil {

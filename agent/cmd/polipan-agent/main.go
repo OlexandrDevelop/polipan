@@ -31,6 +31,7 @@ import (
 	"github.com/polipan/polipan/agent/internal/ingress"
 	"github.com/polipan/polipan/agent/internal/join"
 	"github.com/polipan/polipan/agent/internal/logging"
+	"github.com/polipan/polipan/agent/internal/mesh"
 	"github.com/polipan/polipan/agent/internal/reconcile"
 	"github.com/polipan/polipan/agent/internal/state"
 	"github.com/polipan/polipan/agent/internal/stream"
@@ -135,25 +136,51 @@ func runAgent(cfg config.Config) error {
 		log.Info("joined the server", "node_id", nf.NodeID)
 	}
 
+	join.PublicIPOverride = cfg.PublicIP
 	d := docker.New(cfg.DockerSocket)
 	d.IPNetwork = cfg.Network
 	store, err := state.New(cfg.DataDir)
 	if err != nil {
 		return err
 	}
+	// The subnet and the address of this node in the mesh (given at the join).
+	var meshSubnet, meshIP string
+	if id, err := join.Load(cfg.DataDir); err == nil {
+		meshSubnet, meshIP = id.Node.MeshSubnet, id.Node.MeshIP
+	}
+	netSubnet := cfg.Subnet
+	if netSubnet == "" {
+		if netSubnet = meshSubnet; netSubnet == "" {
+			netSubnet = "172.30.0.0/24"
+		}
+	}
 	ing := newIngress(cfg, d)
 	dnsSrv := &dns.Server{}
-	fw := &firewall.Firewall{Enabled: cfg.Firewall, AgentPort: serverPort(cfg.Server), Log: log}
+	fw := &firewall.Firewall{Enabled: cfg.Firewall, AgentPort: serverPort(cfg.Server), MeshSubnet: meshSubnet, Log: log}
+	mm := &mesh.Manager{DataDir: cfg.DataDir, Port: cfg.WireguardPort, MeshIP: meshIP, MeshSubnet: meshSubnet, Log: log}
 
 	eng := reconcile.New(d, store, cfg.Network, log)
-	eng.Ingress, eng.DNS, eng.Firewall = ing, dnsSrv, fw
+	eng.Ingress, eng.DNS, eng.Firewall, eng.Mesh = ing, dnsSrv, fw, mm
 	eng.FilesDir = filepath.Join(cfg.DataDir, "files")
 	eng.Backup = &backup.Runner{Docker: d, TmpDir: filepath.Join(cfg.DataDir, "tmp"), Log: log, PullAuth: eng.PullAuthFor, Scrub: eng.Scrub}
 	dnsStarted := false
 	eng.Infra = func(ctx context.Context) error {
-		gw, err := d.EnsureNetwork(ctx, cfg.Network, cfg.Subnet)
+		gw, err := d.EnsureNetwork(ctx, cfg.Network, netSubnet)
 		if err != nil {
 			return err
+		}
+		// The addresses of the server are used only inside the real subnet of the network (an old network keeps working).
+		if sub, err := d.NetworkSubnet(ctx, cfg.Network); err == nil && sub != "" {
+			if _, ipn, err := net.ParseCIDR(sub); err == nil {
+				eng.NetSubnet = ipn
+			}
+			mm.NetSubnet = sub
+			if meshSubnet != "" && sub == meshSubnet {
+				ing.Config.IP = firewall.CaddyIPs(meshSubnet, nil)[0]
+			} else if meshSubnet != "" {
+				log.Warn("the Docker network is not the mesh subnet of this node: containers cannot be reached from other nodes",
+					"network_subnet", sub, "mesh_subnet", meshSubnet)
+			}
 		}
 		if !dnsStarted {
 			addr, err := dnsSrv.Start(ctx, gw)

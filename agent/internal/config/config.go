@@ -21,8 +21,13 @@ type Config struct {
 	LogLevel string
 	// Network is the docker network of the workloads.
 	Network string
-	// Subnet is used only when the network has to be created.
+	// Subnet is used only when the network has to be created. Empty = the mesh subnet of the node (09 section 6),
+	// or 172.30.0.0/24 when the node has none.
 	Subnet string
+	// PublicIP is the address other nodes use for the WireGuard endpoint. Empty = the address of the default route.
+	PublicIP string
+	// WireguardPort is the UDP port of the mesh (default 51820).
+	WireguardPort int
 	// Firewall turns the nftables rules on or off.
 	Firewall bool
 	// Token and CAFingerprint let a new agent join when it has no identity yet.
@@ -40,7 +45,7 @@ type Config struct {
 
 // FromEnv returns the default config changed by the environment variables.
 func FromEnv(getenv func(string) string) Config {
-	c := Config{DataDir: DefaultDataDir, LogLevel: "info", Network: "polipan", Subnet: "172.30.0.0/24",
+	c := Config{DataDir: DefaultDataDir, LogLevel: "info", Network: "polipan", WireguardPort: 51820,
 		Firewall: true, DockerSocket: "/var/run/docker.sock"}
 	set := func(dst *string, key string) {
 		if v := getenv(key); v != "" {
@@ -52,12 +57,18 @@ func FromEnv(getenv func(string) string) Config {
 	set(&c.LogLevel, "POLIPAN_AGENT_LOG_LEVEL")
 	set(&c.Network, "POLIPAN_AGENT_NETWORK")
 	set(&c.Subnet, "POLIPAN_AGENT_SUBNET")
+	set(&c.PublicIP, "POLIPAN_AGENT_PUBLIC_IP")
 	set(&c.Token, "POLIPAN_AGENT_TOKEN")
 	set(&c.CAFingerprint, "POLIPAN_AGENT_CA_FINGERPRINT")
 	set(&c.ACMECAURL, "POLIPAN_AGENT_ACME_CA_URL")
 	set(&c.ACMETrustedRoots, "POLIPAN_AGENT_ACME_TRUSTED_ROOTS")
 	set(&c.CaddyImage, "POLIPAN_AGENT_CADDY_IMAGE")
 	set(&c.DockerSocket, "POLIPAN_AGENT_DOCKER_SOCKET")
+	if v := getenv("POLIPAN_AGENT_WIREGUARD_PORT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n < 65536 {
+			c.WireguardPort = n
+		}
+	}
 	if v := getenv("POLIPAN_AGENT_FIREWALL"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			c.Firewall = b

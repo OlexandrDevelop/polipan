@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"sort"
 	"strings"
 	"sync"
@@ -45,6 +46,12 @@ type Firewall interface {
 	Apply(ctx context.Context, ds *agentv1.DesiredState) error
 }
 
+// Mesh keeps the WireGuard interface and the routes of the node (REQ-AGENT-008).
+type Mesh interface {
+	Apply(ctx context.Context, peers []*agentv1.WireguardPeer, meshCIDR string) error
+	Check(ctx context.Context) error
+}
+
 // Sink sends messages to the server. It returns false when there is no connection.
 type Sink interface {
 	Send(msg *agentv1.AgentMessage) bool
@@ -56,7 +63,11 @@ type Engine struct {
 	Ingress  Ingress  // optional
 	DNS      DNSTable // optional
 	Firewall Firewall // optional
-	Store    *state.Store
+	Mesh     Mesh     // optional
+	// NetSubnet is the subnet of the Docker network of the workloads. A fixed address of the server is used only
+	// when it is inside this subnet.
+	NetSubnet *net.IPNet
+	Store     *state.Store
 	Sink     Sink // optional
 	Network  string
 	// Backup runs the backup jobs (F10). Nil means the agent cannot run backups.
@@ -227,6 +238,15 @@ func (e *Engine) Reconcile(ctx context.Context) {
 		}
 		e.infraOK = true
 	}
+	if e.Mesh != nil {
+		// The mesh is part of the state only when there are peers: a single node needs no WireGuard.
+		if err := e.Mesh.Apply(ctx, ds.Peers, ds.MeshCidr); err != nil {
+			e.Log.Warn("mesh not applied", "error", err)
+			if len(ds.Peers) > 0 {
+				errs = append(errs, "mesh: "+err.Error())
+			}
+		}
+	}
 	managed, err := e.Docker.List(ctx, map[string]string{LabelManaged: "true"})
 	if err != nil {
 		errs = append(errs, codeFor(err, "internal_error")+": "+err.Error())
@@ -342,17 +362,34 @@ func (e *Engine) actual(ctx context.Context, ds *agentv1.DesiredState) *agentv1.
 		out.Containers = append(out.Containers, st)
 	}
 	sort.Slice(out.Containers, func(i, j int) bool { return out.Containers[i].PlacementId < out.Containers[j].PlacementId })
-	table := map[string]string{}
+	table := map[string][]string{}
 	for _, w := range ds.Workloads {
 		if c, ok := byName[w.ContainerName]; ok && c.State == "running" && c.IP != "" {
-			table[w.ContainerName] = c.IP
+			table[w.ContainerName] = append(table[w.ContainerName], c.IP)
 			for _, a := range w.NetworkAliases {
-				table[a] = c.IP
+				// The name of the service points only to live containers: a new container is not used before the switch.
+				if a == w.ContainerName || w.Role == "live" {
+					table[a] = append(table[a], c.IP)
+				}
 			}
 		}
 	}
-	if e.DNS != nil {
-		e.DNS.Set(table)
+	// Replicas on other nodes: the names and mesh addresses the server lists (REQ-NODE-009).
+	for _, r := range ds.RemoteEndpoints {
+		for _, n := range r.Names {
+			table[n] = append(table[n], r.Ip)
+		}
+	}
+	switch d := e.DNS.(type) {
+	case nil:
+	case interface{ SetMulti(map[string][]string) }:
+		d.SetMulti(table)
+	default:
+		single := map[string]string{}
+		for n, ips := range table {
+			single[n] = ips[0]
+		}
+		e.DNS.Set(single)
 	}
 	e.mu.Lock()
 	e.running = running
@@ -391,6 +428,7 @@ func (e *Engine) containerSpec(w *agentv1.WorkloadSpec) docker.ContainerSpec {
 	if sp.RestartPolicy == "" {
 		sp.RestartPolicy = "always"
 	}
+	sp.IP = e.wantIP(w.Ip)
 	for _, p := range w.Ports {
 		proto := p.Protocol
 		if proto == "" {
@@ -405,11 +443,23 @@ func (e *Engine) containerSpec(w *agentv1.WorkloadSpec) docker.ContainerSpec {
 	return sp
 }
 
+// wantIP returns the fixed address of a workload when it can be used: it must be inside the network of the node.
+func (e *Engine) wantIP(ip string) string {
+	if ip == "" || e.NetSubnet == nil {
+		return ""
+	}
+	if p := net.ParseIP(ip); p == nil || !e.NetSubnet.Contains(p) {
+		return ""
+	}
+	return ip
+}
+
 // ensure brings one workload to its role. ex is the existing container or nil.
 func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker.Container) error {
 	stopped := w.Role == "stopped"
 	if ex != nil && (ex.Image != w.ImageRef || ex.Labels[LabelRelease] != w.ReleaseId ||
-		(ex.State == "running" && ex.IP == "" && e.Network != "host")) {
+		(ex.State == "running" && ex.IP == "" && e.Network != "host") ||
+		(ex.State == "running" && e.wantIP(w.Ip) != "" && ex.IP != w.Ip)) {
 		e.Log.Info("recreating container", "name", w.ContainerName)
 		e.closeExecs(w.PlacementId)
 		// The volumes are not touched: the new container mounts the same data (AC-VOL-01).
