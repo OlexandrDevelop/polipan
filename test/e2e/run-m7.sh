@@ -99,7 +99,7 @@ dx $n1 docker pull -q postgres:16-alpine >/dev/null
 step "Control plane on node 1"
 dx $n1 sh -c 'mkdir -p /etc/polipan /var/lib/polipan-agent && head -c 32 /dev/urandom | base64 > /etc/polipan/master.key && chown 65532:65532 /etc/polipan/master.key && chmod 0400 /etc/polipan/master.key'
 # The network of the node is its mesh subnet. The first node gets 10.210.1.0/24. Docker keeps its own addresses in the upper half.
-dx $n1 docker network create --subnet 10.210.1.0/24 --ip-range 10.210.1.128/25 polipan >/dev/null
+dx $n1 docker network create --subnet 10.210.1.0/24 --ip-range 10.210.1.128/25 --gateway 10.210.1.1 polipan >/dev/null
 dx $n1 docker network create --subnet 172.31.251.0/24 cp >/dev/null
 dx $n1 docker run -d --name pg --network cp --network-alias pg -e POSTGRES_USER=polipan -e POSTGRES_DB=polipan -e POSTGRES_PASSWORD=pw postgres:16-alpine >/dev/null
 i=0

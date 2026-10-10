@@ -197,6 +197,8 @@ func (c *HTTPClient) EnsureNetwork(ctx context.Context, name, subnet string) (st
 		if _, ipn, err := net.ParseCIDR(subnet); err == nil && ipn.IP.To4() != nil {
 			if ones, bits := ipn.Mask.Size(); ones == 24 && bits == 32 {
 				cfg["IPRange"] = fmt.Sprintf("%d.%d.%d.128/25", ipn.IP[0], ipn.IP[1], ipn.IP[2])
+				// Without it Docker takes the gateway from the range: the bridge must have .1, the mesh address of the node.
+				cfg["Gateway"] = fmt.Sprintf("%d.%d.%d.1", ipn.IP[0], ipn.IP[1], ipn.IP[2])
 			}
 		}
 		body["IPAM"] = map[string]any{"Config": []map[string]string{cfg}}

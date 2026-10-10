@@ -152,7 +152,7 @@ systemctl restart polipan-build-firewall || fail "could not load the build netwo
 # ---- Control plane ----
 if ! docker network inspect polipan >/dev/null 2>&1; then
   # The first node of the panel gets the subnet 10.210.1.0/24 of mesh_cidr: the network of the node is its mesh subnet.
-  docker network create --subnet 10.210.1.0/24 --ip-range 10.210.1.128/25 polipan >/dev/null
+  docker network create --subnet 10.210.1.0/24 --ip-range 10.210.1.128/25 --gateway 10.210.1.1 polipan >/dev/null
 fi
 say "Starting PostgreSQL and the server"
 (cd "$dir" && docker compose pull --quiet 2>/dev/null || true)
