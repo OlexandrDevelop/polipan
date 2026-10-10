@@ -6,6 +6,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { components } from '@api/schema'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
+import { CanaryBar } from '@/components/CanaryBar'
+import type { CanaryGate } from '@/components/CanaryBar'
 import { CancelDeployment } from '@/components/CancelDeployment'
 import { DeployDialog } from '@/components/DeployDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
@@ -35,7 +37,12 @@ const SHORTCUT_MS = 10 * 60_000
 
 // Build and pre_deploy log lines: first the stored lines (getDeploymentLogs), then live lines
 // from the deployment stream (streamDeploymentEvents). Secret values come masked as ***.
-function useBuildLog(deploymentId: string, live: boolean, onState: () => void) {
+function useBuildLog(
+  deploymentId: string,
+  live: boolean,
+  onState: () => void,
+  onGate: (gate: CanaryGate) => void,
+) {
   const [lines, setLines] = useState<BuildLine[]>([])
   const [disconnected, setDisconnected] = useState(false)
   const lastSeq = useRef(0)
@@ -84,6 +91,8 @@ function useBuildLog(deploymentId: string, live: boolean, onState: () => void) {
           { seq: Number(data.seq ?? 0), stream: data.stream, line: data.line, time: event.time },
         ])
       } else {
+        // The gate values of a canary step come live in the stream.
+        if (event.type === 'canary_gate') onGate((event.data ?? {}) as CanaryGate)
         onState()
       }
     }
@@ -101,7 +110,7 @@ function useBuildLog(deploymentId: string, live: boolean, onState: () => void) {
         onLost: setDisconnected,
       },
     )
-  }, [deploymentId, live, append, readStored, onState])
+  }, [deploymentId, live, append, readStored, onState, onGate])
 
   return { lines, stored, disconnected }
 }
@@ -170,7 +179,7 @@ function TrafficBar({ label, percent }: { label: string; percent: number }) {
   )
 }
 
-// UI-08 (without the canary bar): one deployment with its steps, replicas, traffic and the
+// UI-08: one deployment with its steps, replicas, traffic, the canary bar and the
 // live build log. Cancel and the Roll back shortcut are here.
 export function DeploymentPage() {
   const params = useParams({ from: '/o/$org/p/$project/e/$env/s/$service/deployments/$deployment' })
@@ -202,7 +211,8 @@ export function DeploymentPage() {
       void queryClient.invalidateQueries({ queryKey: [key] })
     }
   }, [queryClient])
-  const log = useBuildLog(params.deployment, live, refresh)
+  const [gate, setGate] = useState<CanaryGate>()
+  const log = useBuildLog(params.deployment, live, refresh, setGate)
 
   const breadcrumb = (
     <Link
@@ -325,6 +335,11 @@ export function DeploymentPage() {
           </Banner>
         ))}
       </div>
+      {d.strategy === 'canary' && (
+        <div className="mb-4">
+          <CanaryBar deployment={d} gate={gate} access={deployAccess} />
+        </div>
+      )}
       <div className="grid gap-6 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
         <div className="space-y-2">
           <h2 className="font-semibold">{t('deployment.steps')}</h2>
