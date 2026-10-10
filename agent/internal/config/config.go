@@ -41,12 +41,14 @@ type Config struct {
 	CaddyImage string
 	// DockerSocket is the path of the Docker unix socket.
 	DockerSocket string
+	// MetricsAddr is where the agent serves its metrics for vmagent (12 section 7). Use a loopback address.
+	MetricsAddr string
 }
 
 // FromEnv returns the default config changed by the environment variables.
 func FromEnv(getenv func(string) string) Config {
 	c := Config{DataDir: DefaultDataDir, LogLevel: "info", Network: "polipan", WireguardPort: 51820,
-		Firewall: true, DockerSocket: "/var/run/docker.sock"}
+		Firewall: true, DockerSocket: "/var/run/docker.sock", MetricsAddr: "127.0.0.1:9445"}
 	set := func(dst *string, key string) {
 		if v := getenv(key); v != "" {
 			*dst = v
@@ -64,6 +66,7 @@ func FromEnv(getenv func(string) string) Config {
 	set(&c.ACMETrustedRoots, "POLIPAN_AGENT_ACME_TRUSTED_ROOTS")
 	set(&c.CaddyImage, "POLIPAN_AGENT_CADDY_IMAGE")
 	set(&c.DockerSocket, "POLIPAN_AGENT_DOCKER_SOCKET")
+	set(&c.MetricsAddr, "POLIPAN_AGENT_METRICS_ADDR")
 	if v := getenv("POLIPAN_AGENT_WIREGUARD_PORT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n < 65536 {
 			c.WireguardPort = n
