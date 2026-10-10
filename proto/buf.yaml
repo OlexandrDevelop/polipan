@@ -1,0 +1,14 @@
+version: v2
+lint:
+  use:
+    - STANDARD
+  except:
+    # agent.proto is a copy of docs/spec/schemas/agent.proto and lives in the root of /proto.
+    - PACKAGE_DIRECTORY_MATCH
+    # Service and message names are fixed by docs/spec/09-multi-server.md.
+    - SERVICE_SUFFIX
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+breaking:
+  use:
+    - FILE

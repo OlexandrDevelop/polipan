@@ -1,0 +1,294 @@
+// SPDX-License-Identifier: Apache-2.0
+// Polipan agent protocol, version 1.
+// Source of truth for server <-> agent messages. See docs/spec/09-multi-server.md.
+// This is a schema only. Generated code lives in /proto.
+syntax = "proto3";
+
+package polipan.agent.v1;
+
+option go_package = "github.com/polipan/polipan/proto/agentv1";
+
+// Join is called once, over TLS (server cert only, no client cert yet).
+service AgentJoin {
+  rpc Join(JoinRequest) returns (JoinResponse);
+}
+
+// Connect is called with mTLS. The agent dials out and keeps the stream open.
+service AgentGateway {
+  rpc Connect(stream AgentMessage) returns (stream ServerMessage);
+}
+
+message JoinRequest {
+  string join_token = 1;
+  bytes csr_pem = 2;                 // certificate signing request for the agent key
+  string wireguard_public_key = 3;
+  NodeInfo node_info = 4;
+}
+
+message JoinResponse {
+  string node_id = 1;
+  bytes client_cert_pem = 2;         // valid 30 days, renewed over the stream
+  bytes ca_cert_pem = 3;
+  string mesh_ip = 4;                // e.g. 10.210.3.1
+  string mesh_subnet = 5;            // e.g. 10.210.3.0/24
+  repeated WireguardPeer peers = 6;
+}
+
+message NodeInfo {
+  string hostname = 1;
+  string os = 2;
+  string arch = 3;                   // amd64 | arm64
+  string docker_version = 4;
+  string agent_version = 5;
+  string caddy_version = 6;
+  uint64 cpu_millis = 7;
+  uint64 memory_bytes = 8;
+  uint64 disk_bytes = 9;
+  string public_ip = 10;
+  map<string, string> labels = 11;
+}
+
+message WireguardPeer {
+  string node_id = 1;
+  string public_key = 2;
+  string endpoint = 3;               // host:port, may be empty if behind NAT
+  string allowed_ips = 4;            // the peer mesh subnet
+  uint32 keepalive_seconds = 5;
+}
+
+// ---- Agent -> server ----
+
+message AgentMessage {
+  oneof body {
+    Hello hello = 1;                 // first message on the stream
+    Heartbeat heartbeat = 2;
+    ActualState actual_state = 3;
+    CommandAck ack = 4;
+    HealthReport health = 5;
+    ContainerEvent container_event = 6;
+    CertRenewRequest cert_renew = 7;
+    StreamChunk chunk = 8;           // logs or terminal output for a command
+  }
+}
+
+message Hello {
+  string node_id = 1;
+  int64 last_applied_state_version = 2;
+  NodeInfo node_info = 3;
+}
+
+message Heartbeat {
+  int64 sent_unix_ms = 1;
+  int64 applied_state_version = 2;
+  uint32 running_containers = 3;
+  uint64 cpu_used_millis = 4;
+  uint64 memory_used_bytes = 5;
+  uint64 disk_used_bytes = 6;
+}
+
+message ActualState {
+  int64 applied_state_version = 1;
+  repeated ContainerStatus containers = 2;
+  string caddy_config_hash = 3;
+  repeated string errors = 4;
+}
+
+message ContainerStatus {
+  string placement_id = 1;
+  string container_id = 2;
+  string release_id = 3;
+  string color = 4;                  // blue | green
+  string state = 5;                  // created | running | exited | removing
+  int32 exit_code = 6;
+  int64 started_unix_ms = 7;
+  string health = 8;                 // unknown | starting | healthy | unhealthy
+}
+
+message HealthReport {
+  string placement_id = 1;
+  string health = 2;                 // healthy | unhealthy
+  int32 consecutive_passes = 3;
+  int32 consecutive_fails = 4;
+  string last_error = 5;
+  int64 checked_unix_ms = 6;
+}
+
+message ContainerEvent {
+  string placement_id = 1;
+  string kind = 2;                   // started | died | oom_killed | restarted
+  int32 exit_code = 3;
+  int64 time_unix_ms = 4;
+}
+
+message CertRenewRequest {
+  bytes csr_pem = 1;
+}
+
+message CommandAck {
+  string command_id = 1;
+  bool ok = 2;
+  string error_code = 3;             // see 09-multi-server.md error codes
+  string error_message = 4;
+  bytes result_json = 5;             // command specific result
+}
+
+message StreamChunk {
+  string command_id = 1;
+  string stream = 2;                 // stdout | stderr | log
+  bytes data = 3;
+  bool eof = 4;
+}
+
+// ---- Server -> agent ----
+
+message ServerMessage {
+  oneof body {
+    DesiredState desired_state = 1;
+    Command command = 2;
+    CertRenewResponse cert_renewed = 3;
+    Ping ping = 4;
+  }
+}
+
+message Ping {}
+
+message CertRenewResponse {
+  bytes client_cert_pem = 1;
+}
+
+// DesiredState is a full document. The agent replaces its stored one.
+message DesiredState {
+  int64 version = 1;                 // strictly increasing per node
+  repeated WireguardPeer peers = 2;
+  repeated WorkloadSpec workloads = 3;
+  IngressSpec ingress = 4;
+  repeated BackupJobSpec backup_jobs = 5;
+  repeated ScrapeTarget scrape_targets = 6;
+}
+
+message WorkloadSpec {
+  string placement_id = 1;
+  string service_id = 2;
+  string environment_id = 3;
+  string release_id = 4;
+  string color = 5;                  // blue | green
+  string role = 6;                   // live | candidate | draining | stopped
+  string container_name = 7;
+  string image_ref = 8;              // repo@sha256:digest
+  repeated string command = 9;
+  repeated string entrypoint = 10;
+  map<string, string> env = 11;      // includes resolved secret values, only inside mTLS stream
+  repeated string secret_env_keys = 12;  // keys in env that hold secrets (never logged)
+  repeated Mount mounts = 13;
+  repeated PortSpec ports = 14;
+  Resources resources = 15;
+  HealthCheckSpec health = 16;
+  uint32 stop_grace_seconds = 17;
+  string restart_policy = 18;        // always | on-failure | no
+  repeated string network_aliases = 19;
+  map<string, string> labels = 20;
+  string registry_auth_ref = 21;     // credentials key for pulls from an external registry
+}
+
+message Mount {
+  string kind = 1;                   // volume | bind | tmpfs
+  string source = 2;
+  string target = 3;
+  bool read_only = 4;
+}
+
+message PortSpec {
+  uint32 container_port = 1;
+  string protocol = 2;               // tcp | udp
+  uint32 host_port = 3;              // 0 = none
+}
+
+message Resources {
+  uint32 cpu_limit_millis = 1;       // 0 = unlimited
+  uint64 memory_limit_bytes = 2;
+  uint64 memory_reservation_bytes = 3;
+}
+
+message HealthCheckSpec {
+  string type = 1;                   // http | tcp | command
+  string path = 2;
+  uint32 port = 3;
+  repeated string command = 4;
+  uint32 expected_status_min = 5;
+  uint32 expected_status_max = 6;
+  uint32 interval_seconds = 7;
+  uint32 timeout_seconds = 8;
+  uint32 healthy_threshold = 9;
+  uint32 unhealthy_threshold = 10;
+  uint32 start_period_seconds = 11;
+}
+
+// IngressSpec: the agent builds the full Caddy JSON from this and sends one POST /load.
+message IngressSpec {
+  repeated Route routes = 1;
+  string acme_email = 2;
+  string acme_ca = 3;                // letsencrypt | zerossl
+  bool metrics_enabled = 4;
+}
+
+message Route {
+  string route_id = 1;
+  repeated string hosts = 2;
+  string path_prefix = 3;
+  bool https = 4;
+  string redirect_www = 5;           // "" | to_www | to_apex
+  repeated Upstream upstreams = 6;
+  string service_id = 7;
+}
+
+message Upstream {
+  string address = 1;                // mesh_ip:port or container alias:port
+  uint32 weight = 2;                 // 0..100
+  string release_id = 3;
+  string color = 4;
+}
+
+message BackupJobSpec {
+  string policy_id = 1;
+  string schedule = 2;
+  string kind = 3;                   // backup | restore_check
+}
+
+message ScrapeTarget {
+  string name = 1;
+  string address = 2;
+}
+
+// ---- Commands (server -> agent). All are idempotent by command_id. ----
+
+message Command {
+  string command_id = 1;             // cmd_<ULID>
+  int64 deadline_unix_ms = 2;
+  oneof body {
+    PullImage pull_image = 10;
+    StartWorkload start_workload = 11;
+    StopWorkload stop_workload = 12;
+    RemoveWorkload remove_workload = 13;
+    RunOneOff run_one_off = 14;
+    CheckHealth check_health = 15;
+    SwitchTraffic switch_traffic = 16;
+    RunBackup run_backup = 17;
+    RunRestoreCheck run_restore_check = 18;
+    ExecSession exec_session = 19;
+    StreamLogs stream_logs = 20;
+    PruneImages prune_images = 21;
+  }
+}
+
+message PullImage { string image_ref = 1; string registry_auth_ref = 2; }
+message StartWorkload { WorkloadSpec workload = 1; }
+message StopWorkload { string placement_id = 1; uint32 grace_seconds = 2; }
+message RemoveWorkload { string placement_id = 1; bool remove_volumes = 2; }
+message RunOneOff { WorkloadSpec workload = 1; uint32 timeout_seconds = 2; }  // pre_deploy, restore checks
+message CheckHealth { string placement_id = 1; uint32 timeout_seconds = 2; }   // waits until healthy or timeout
+message SwitchTraffic { IngressSpec ingress = 1; int64 desired_state_version = 2; }
+message RunBackup { string policy_id = 1; BackupJobSpec job = 2; }
+message RunRestoreCheck { string policy_id = 1; string backup_run_id = 2; string target_id = 3; }
+message ExecSession { string placement_id = 1; repeated string command = 2; bool tty = 3; }
+message StreamLogs { string placement_id = 1; int64 since_unix_ms = 2; bool follow = 3; }
+message PruneImages { repeated string keep_image_refs = 1; }
