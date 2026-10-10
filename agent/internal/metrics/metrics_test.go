@@ -71,8 +71,10 @@ func TestRenderFamilies(t *testing.T) {
 	now := base
 	root := fakeProc(t, "cpu  100 0 100 800 0 0 0 0\ncpu0 50 0 50 400 0 0 0 0\ncpu1 50 0 50 400 0 0 0 0\n")
 	c := &Collector{Docker: fd, NodeID: "nod_1", Root: root,
-		Disk:   func(string) (uint64, uint64, error) { return 40, 100, nil },
-		Health: func() []HealthSample { return []HealthSample{{Service: "svc_1", Release: "rel_1", Replica: "0", Up: true, DurationSeconds: 0.25}} },
+		Disk: func(string) (uint64, uint64, error) { return 40, 100, nil },
+		Health: func() []HealthSample {
+			return []HealthSample{{Service: "svc_1", Release: "rel_1", Replica: "0", Up: true, DurationSeconds: 0.25}}
+		},
 		Volumes: func() []VolumeSample {
 			return []VolumeSample{{Service: "svc_1", Volume: "data", UsedBytes: 10, UsedInodes: 3}}
 		},
@@ -142,7 +144,7 @@ func TestAccessMapping(t *testing.T) {
 	}}})
 	for _, l := range []string{
 		line200, line200, line503,
-		`{"logger":"http.log.access.access","status":200,"duration":1,"request":{"host":"app.example.com"},"upstream":""}`,                 // no upstream
+		`{"logger":"http.log.access.access","status":200,"duration":1,"request":{"host":"app.example.com"},"upstream":""}`,               // no upstream
 		`{"logger":"http.log.access.access","status":200,"duration":1,"request":{"host":"evil.example.net"},"upstream":"10.0.0.2:8080"}`, // host not in the spec
 		`{"logger":"http.log.access.access","status":200,"duration":1,"request":{"host":"app.example.com"},"upstream":"10.9.9.9:1"}`,     // unknown upstream
 		`{"logger":"admin","msg":"x","status":200}`,
