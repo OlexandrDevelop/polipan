@@ -25,7 +25,7 @@ import {
   TextField,
 } from '@/components/ui'
 import { formatBytes } from '@/envText'
-import { formatRelative, t, tState } from '@/i18n'
+import { t, tState } from '@/i18n'
 import { accessFor } from '@/permissions'
 import type { Service } from '@/scope'
 import type { Tone } from '@/status'
@@ -44,22 +44,57 @@ export function healthTone(health: string | undefined, overdue: boolean | undefi
   return 'muted'
 }
 
-// The badge of REQ-BKP-105: "Restore verified N days ago", or a warning.
+const VERIFIED_DAYS = 30
+
+// "today" or "N days ago", from a day count.
+function daysAgo(days: number): string {
+  return days <= 0
+    ? t('backup.badge.today')
+    : new Intl.RelativeTimeFormat(undefined, { numeric: 'always' }).format(-days, 'day')
+}
+
+function ageInDays(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
+}
+
+// A policy is verified when its last restore check passed less than 30 days ago (REQ-UI-033).
+export function isVerified(policy: Policy): boolean {
+  const check = policy.last_restore_check
+  return (
+    policy.health !== 'failing' &&
+    check?.state === 'passed' &&
+    Boolean(check.finished_at) &&
+    ageInDays(check.finished_at ?? '') < VERIFIED_DAYS &&
+    !policy.check_overdue
+  )
+}
+
+// The badge of REQ-BKP-105 and REQ-UI-033: green "Restore verified N days ago" (less than 30
+// days), yellow when older or never checked, red when the last check failed. It has an icon and text.
 export function VerifiedBadge({ policy }: { policy: Policy }) {
   const check = policy.last_restore_check
+  if (check?.state === 'failed') {
+    return <StatusBadge tone="danger" label={t('backup.badge.check_failed')} />
+  }
   if (policy.health === 'failing') {
     return <StatusBadge tone="danger" label={t('backup.badge.failing')} />
   }
-  if (check?.state === 'passed' && check.finished_at && !policy.check_overdue) {
+  if (check?.state === 'passed' && check.finished_at) {
     return (
       <StatusBadge
-        tone="success"
-        label={t('backup.badge.verified', { when: formatRelative(check.finished_at) })}
+        tone={isVerified(policy) ? 'success' : 'warning'}
+        label={t('backup.badge.verified', { when: daysAgo(ageInDays(check.finished_at)) })}
       />
     )
   }
-  if (policy.check_overdue) return <StatusBadge tone="warning" label={t('backup.badge.overdue')} />
   return <StatusBadge tone="warning" label={t('backup.badge.unverified')} />
+}
+
+// The policy that needs the most attention: failing, then not verified, then verified.
+export function worstPolicy(policies: Policy[]): Policy | undefined {
+  const rank = (p: Policy) =>
+    p.health === 'failing' || p.last_restore_check?.state === 'failed' ? 0 : isVerified(p) ? 2 : 1
+  return [...policies].sort((a, b) => rank(a) - rank(b))[0]
 }
 
 function useTargets() {
@@ -954,8 +989,6 @@ export function BackupBadge({ service }: { service: Service }) {
     ) : null
   }
   // The worst policy decides.
-  const rank = (p: Policy) =>
-    p.health === 'failing' ? 0 : p.check_overdue || p.health !== 'verified' ? 1 : 2
-  const worst = [...policies.data].sort((a, b) => rank(a) - rank(b))[0]
-  return <VerifiedBadge policy={worst} />
+  const worst = worstPolicy(policies.data)
+  return worst ? <VerifiedBadge policy={worst} /> : null
 }

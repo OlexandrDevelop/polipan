@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
@@ -9,12 +9,14 @@ import { unwrap } from '@/api/errors'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Modal } from '@/components/Modal'
 import { Onboarding } from '@/components/Onboarding'
+import { useAlertInstances } from '@/alerts'
 import { PageHeader } from '@/components/PageHeader'
 import { Button, Card, EmptyState, Skeleton, StatusBadge, TextField } from '@/components/ui'
 import { t, tState } from '@/i18n'
 import { useAccess } from '@/permissions'
 import { useNodes, useProjects } from '@/scope'
 import { nodeTone } from '@/status'
+import { VerifiedBadge, worstPolicy } from '@/routes/ServiceBackups'
 
 function CreateProjectDialog({ onClose }: { onClose: () => void }) {
   const { org } = useParams({ from: '/o/$org' })
@@ -128,7 +130,58 @@ export function ProjectsPage() {
   )
 }
 
-// UI-03 (basic): the nodes by state and the projects. Each part shows its own error.
+// The firing alerts card of the dashboard (UI-03).
+function AlertsCard({ org }: { org: string }) {
+  const alerts = useAlertInstances()
+  const firing = (alerts.data ?? []).filter((a) => a.state === 'firing')
+  return (
+    <Card className="space-y-2">
+      <h2 className="font-semibold">
+        <Link to="/o/$org/alerts" params={{ org }} className="text-primary underline">
+          {t('dashboard.alerts')}
+        </Link>
+      </h2>
+      {alerts.isPending && <Skeleton lines={1} />}
+      {alerts.isError && <ErrorBanner error={alerts.error} onRetry={() => void alerts.refetch()} />}
+      {alerts.data && firing.length === 0 && (
+        <p className="text-muted">{t('dashboard.all_quiet')}</p>
+      )}
+      {firing.length > 0 && (
+        <p className="flex items-center gap-2">
+          <StatusBadge tone="danger" label={t('dashboard.firing', { count: firing.length })} />
+        </p>
+      )}
+    </Card>
+  )
+}
+
+// The backup card of the dashboard: the restore-verified badge of the policy that needs the most
+// attention, and the warnings "no backup" and "restore not verified" (UI-03, REQ-UI-033).
+function BackupsCard({ org }: { org: string }) {
+  const policies = useQuery({
+    queryKey: ['backup-policies', 'all'],
+    queryFn: () => unwrap(api.GET('/backup-policies')),
+    refetchInterval: 15_000,
+  })
+  const worst = worstPolicy(policies.data ?? [])
+  return (
+    <Card className="space-y-2">
+      <h2 className="font-semibold">
+        <Link to="/o/$org/backups" params={{ org }} className="text-primary underline">
+          {t('dashboard.backups')}
+        </Link>
+      </h2>
+      {policies.isPending && <Skeleton lines={1} />}
+      {policies.isError && (
+        <ErrorBanner error={policies.error} onRetry={() => void policies.refetch()} />
+      )}
+      {policies.data && !worst && <StatusBadge tone="warning" label={t('backup.badge.none')} />}
+      {worst && <VerifiedBadge policy={worst} />}
+    </Card>
+  )
+}
+
+// UI-03 (basic): the nodes by state, alerts, backups and the projects. Each part shows its own error.
 export function DashboardPage() {
   const { org } = useParams({ from: '/o/$org' })
   const [creating, setCreating] = useState(false)
@@ -177,6 +230,8 @@ export function DashboardPage() {
             ))}
           </ul>
         </Card>
+        <AlertsCard org={org} />
+        <BackupsCard org={org} />
       </div>
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
