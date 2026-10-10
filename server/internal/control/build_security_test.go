@@ -38,7 +38,7 @@ func TestR6_HostKeyPinnedAfterFirstClone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := f.env.Pool.Exec(ctx, `UPDATE services SET config = $2 WHERE id = $1`, f.serviceID,
-		`{"port":8080,"git":{"repo":"git@git.example.com:acme/shop.git","branch":"main","builder":"dockerfile","dockerfile":"Dockerfile","deploy_key_ref":"`+ref+`"}}`); err != nil {
+		`{"port":8080,"strategy_options":{"drain_seconds":0},"git":{"repo":"git@git.example.com:acme/shop.git","branch":"main","builder":"dockerfile","dockerfile":"Dockerfile","deploy_key_ref":"`+ref+`"}}`); err != nil {
 		t.Fatal(err)
 	}
 	f.cloner.HostKey = "ssh-ed25519 AAAAKEY1"
