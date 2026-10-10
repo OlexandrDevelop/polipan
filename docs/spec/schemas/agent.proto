@@ -188,6 +188,17 @@ message DesiredState {
   // addresses for the internal DNS, and the sets of the environment firewall (REQ-NODE-009, REQ-SEC-106). No secrets.
   repeated Endpoint remote_endpoints = 8;
   string mesh_cidr = 9;              // the pool of all mesh subnets, for the firewall
+  TelemetrySpec telemetry = 20;      // where metrics and logs go (M8, 12-observability section 7)
+}
+
+// TelemetrySpec tells the agent where to send metrics (vmagent remote write) and log batches. Both go to the
+// ingest listener of the server over mTLS with the identity of the agent. Empty urls mean: do not send.
+message TelemetrySpec {
+  string metrics_write_url = 1;      // https://host:9444/ingest/metrics
+  string logs_url = 2;               // https://host:9444/ingest/logs
+  string vmagent_image = 3;
+  uint32 scrape_interval_seconds = 4;  // default 15
+  uint32 buffer_mib = 5;             // disk buffer of logs and of vmagent, default 100
 }
 
 // Endpoint is a workload on another node: its DNS names and its fixed address in the subnet of that node.

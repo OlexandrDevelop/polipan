@@ -78,3 +78,15 @@ flowchart LR
 - **REQ-OBS-105** (MUST) Child alerts of a down node are suppressed (section 5).
 - **REQ-OBS-106** (SHOULD) The server exposes `/metrics` for external monitoring with authentication.
 - **REQ-OBS-107** (MUST) Events are written in the same transaction as the state change they describe.
+
+## 7. Wire details (M8)
+
+How the pipeline of sections 1 to 3 is wired. These details are fixed so that the agent and the server fit together.
+
+- **Label values are ids.** `org`, `project`, `environment`, `service`, `release`, `node` hold ids (`org_`, `prj_`, `env_`, `svc_`, `rel_`, `nod_`), so a rename does not break history. `replica` is the replica index. The server puts these labels on every workload in the desired state (`polipan.org`, `polipan.project`, `polipan.environment`, `polipan.service`, `polipan.release`, `polipan.replica`).
+- **Agent metrics.** The agent serves Prometheus text on `127.0.0.1:9445/metrics` (`POLIPAN_AGENT_METRICS_ADDR`). It holds all metrics of section 2 except the platform ones. Ingress metrics come from the Caddy access log: the agent maps the upstream of each request to its route (`service`) and release, and counts them. Caddy itself has no `release` label.
+- **vmagent.** The agent runs the container `polipan-vmagent` (host network, image from `TelemetrySpec`). It scrapes the agent every `scrape_interval_seconds` and writes to `metrics_write_url` with the client certificate of the agent. When the server is not reachable, vmagent buffers on disk (up to `buffer_mib`).
+- **Ingest listener.** The server has an mTLS HTTPS listener (`ingest_listen`, default `:9444`, same CA as the gateway). The node is the certificate CN. `POST /ingest/metrics` takes Prometheus remote write. The server checks each series against the placements of the node, sets `org`, `project`, `environment` and `node` from its own data, drops series of services that are not on the node, and writes to VictoriaMetrics. `POST /ingest/logs` takes JSON lines with `_time`, `_msg`, `service`, `release`, `container`, `stream`, `level`, `replica`. The server sets the stream fields the same way and writes to VictoriaLogs.
+- **Log batches.** A batch has the header `X-Polipan-Batch: <epoch>.<n>`. `epoch` is random per agent data directory, `n` grows by one per batch. The agent keeps a batch on disk until the server answers 2xx. The server remembers the last `n` per node and epoch and answers 2xx without writing for a batch it has seen. So a restart of the agent, or of the server, does not lose or repeat lines.
+- **Platform metrics** (`polipan_deployments_total`, `polipan_backup_last_success_timestamp`, `polipan_restore_check_last_result`, `polipan_agent_heartbeat_age_seconds`, `polipan_agent_desired_state_version`) are written by the server itself every 15 s.
+- **Access to VictoriaMetrics and VictoriaLogs.** They have no host port. They run on the internal control-plane network and only the server talks to them. The server filters every query by the org of the caller.
