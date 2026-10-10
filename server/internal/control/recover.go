@@ -84,6 +84,14 @@ func (r *run) resume(ctx context.Context) *deployErr {
 		}
 	}
 	committed := d.releaseID != nil && r.svc.liveRelease != nil && *r.svc.liveRelease == *d.releaseID
+	// Not switched yet. A recreate may have stopped the old containers: they are started again (also in switching).
+	if !committed && d.state != "draining" && d.strategy == "recreate" && d.prevReleaseID != nil {
+		old, err := c.placementList(ctx, `SELECT id, node_id FROM placements WHERE service_id = $1 AND release_id = $2
+			AND deployment_id IS DISTINCT FROM $3`, d.serviceID, *d.prevReleaseID, d.id)
+		if err == nil && len(old) > 0 {
+			r.blue, r.blueStopped = old, true
+		}
+	}
 	switch {
 	case d.state == "draining" || (d.state == "switching" && committed):
 		// The old containers are in the database as draining (blue_green) or stopped (recreate).
@@ -92,14 +100,6 @@ func (r *run) resume(ctx context.Context) *deployErr {
 	case d.state == "switching":
 		// Nothing was switched: blue still serves. The new containers are removed.
 		return &deployErr{reason: ReasonServerRestarted, detail: "the server restarted before the switch was saved", state: "rolled_back"}
-	}
-	// Before the switch. A recreate may have stopped the old containers: start them again.
-	if d.strategy == "recreate" && d.prevReleaseID != nil {
-		old, err := c.placementList(ctx, `SELECT id, node_id FROM placements WHERE service_id = $1 AND release_id = $2
-			AND deployment_id IS DISTINCT FROM $3`, d.serviceID, *d.prevReleaseID, d.id)
-		if err == nil && len(old) > 0 {
-			r.blue, r.blueStopped = old, true
-		}
 	}
 	return &deployErr{reason: ReasonServerRestarted, detail: "the server restarted while the deployment was running", state: "failed"}
 }

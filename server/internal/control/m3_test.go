@@ -753,3 +753,31 @@ func TestPostSwitchCheckRollsBack(t *testing.T) {
 		t.Fatal("blue is not live again")
 	}
 }
+
+// RV-1: a recreate that was cut in switching before the switch was saved (old container stopped, new one live)
+// ends rolled_back and the old container is live again.
+func TestRecoveryRecreateBeforeTheSwitch(t *testing.T) {
+	m := setupM3(t, nil)
+	m.mustDeploy(t)
+	m.mustDeploy(t) // v2 live
+	v1, v2 := m.releaseID(t, 1), m.releaseID(t, 2)
+	old := m.placementOf(t, v2)
+	dep, plc := gateway.NewID("dep"), gateway.NewID("plc")
+	m.exec(t, `INSERT INTO deployments (id, service_id, environment_id, trigger, strategy, state, release_id, previous_release_id)
+		SELECT $1, s.id, s.environment_id, 'manual', 'recreate', 'switching', $2, $4 FROM services s WHERE s.id = $3`, dep, v1, m.serviceID, v2)
+	m.exec(t, `UPDATE placements SET role = 'stopped' WHERE id = $1`, old)
+	m.exec(t, `INSERT INTO placements (id, service_id, node_id, release_id, replica_index, color, role, deployment_id)
+		SELECT $1, $2, node_id, $3, 0, 'blue', 'live', $4 FROM placements WHERE id = $5`, plc, m.serviceID, v1, dep, old)
+	ctl2 := control.New(control.Deps{DB: m.env.Pool, Clock: m.env.Clock, Config: m.env.Cfg, CA: m.env.CA, Sender: m.env.GW})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = ctl2.Run(ctx); close(done) }()
+	m.waitState(t, dep, "rolled_back")
+	cancel()
+	<-done
+	ctl2.Close()
+	if m.q(t, `SELECT role FROM placements WHERE id = $1`, old) != "live" || m.q(t, `SELECT role FROM placements WHERE id = $1`, plc) != "stopped" ||
+		m.q(t, `SELECT live_release_id FROM services WHERE id = $1`, m.serviceID) != v2 {
+		t.Fatal("the old container is not live again")
+	}
+}
