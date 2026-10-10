@@ -27,6 +27,8 @@ type sim struct {
 	check  func(*pb.CheckHealth) *pb.CommandAck
 	oneoff func() *pb.CommandAck
 	swtch  func() *pb.CommandAck
+	fixed  string // when set, every tag pull gives this digest
+	gc     []string
 }
 
 func newSim(a *gatewaytest.Agent) *sim {
@@ -55,6 +57,9 @@ func (s *sim) on(c *pb.Command) *pb.CommandAck {
 		}
 		s.n++
 		d := fmt.Sprintf("sha256:%064d", s.n)
+		if s.fixed != "" {
+			d = s.fixed
+		}
 		return &pb.CommandAck{Ok: true, ResultJson: []byte(`{"image_ref":"nginx@` + d + `","digest":"` + d + `"}`)}
 	case *pb.Command_CheckHealth:
 		s.cmds = append(s.cmds, "check:"+b.CheckHealth.PlacementId)
@@ -87,6 +92,7 @@ func (s *sim) on(c *pb.Command) *pb.CommandAck {
 		s.cmds = append(s.cmds, "remove:"+b.RemoveWorkload.PlacementId)
 	case *pb.Command_PruneImages:
 		s.cmds = append(s.cmds, "prune")
+		s.gc = append(s.gc, b.PruneImages.RemoveImageRefs...)
 	}
 	return &pb.CommandAck{Ok: true}
 }
@@ -779,5 +785,21 @@ func TestRecoveryRecreateBeforeTheSwitch(t *testing.T) {
 	if m.q(t, `SELECT role FROM placements WHERE id = $1`, old) != "live" || m.q(t, `SELECT role FROM placements WHERE id = $1`, plc) != "stopped" ||
 		m.q(t, `SELECT live_release_id FROM services WHERE id = $1`, m.serviceID) != v2 {
 		t.Fatal("the old container is not live again")
+	}
+}
+
+// SEC-1: releases of one digest (same commit deployed again). Pruning old releases must not GC an image that a kept release uses.
+func TestImageGCKeepsSharedDigest(t *testing.T) {
+	m := setupM3(t, nil)
+	m.exec(t, `UPDATE projects SET settings = '{"retain_releases": 2}'`)
+	m.sim.set(func() { m.sim.fixed = "sha256:" + strings.Repeat("a", 64) })
+	for i := 0; i < 4; i++ {
+		m.mustDeploy(t)
+	}
+	if m.q(t, `SELECT count(*) FROM releases WHERE pruned_at IS NOT NULL`) != "2" {
+		t.Fatal("releases were not pruned")
+	}
+	if m.sim.count("prune") != 0 || len(m.sim.gc) != 0 {
+		t.Fatalf("the image of kept releases was removed: %v", m.sim.gc)
 	}
 }

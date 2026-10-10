@@ -105,8 +105,17 @@ func (c *Control) pruneReleases(ctx context.Context, s *svcInfo, keep int) error
 	if _, err := c.DB.Exec(ctx, `UPDATE releases SET pruned_at = now() WHERE id = ANY($1) AND pruned_at IS NULL`, relIDs); err != nil {
 		return err
 	}
+	// Image GC only for images that no kept release uses: the same digest is in many releases (same commit deployed again).
+	refs, err = queryStrings(ctx, c.DB, `SELECT DISTINCT image_ref FROM releases WHERE id = ANY($1)
+		AND image_ref NOT IN (SELECT image_ref FROM releases WHERE pruned_at IS NULL)`, relIDs)
+	if err != nil {
+		return err
+	}
 	// Image GC: the nodes remove the images (a running image stays, Docker refuses), the registry drops the manifests.
 	nodes, _ := queryStrings(ctx, c.DB, `SELECT id FROM nodes WHERE state = 'ready'`)
+	if len(refs) == 0 {
+		nodes = nil
+	}
 	for _, n := range nodes {
 		if c.Sender == nil || !c.Sender.Connected(n) {
 			continue
