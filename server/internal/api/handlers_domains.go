@@ -173,6 +173,9 @@ func (h *Handlers) CreateDomain(w http.ResponseWriter, r *http.Request, serviceI
 	if denyProtected(w, r, "domain:manage", s.EnvProtected) {
 		return
 	}
+	if h.denyManaged(w, r, serviceID, "domains") {
+		return
+	}
 	if body.Host == nil {
 		invalid(w, r, "host", "host is required")
 		return
@@ -210,6 +213,9 @@ func (h *Handlers) UpdateDomain(w http.ResponseWriter, r *http.Request, domainID
 	if denyProtected(w, r, "domain:manage", protected) {
 		return
 	}
+	if h.denyManaged(w, r, d.ServiceID, "domains") {
+		return
+	}
 	if !applyDomainWrite(w, r, d, &body) || h.refusePanelHost(w, r, d.Host) {
 		return
 	}
@@ -232,6 +238,9 @@ func (h *Handlers) DeleteDomain(w http.ResponseWriter, r *http.Request, domainID
 		return
 	}
 	if denyProtected(w, r, "domain:manage", protected) {
+		return
+	}
+	if h.denyManaged(w, r, d.ServiceID, "domains") {
 		return
 	}
 	if fail(w, r, h.Store.DeleteDomain(r.Context(), domainID)) {

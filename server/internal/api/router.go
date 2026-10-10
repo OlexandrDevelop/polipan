@@ -124,6 +124,7 @@ func NewRouter(d Deps) (http.Handler, error) {
 	}
 	if d.Pool != nil {
 		h.Store = store.New(d.Pool)
+		h.initConfig(d.Pool)
 	}
 	gen.HandlerWithOptions(h, gen.ChiServerOptions{
 		BaseURL:     BasePath,

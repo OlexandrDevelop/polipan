@@ -73,6 +73,8 @@ func (h *Handlers) ReceiveGitWebhook(w http.ResponseWriter, r *http.Request, web
 		WriteJSON(w, http.StatusAccepted, map[string]any{"event": d.Event, "deployments": queued})
 		return
 	}
+	// A push to the repo and branch of a config_source starts a config sync (REQ-CAC-003).
+	configSyncs := h.syncConfigPush(ctx, hook, d.Push)
 	services, err := h.Store.GitServicesOf(ctx, hook)
 	if fail(w, r, err) {
 		return
@@ -96,7 +98,11 @@ func (h *Handlers) ReceiveGitWebhook(w http.ResponseWriter, r *http.Request, web
 			"author": d.Push.Author, "repo": d.Push.Repo})
 		queued = append(queued, id)
 	}
-	WriteJSON(w, http.StatusAccepted, map[string]any{"event": d.Event, "deployments": queued})
+	out := map[string]any{"event": d.Event, "deployments": queued}
+	if len(configSyncs) > 0 {
+		out["config_syncs"] = configSyncs
+	}
+	WriteJSON(w, http.StatusAccepted, out)
 }
 
 // ReceiveDeployHook is the CI deploy hook: the header X-Polipan-Token must match the secret of

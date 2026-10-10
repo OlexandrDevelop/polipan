@@ -185,6 +185,9 @@ func (h *Handlers) CreateVolume(w http.ResponseWriter, r *http.Request, serviceI
 	if denyProtected(w, r, "volume:manage", svc.EnvProtected) {
 		return
 	}
+	if h.denyManaged(w, r, serviceID, "volumes") {
+		return
+	}
 	v := store.Volume{Kind: "volume", AccessMode: "single_writer"}
 	if body.Name != nil {
 		v.Name = *body.Name
@@ -233,6 +236,9 @@ func (h *Handlers) UpdateVolume(w http.ResponseWriter, r *http.Request, volumeID
 	if denyProtected(w, r, "volume:manage", svc.EnvProtected) {
 		return
 	}
+	if h.denyManaged(w, r, cur.ServiceID, "volumes") {
+		return
+	}
 	if (body.Name != nil && *body.Name != cur.Name) || (body.Kind != nil && string(*body.Kind) != cur.Kind) {
 		invalid(w, r, "name", "name and kind of a volume cannot change")
 		return
@@ -262,6 +268,9 @@ func (h *Handlers) DeleteVolume(w http.ResponseWriter, r *http.Request, volumeID
 		return
 	}
 	if denyProtected(w, r, "volume:manage", svc.EnvProtected) {
+		return
+	}
+	if h.denyManaged(w, r, cur.ServiceID, "volumes") {
 		return
 	}
 	deleteData := params.DeleteData != nil && *params.DeleteData

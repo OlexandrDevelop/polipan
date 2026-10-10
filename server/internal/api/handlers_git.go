@@ -27,6 +27,8 @@ type GitDeps struct {
 	Policy func(ctx context.Context, orgID string) ssrf.Policy
 	// NewProvider makes the provider of a connection. Nil means git.NewProvider with Policy.Client.
 	NewProvider func(c git.Connection, p ssrf.Policy) (git.Provider, error)
+	// Cloner reads the config file of a project (M6). Nil means git.CLI.
+	Cloner git.Cloner
 }
 
 func (h *Handlers) gitReady(w http.ResponseWriter, r *http.Request) bool {

@@ -98,6 +98,12 @@ func (r *run) schedule(ctx context.Context) ([]string, *deployErr) {
 	count := r.cfg.replicas()
 	keepIDs := ids(r.keep)
 	req := schedRequest(r.cfg, count)
+	if d.trigger == "move" || d.trigger == "failover" {
+		// A move or a failover places the old Release again, but the rules of placement are the ones of now: a user
+		// who changed them wants the next move to follow them.
+		cur := schedRequest(r.svc.cfg, count)
+		req.Names, req.Labels, req.NoSpread = cur.Names, cur.Labels, cur.NoSpread
+	}
 	req.Exclude = r.exclude
 	switch d.trigger {
 	case "move":

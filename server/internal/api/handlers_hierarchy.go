@@ -34,7 +34,11 @@ func projectJSON(p *store.Project) gen.Project {
 	var settings gen.ProjectSettings
 	_ = json.Unmarshal(p.Settings, &settings)
 	state := gen.ProjectConfigSyncState(p.ConfigSyncState)
-	return gen.Project{Id: &p.ID, Name: &p.Name, Slug: &p.Slug, Settings: &settings, ConfigSyncState: &state, CreatedAt: &p.CreatedAt}
+	out := gen.Project{Id: &p.ID, Name: &p.Name, Slug: &p.Slug, Settings: &settings, ConfigSyncState: &state, CreatedAt: &p.CreatedAt}
+	if len(p.ConfigSource) > 0 && string(p.ConfigSource) != "null" {
+		_ = json.Unmarshal(p.ConfigSource, &out.ConfigSource)
+	}
+	return out
 }
 
 func envJSON(e *store.Environment) gen.Environment {
@@ -123,9 +127,15 @@ func (h *Handlers) UpdateProject(w http.ResponseWriter, r *http.Request, project
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if body.ConfigSource != nil {
-		invalid(w, r, "config_source", "config_source is not available in this version")
-		return
+	var source map[string]any
+	if body.ConfigSource != nil { // REQ-CAC-012: an admin sets the source of the config file
+		if requireAdmin(w, r, "changing config_source") {
+			return
+		}
+		var ok bool
+		if source, ok = h.configSourceOf(w, r, *body.ConfigSource); !ok {
+			return
+		}
 	}
 	cur, err := h.Store.GetProject(r.Context(), h.orgID(r), projectID)
 	if fail(w, r, err) {
@@ -158,6 +168,16 @@ func (h *Handlers) UpdateProject(w http.ResponseWriter, r *http.Request, project
 			merged[k] = v
 		}
 		settings, _ = json.Marshal(merged)
+	}
+	if body.ConfigSource != nil {
+		var raw json.RawMessage
+		if len(source) > 0 {
+			raw, _ = json.Marshal(source)
+		}
+		if fail(w, r, h.Store.SetConfigSource(r.Context(), h.orgID(r), projectID, raw)) {
+			return
+		}
+		h.auditUser(r, h.orgID(r), projectID, "project.config_source", "project", projectID, map[string]any{"config_source": source})
 	}
 	p, err := h.Store.UpdateProject(r.Context(), h.orgID(r), projectID, name, settings)
 	if fail(w, r, err) {
@@ -490,9 +510,23 @@ func (h *Handlers) UpdateService(w http.ResponseWriter, r *http.Request, service
 	if body.Failover != nil {
 		failover = ptr(string(*body.Failover))
 	}
+	// A field that polipan.yaml sets is read only (REQ-CAC-005).
+	var newCfg map[string]any
+	if cfg != nil {
+		_ = json.Unmarshal(cfg, &newCfg)
+	} else {
+		_ = json.Unmarshal(cur.Config, &newCfg)
+	}
+	drift, stop := h.guardManagedUpdate(w, r, cur, newCfg, failover, body.AllowDataLossFailover, body.OverrideGit != nil && *body.OverrideGit)
+	if stop {
+		return
+	}
 	s, err := h.Store.UpdateService(r.Context(), h.orgID(r), serviceID, cfg, failover, body.AllowDataLossFailover)
 	if fail(w, r, err) {
 		return
+	}
+	if len(drift) > 0 {
+		h.recordDrift(r, cur, drift)
 	}
 	out := h.decorateService(r.Context(), serviceJSON(s), s)
 	if len(dbWarnings) > 0 {
