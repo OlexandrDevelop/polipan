@@ -5,6 +5,7 @@ package ingress
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -271,6 +272,10 @@ func handlers(r *agentv1.Route, maxBody int64) []any {
 			"X-Forwarded-Proto": []string{"{http.request.scheme}"},
 			"X-Forwarded-Host":  []string{"{http.request.host}"},
 		}}},
+	}
+	if d := r.GetStreamCloseDelaySeconds(); d > 0 {
+		// After a config load, WebSockets and other streams to the old containers stay open for drain_seconds (AC-DEPLOY-09).
+		proxy["stream_close_delay"] = fmt.Sprintf("%ds", d)
 	}
 	return []any{
 		obj{

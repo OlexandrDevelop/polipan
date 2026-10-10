@@ -4,6 +4,8 @@ package control
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,133 +21,473 @@ import (
 	"github.com/polipan/polipan/server/internal/vars"
 )
 
-// Failure reasons of a deployment (08-deploy-engine).
+// Failure reasons of a deployment (08-deploy-engine section 2).
 const (
 	ReasonImagePullFailed      = "image_pull_failed"
 	ReasonContainerStartFailed = "container_start_failed"
-	ReasonHealthCheckFailed    = "health_check_failed"
+	ReasonHealthTimeout        = "health_timeout"
+	ReasonHealthFailed         = "health_failed"
+	ReasonPreDeployFailed      = "pre_deploy_failed"
+	ReasonGate5xx              = "gate_5xx"
+	ReasonSwitchFailed         = "switch_failed"
 	ReasonNodeUnavailable      = "node_unavailable"
 	ReasonInvalidConfig        = "invalid_config"
-	ReasonServerRestarted      = "server_restarted"
+	ReasonCancelled            = "cancelled_by_user"
+	ReasonSuperseded           = "superseded"
+	ReasonInternal             = "internal_error"
+	// ReasonServerRestarted is a deployment that a server restart cut before the switch (REQ-DEPLOY-107).
+	ReasonServerRestarted = "server_restarted"
 )
 
-type deployErr struct{ reason, detail string }
+// deployErr ends a deployment. state is the terminal state: failed (default), rolled_back or cancelled.
+type deployErr struct {
+	reason, detail string
+	state          string
+}
 
 func (e *deployErr) Error() string { return e.reason + ": " + e.detail }
 
-// Deploy makes a deployment (state queued) and runs it in the background.
+func fail(reason, format string, a ...any) *deployErr {
+	return &deployErr{reason: reason, detail: fmt.Sprintf(format, a...)}
+}
+
+// activeStates are the states of a deployment that runs now (not queued, not terminal).
+const runningStates = `'building','image_ready','starting','health_checking','shifting','switching','draining'`
+
+// transitions is the state machine of 08 section 2. Canary states are not used in this version.
+var transitions = map[string][]string{
+	"queued":          {"building", "image_ready", "superseded", "cancelled"},
+	"building":        {"image_ready", "failed", "cancelled"},
+	"image_ready":     {"starting", "failed", "cancelled"},
+	"starting":        {"health_checking", "failed", "cancelled"},
+	"health_checking": {"switching", "failed", "rolled_back", "cancelled"},
+	"switching":       {"draining", "rolled_back"},
+	"draining":        {"live", "rolled_back"},
+}
+
+var terminalStates = map[string]bool{"live": true, "failed": true, "rolled_back": true, "cancelled": true, "superseded": true}
+
+// activeDep is a deployment that this process runs.
+type activeDep struct {
+	cancel context.CancelCauseFunc
+	locked bool // from switching on, a user cannot cancel
+}
+
+var errUserCancel = errors.New("cancelled by the user")
+
+// deployment is the row of a deployment that the runner needs.
+type deployment struct {
+	id, serviceID, envID, trigger, strategy, state string
+	releaseID, prevReleaseID                       *string
+	actorID                                        string
+	opts                                           deployOptions
+	created                                        time.Time
+}
+
+// Deploy queues a deployment with the settings of the service.
 func (c *Control) Deploy(ctx context.Context, serviceID, actorID, trigger string) (string, error) {
+	id, _, err := c.DeployWith(ctx, orchestrator.DeployParams{ServiceID: serviceID, ActorID: actorID, Trigger: trigger})
+	return id, err
+}
+
+// Plan answers what DeployWith would do.
+func (c *Control) Plan(ctx context.Context, p orchestrator.DeployParams) (orchestrator.Plan, error) {
+	s, err := c.loadService(ctx, c.DB, p.ServiceID)
+	if err != nil {
+		return orchestrator.Plan{}, err
+	}
+	cfg := s.cfg
+	if p.RollbackReleaseID != "" {
+		rel, err := c.checkRollback(ctx, s, p)
+		if err != nil {
+			return orchestrator.Plan{}, err
+		}
+		cfg = rel.cfg
+	}
+	return c.plan(ctx, s, cfg, p, resolveOptions(cfg, p))
+}
+
+// DeployWith stores a queued deployment (replacing older queued ones) and starts it when the service is free.
+func (c *Control) DeployWith(ctx context.Context, p orchestrator.DeployParams) (string, []orchestrator.Warning, error) {
+	trigger := p.Trigger
+	if p.RollbackReleaseID != "" {
+		trigger = "rollback"
+	}
 	if trigger == "" {
 		trigger = "manual"
 	}
-	var envID string
-	var deleted *time.Time
-	err := c.DB.QueryRow(ctx, `SELECT environment_id, deleted_at FROM services WHERE id = $1`, serviceID).Scan(&envID, &deleted)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && deleted != nil) {
-		return "", orchestrator.ErrNotFound
-	}
+	s, err := c.loadService(ctx, c.DB, p.ServiceID)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	if _, err := c.pickNodeForService(ctx, serviceID); err != nil {
-		return "", orchestrator.ErrNoNode
+	if _, err := c.pickNodeForService(ctx, s.id); err != nil {
+		return "", nil, orchestrator.ErrNoNode
+	}
+	cfg := s.cfg
+	var rollbackTo *string
+	if p.RollbackReleaseID != "" {
+		rel, err := c.checkRollback(ctx, s, p)
+		if err != nil {
+			return "", nil, err
+		}
+		cfg, rollbackTo = rel.cfg, &rel.id
+	}
+	opts := resolveOptions(cfg, p)
+	plan, err := c.plan(ctx, s, cfg, p, opts)
+	if err != nil {
+		return "", nil, err
+	}
+	optsJSON, _ := json.Marshal(opts)
+	warnings, _ := json.Marshal(plan.Warnings)
+	if plan.Warnings == nil {
+		warnings = []byte("[]")
 	}
 
 	id := gateway.NewID("dep")
-	c.track(id, true)
 	tx, err := c.DB.Begin(ctx)
 	if err != nil {
-		c.track(id, false)
-		return "", err
+		return "", nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	// One deployment at a time for a service. 'queued' is not in the unique index, so we check it here.
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, serviceID); err != nil {
-		c.track(id, false)
-		return "", err
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, s.id); err != nil {
+		return "", nil, err
 	}
-	var busy bool
-	if err := tx.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM deployments WHERE service_id = $1
-		   AND state IN ('queued','building','image_ready','starting','health_checking','shifting','switching','draining'))`,
-		serviceID).Scan(&busy); err != nil {
-		c.track(id, false)
-		return "", err
+	// A newer request replaces the older queued ones (08 section 10).
+	old, err := queryStrings(ctx, tx, `UPDATE deployments SET state = 'superseded', failure_reason = 'superseded',
+		finished_at = now(), updated_at = now() WHERE service_id = $1 AND state = 'queued' RETURNING id`, s.id)
+	if err != nil {
+		return "", nil, err
 	}
-	if busy {
-		c.track(id, false)
-		return "", orchestrator.ErrDeployRunning
+	for _, o := range old {
+		if err := c.addStep(ctx, tx, o, "superseded", "a newer deployment was queued: "+id, map[string]any{"by": id}); err != nil {
+			return "", nil, err
+		}
 	}
 	var actor *string
-	if actorID != "" {
-		actor = &actorID
+	if p.ActorID != "" {
+		actor = &p.ActorID
 	}
-	_, err = tx.Exec(ctx,
-		`INSERT INTO deployments (id, service_id, environment_id, trigger, strategy, state, actor_id)
-		 VALUES ($1,$2,$3,$4,'recreate','queued',$5)`, id, serviceID, envID, trigger, actor)
-	if err == nil {
-		err = saveBuildRequest(ctx, tx, id) // commit and no_cache of a git deploy (build.go)
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO deployments (id, service_id, environment_id, trigger, strategy, strategy_options, state, actor_id, release_id, warnings)
+		 VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9)`,
+		id, s.id, s.envID, trigger, plan.Strategy, optsJSON, actor, rollbackTo, warnings); err != nil {
+		return "", nil, err
 	}
-	if err == nil {
-		err = c.addStep(ctx, tx, id, "queued", "deployment created", nil)
+	if err := saveBuildRequest(ctx, tx, id); err != nil { // commit and no_cache of a git deploy (build.go)
+		return "", nil, err
 	}
-	if err == nil {
-		err = tx.Commit(ctx)
+	if err := c.addStep(ctx, tx, id, "queued", "deployment created", map[string]any{"strategy": plan.Strategy, "forced": plan.Forced}); err != nil {
+		return "", nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", nil, err
+	}
+	c.pump(s.id)
+	return id, plan.Warnings, nil
+}
+
+// pump starts the queued deployment of a service when no other one runs (08 section 10).
+func (c *Control) pump(serviceID string) {
+	ctx := c.runCtx
+	if ctx.Err() != nil {
+		return
+	}
+	tx, err := c.DB.Begin(ctx)
+	if err != nil {
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, serviceID); err != nil {
+		return
+	}
+	var busy bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM deployments WHERE service_id = $1 AND state IN (`+runningStates+`))`, serviceID).Scan(&busy); err != nil || busy {
+		return
+	}
+	var id, trigger, sourceType string
+	err = tx.QueryRow(ctx, `SELECT d.id, d.trigger, s.source_type FROM deployments d JOIN services s ON s.id = d.service_id
+		WHERE d.service_id = $1 AND d.state = 'queued' ORDER BY d.created_at DESC, d.id DESC LIMIT 1`, serviceID).Scan(&id, &trigger, &sourceType)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return
 	}
 	if err != nil {
-		c.track(id, false)
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return "", orchestrator.ErrDeployRunning
-		}
-		return "", err
+		c.Log.Error("pump", "service", serviceID, "err", err)
+		return
 	}
+	state, msg := "image_ready", "resolving the image"
+	if sourceType == "git" && trigger != "rollback" {
+		state, msg = "building", "building the image"
+	}
+	if err := c.setStateTx(ctx, tx, id, state, msg, nil); err != nil {
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+			c.Log.Error("pump claim", "service", serviceID, "err", err)
+		}
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return
+	}
+	c.startRun(id)
+}
+
+// startRun runs a claimed deployment in the background.
+func (c *Control) startRun(id string) {
+	rctx, cancel := context.WithCancelCause(c.runCtx)
+	ad := &activeDep{cancel: cancel}
+	c.mu.Lock()
+	c.active[id] = ad
+	c.mu.Unlock()
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		defer c.track(id, false)
-		c.runDeployment(c.runCtx, id, serviceID, actorID)
+		defer cancel(nil)
+		var serviceID string
+		defer func() {
+			c.mu.Lock()
+			delete(c.active, id)
+			c.mu.Unlock()
+			if serviceID != "" {
+				c.pump(serviceID)
+			}
+		}()
+		d, err := c.loadDeployment(rctx, id)
+		if err != nil {
+			c.Log.Error("load deployment", "deployment", id, "err", err)
+			return
+		}
+		serviceID = d.serviceID
+		c.runDeployment(rctx, ad, d, false)
 	}()
-	return id, nil
 }
 
-func (c *Control) track(id string, on bool) {
+func (c *Control) loadDeployment(ctx context.Context, id string) (*deployment, error) {
+	var d deployment
+	var actor *string
+	var opts []byte
+	err := c.DB.QueryRow(ctx, `SELECT id, service_id, environment_id, trigger, strategy, state, release_id, previous_release_id, actor_id, strategy_options, created_at
+		FROM deployments WHERE id = $1`, id).Scan(&d.id, &d.serviceID, &d.envID, &d.trigger, &d.strategy, &d.state, &d.releaseID, &d.prevReleaseID, &actor, &opts, &d.created)
+	if err != nil {
+		return nil, err
+	}
+	if actor != nil {
+		d.actorID = *actor
+	}
+	_ = json.Unmarshal(opts, &d.opts)
+	return &d, nil
+}
+
+// Cancel cancels a deployment up to health_checking (08 section 10).
+func (c *Control) Cancel(ctx context.Context, deploymentID, actorID string) error {
+	var state string
+	if err := c.DB.QueryRow(ctx, `SELECT state FROM deployments WHERE id = $1`, deploymentID).Scan(&state); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return orchestrator.ErrNotFound
+		}
+		return err
+	}
+	switch state {
+	case "queued":
+		tx, err := c.DB.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		tag, err := tx.Exec(ctx, `UPDATE deployments SET state = 'cancelled', failure_reason = $2, finished_at = now(), updated_at = now() WHERE id = $1 AND state = 'queued'`,
+			deploymentID, ReasonCancelled)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return orchestrator.ErrNotCancellable
+		}
+		if err := c.addStep(ctx, tx, deploymentID, "cancelled", "cancelled by the user", nil); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	case "building", "image_ready", "starting", "health_checking":
+		c.mu.Lock()
+		ad := c.active[deploymentID]
+		if ad == nil || ad.locked {
+			c.mu.Unlock()
+			return orchestrator.ErrNotCancellable
+		}
+		ad.cancel(errUserCancel)
+		c.mu.Unlock()
+		// Wait for the cleanup, so the answer shows the end state.
+		deadline := time.Now().Add(60 * time.Second)
+		for time.Now().Before(deadline) {
+			var s string
+			if err := c.DB.QueryRow(ctx, `SELECT state FROM deployments WHERE id = $1`, deploymentID).Scan(&s); err == nil && terminalStates[s] {
+				return nil
+			}
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(50 * time.Millisecond):
+			}
+		}
+		return nil
+	}
+	return orchestrator.ErrNotCancellable
+}
+
+// lockCancel stops user cancels from now on. It returns false when the user cancelled already.
+func (c *Control) lockCancel(ad *activeDep) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if on {
-		c.active[id] = true
-	} else {
-		delete(c.active, id)
+	if ad != nil {
+		ad.locked = true
 	}
+	return true
 }
 
-// recoverDeployments marks deployments that a former server run left in an active state as failed.
-func (c *Control) recoverDeployments(ctx context.Context) error {
-	rows, err := c.DB.Query(ctx,
-		`SELECT id FROM deployments WHERE state IN ('queued','building','image_ready','starting','health_checking','shifting','switching','draining')`)
+// ---- state changes ----
+
+// setState moves the deployment to a state and writes a step, a log line and an event.
+// A change that the state machine does not allow is refused (REQ-DEPLOY-100).
+func (c *Control) setState(ctx context.Context, depID, state, msg string, data map[string]any) error {
+	tx, err := c.DB.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return err
-		}
-		ids = append(ids, id)
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := c.setStateTx(ctx, tx, depID, state, msg, data); err != nil {
+		return err
 	}
-	rows.Close()
-	for _, id := range ids {
-		c.mu.Lock()
-		mine := c.active[id]
-		c.mu.Unlock()
-		if mine {
-			continue
-		}
-		c.markFailed(ctx, id, &deployErr{ReasonServerRestarted, "the server restarted while the deployment was running"})
+	return tx.Commit(ctx)
+}
+
+func (c *Control) setStateTx(ctx context.Context, tx pgx.Tx, depID, state, msg string, data map[string]any) error {
+	var cur string
+	if err := tx.QueryRow(ctx, `SELECT state FROM deployments WHERE id = $1 FOR UPDATE`, depID).Scan(&cur); err != nil {
+		return err
 	}
-	return nil
+	if cur != state { // the same state again only adds a step
+		allowed := false
+		for _, n := range transitions[cur] {
+			if n == state {
+				allowed = true
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("deployment %s: the change %s to %s is not allowed", depID, cur, state)
+		}
+	}
+	now := c.Clock.Now()
+	var finished *time.Time
+	if terminalStates[state] {
+		finished = &now
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE deployments SET state = $2, started_at = COALESCE(started_at, $3), finished_at = COALESCE($4, finished_at), updated_at = $3 WHERE id = $1`,
+		depID, state, now, finished); err != nil {
+		return err
+	}
+	return c.addStep(ctx, tx, depID, state, msg, data)
+}
+
+func (c *Control) addStep(ctx context.Context, tx pgx.Tx, depID, state, msg string, data map[string]any) error {
+	var d []byte
+	if data != nil {
+		d, _ = json.Marshal(data)
+	}
+	msg = c.maskStep(ctx, depID, msg) // stored log lines never hold a secret value
+	if _, err := tx.Exec(ctx, `INSERT INTO deployment_steps (deployment_id, state, message, data) VALUES ($1,$2,$3,$4)`, depID, state, msg, d); err != nil {
+		return err
+	}
+	if err := addLog(ctx, tx, depID, "deploy", state+": "+msg); err != nil {
+		return err
+	}
+	return addEvent(ctx, tx, depID, map[string]any{"type": "state", "state": state, "message": msg, "data": data})
+}
+
+func addLog(ctx context.Context, q dbq, depID, stream, line string) error {
+	_, err := q.Exec(ctx,
+		`INSERT INTO deployment_logs (deployment_id, seq, stream, line)
+		 SELECT $1, COALESCE(MAX(seq),0)+1, $3, $2 FROM deployment_logs WHERE deployment_id = $1`, depID, line, stream)
+	return err
+}
+
+func addEvent(ctx context.Context, q dbq, depID string, payload map[string]any) error {
+	b, _ := json.Marshal(payload)
+	_, err := q.Exec(ctx,
+		`INSERT INTO events (org_id, topic, object_id, payload)
+		 SELECT p.org_id, 'deployment', d.id, $2::jsonb FROM deployments d
+		   JOIN environments e ON e.id = d.environment_id JOIN projects p ON p.id = e.project_id
+		  WHERE d.id = $1`, depID, b)
+	return err
+}
+
+// event writes a health or log event of a deployment outside of a state change.
+func (c *Control) event(ctx context.Context, depID string, payload map[string]any) {
+	if err := addEvent(ctx, c.DB, depID, payload); err != nil {
+		c.Log.Warn("deployment event", "deployment", depID, "err", err)
+	}
+}
+
+// endDeployment writes the terminal state with the reason. It uses a fresh context if ctx is done.
+func (c *Control) endDeployment(ctx context.Context, depID string, e *deployErr) {
+	if ctx.Err() != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+	}
+	state := e.state
+	if state == "" {
+		state = "failed"
+	}
+	e = &deployErr{reason: e.reason, detail: c.maskStep(ctx, depID, e.detail), state: state} // the detail goes to the database and the log
+	tx, err := c.DB.Begin(ctx)
+	if err != nil {
+		c.Log.Error("end deployment", "deployment", depID, "err", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// rolled_back needs the state machine to allow it from where the run stopped; else the deployment failed.
+	var cur string
+	if err := tx.QueryRow(ctx, `SELECT state FROM deployments WHERE id = $1`, depID).Scan(&cur); err == nil && state == "rolled_back" {
+		allowed := false
+		for _, n := range transitions[cur] {
+			allowed = allowed || n == state
+		}
+		if !allowed {
+			state = "failed"
+		}
+	}
+	if err := c.setStateTx(ctx, tx, depID, state, e.reason+": "+e.detail, map[string]any{"reason": e.reason}); err != nil {
+		c.Log.Error("end deployment", "deployment", depID, "err", err)
+		return
+	}
+	if _, err := tx.Exec(ctx, `UPDATE deployments SET failure_reason = $2, failure_detail = $3 WHERE id = $1`, depID, e.reason, e.detail); err != nil {
+		c.Log.Error("end deployment", "deployment", depID, "err", err)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		c.Log.Error("end deployment", "deployment", depID, "err", err)
+		return
+	}
+	c.Log.Warn("deployment ended", "deployment", depID, "state", state, "reason", e.reason, "detail", e.detail)
+}
+
+// ---- commands ----
+
+// cmdID is the command id of a step. A resumed deployment sends the same id again, so the agent
+// answers with the stored ack (idempotent commands, 08 section 1).
+func cmdID(depID, name string) string {
+	h := sha256.Sum256([]byte(depID + "/" + name))
+	return "cmd_" + hex.EncodeToString(h[:10])
+}
+
+// sendCmd sends a command of a deployment to a node and waits for the ack (at most timeout).
+func (c *Control) sendCmd(ctx context.Context, node, depID, name string, body *pb.Command, timeout time.Duration) (*pb.CommandAck, error) {
+	if c.Sender == nil {
+		return nil, errors.New("no agent gateway")
+	}
+	body.CommandId = cmdID(depID, name)
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return c.Sender.Send(cctx, node, body)
 }
 
 type readyNode struct{ id string }
@@ -157,209 +499,15 @@ func (c *Control) pickNode(ctx context.Context) (readyNode, error) {
 	return n, err
 }
 
-func (c *Control) runDeployment(ctx context.Context, depID, serviceID, actorID string) {
-	derr := c.execute(ctx, depID, serviceID, actorID)
-	if derr == nil {
-		return
+// imageRepo cuts the tag and the digest from an image name.
+func imageRepo(image string) string {
+	if i := strings.Index(image, "@"); i >= 0 {
+		image = image[:i]
 	}
-	if ctx.Err() != nil {
-		return // shutdown: the next start marks it failed (server_restarted)
+	if i := strings.LastIndex(image, ":"); i > strings.LastIndex(image, "/") {
+		image = image[:i]
 	}
-	c.markFailed(ctx, depID, derr)
-}
-
-func (c *Control) execute(ctx context.Context, depID, serviceID, actorID string) *deployErr {
-	fail := func(reason, format string, a ...any) *deployErr { return &deployErr{reason, fmt.Sprintf(format, a...)} }
-	step := func(state, msg string, data map[string]any) *deployErr {
-		if err := c.setState(ctx, depID, state, msg, data); err != nil {
-			return fail(ReasonInvalidConfig, "database: %v", err)
-		}
-		return nil
-	}
-
-	if e := step("building", "pulling the image", nil); e != nil {
-		return e
-	}
-	var raw []byte
-	var oldRelease *string
-	if err := c.DB.QueryRow(ctx, `SELECT config, live_release_id FROM services WHERE id = $1`, serviceID).Scan(&raw, &oldRelease); err != nil {
-		return fail(ReasonInvalidConfig, "service not found: %v", err)
-	}
-	// A git service is built first (build.go). The result is the image ref by digest in the built-in registry.
-	built, berr := c.buildIfGit(ctx, depID, serviceID)
-	if berr != nil {
-		return berr
-	}
-	var cfg serviceConfig
-	if err := json.Unmarshal(raw, &cfg); err != nil || (cfg.Image == "" && built == "") {
-		return fail(ReasonInvalidConfig, "the service config needs an image")
-	}
-	if built != "" {
-		cfg.Image = built
-	}
-	node, err := c.pickNodeForService(ctx, serviceID)
-	if err != nil {
-		return fail(ReasonNodeUnavailable, "no ready node (or the node of the volumes is not ready)")
-	}
-	if c.Sender == nil || !c.Sender.Connected(node.id) {
-		return fail(ReasonNodeUnavailable, "node %s is not connected", node.id)
-	}
-	// Variables, secret versions and volumes of the release (M2). A missing reference fails here, before the pull.
-	snap, derr := c.resolveRelease(ctx, serviceID, node.id)
-	if derr != nil {
-		return derr
-	}
-	// Redeploy without rebuild (REQ-ENV-003): an image service pulls the same tag and gets the
-	// digest below. A git service reuses the digest of its live release (build step of S-B).
-
-	// 1. pull
-	pullCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-	ack, err := c.Sender.Send(pullCtx, node.id, &pb.Command{Body: &pb.Command_PullImage{PullImage: &pb.PullImage{ImageRef: cfg.Image, RegistryAuthRef: c.registryAuthRef(cfg.Image)}}})
-	cancel()
-	if err != nil {
-		return fail(ReasonNodeUnavailable, "pull command: %v", err)
-	}
-	if !ack.GetOk() {
-		reason := ReasonImagePullFailed
-		if ack.GetErrorCode() == "docker_unavailable" {
-			reason = ReasonNodeUnavailable
-		}
-		return fail(reason, "%s: %s", ack.GetErrorCode(), ack.GetErrorMessage())
-	}
-	var res struct {
-		ImageRef    string `json:"image_ref"`
-		Digest      string `json:"digest"`
-		ImageDigest string `json:"image_digest"`
-	}
-	_ = json.Unmarshal(ack.GetResultJson(), &res)
-	imageRef, digest := res.ImageRef, res.Digest
-	if imageRef == "" {
-		imageRef = res.ImageDigest // the agent may put the digest ref here
-	}
-	if i := strings.LastIndex(imageRef, "@"); i >= 0 && digest == "" {
-		digest = imageRef[i+1:]
-	}
-	if digest == "" {
-		digest = res.ImageDigest
-		if i := strings.LastIndex(digest, "@"); i >= 0 {
-			digest = digest[i+1:]
-		}
-	}
-	if !strings.HasPrefix(digest, "sha256:") {
-		return fail(ReasonImagePullFailed, "the agent gave no image digest")
-	}
-	if !strings.Contains(imageRef, "@") {
-		imageRef = imageRepo(cfg.Image) + "@" + digest
-	}
-
-	// 2. release
-	releaseID := gateway.NewID("rel")
-	if err := c.createRelease(ctx, depID, serviceID, releaseID, actorID, imageRef, digest, snap, oldRelease); err != nil {
-		return fail(ReasonInvalidConfig, "create release: %v", err)
-	}
-	if e := step("image_ready", "image pulled", map[string]any{"release_id": releaseID, "image_ref": imageRef}); e != nil {
-		return e
-	}
-
-	// 3. recreate: remove the old containers, start the new one
-	oldPlacements, err := c.placementsOf(ctx, serviceID)
-	if err != nil {
-		return fail(ReasonContainerStartFailed, "read placements: %v", err)
-	}
-	for _, p := range oldPlacements {
-		c.removeContainer(ctx, p[1], p[0])
-	}
-	placementID := gateway.NewID("plc")
-	if e := step("starting", "starting the container", map[string]any{"placement_id": placementID}); e != nil {
-		return e
-	}
-	err = c.change(ctx, func(tx pgx.Tx) ([]string, error) {
-		nodes := []string{node.id}
-		for _, p := range oldPlacements {
-			nodes = append(nodes, p[1])
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM placements WHERE service_id = $1`, serviceID); err != nil {
-			return nil, err
-		}
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO placements (id, service_id, node_id, release_id, replica_index, color, role)
-			 VALUES ($1,$2,$3,$4,0,'blue','live')`, placementID, serviceID, node.id, releaseID); err != nil {
-			return nil, err
-		}
-		if _, err := tx.Exec(ctx, `UPDATE services SET desired_state = 'running', updated_at = now() WHERE id = $1`, serviceID); err != nil {
-			return nil, err
-		}
-		return nodes, nil
-	})
-	if err != nil {
-		return fail(ReasonContainerStartFailed, "save placement: %v", err)
-	}
-
-	// 4. health
-	if cfg.healthSpec() != nil {
-		if e := step("health_checking", "waiting for the health check", nil); e != nil {
-			return e
-		}
-		timeout := cfg.deployTimeout()
-		hctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second+30*time.Second)
-		ack, err := c.Sender.Send(hctx, node.id, &pb.Command{Body: &pb.Command_CheckHealth{
-			CheckHealth: &pb.CheckHealth{PlacementId: placementID, TimeoutSeconds: timeout}}})
-		cancel()
-		var derr *deployErr
-		switch {
-		case err != nil:
-			derr = fail(ReasonNodeUnavailable, "health command: %v", err)
-		case !ack.GetOk() && ack.GetErrorCode() == "container_start_failed":
-			derr = fail(ReasonContainerStartFailed, "%s", ack.GetErrorMessage())
-		case !ack.GetOk():
-			derr = fail(ReasonHealthCheckFailed, "%s: %s", ack.GetErrorCode(), ack.GetErrorMessage())
-		}
-		if derr != nil {
-			c.stopPlacement(ctx, placementID)
-			return derr
-		}
-	}
-	_, _ = c.DB.Exec(ctx, `UPDATE placements SET health = 'healthy', updated_at = now() WHERE id = $1`, placementID)
-
-	// 5. switch: the route is in the desired state already, so we only record it
-	if e := step("switching", "traffic goes to the new release", nil); e != nil {
-		return e
-	}
-	if _, err := c.DB.Exec(ctx, `UPDATE services SET live_release_id = $2, updated_at = now() WHERE id = $1`, serviceID, releaseID); err != nil {
-		return fail(ReasonContainerStartFailed, "set live release: %v", err)
-	}
-	if e := step("live", "deployment is live", nil); e != nil {
-		return e
-	}
-	return nil
-}
-
-// stopPlacement sets a failed placement to stopped and tells the node.
-func (c *Control) stopPlacement(ctx context.Context, placementID string) {
-	err := c.change(ctx, func(tx pgx.Tx) ([]string, error) {
-		return queryStrings(ctx, tx,
-			`UPDATE placements SET role = 'stopped', health = 'unhealthy', updated_at = now() WHERE id = $1 RETURNING node_id`, placementID)
-	})
-	if err != nil {
-		c.Log.Warn("stop failed placement", "placement", placementID, "err", err)
-	}
-}
-
-func (c *Control) placementsOf(ctx context.Context, serviceID string) ([][2]string, error) {
-	rows, err := c.DB.Query(ctx, `SELECT id, node_id FROM placements WHERE service_id = $1`, serviceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out [][2]string
-	for rows.Next() {
-		var p [2]string
-		if err := rows.Scan(&p[0], &p[1]); err != nil {
-			return nil, err
-		}
-		out = append(out, p)
-	}
-	return out, rows.Err()
+	return image
 }
 
 func (c *Control) createRelease(ctx context.Context, depID, serviceID, releaseID, actorID, imageRef, digest string, snap *vars.Snapshot, previous *string) error {
@@ -392,93 +540,4 @@ func (c *Control) createRelease(ctx context.Context, depID, serviceID, releaseID
 		return err
 	}
 	return tx.Commit(ctx)
-}
-
-// imageRepo cuts the tag and the digest from an image name.
-func imageRepo(image string) string {
-	if i := strings.Index(image, "@"); i >= 0 {
-		image = image[:i]
-	}
-	if i := strings.LastIndex(image, ":"); i > strings.LastIndex(image, "/") {
-		image = image[:i]
-	}
-	return image
-}
-
-// setState changes the deployment state and writes a step, a log line and an event.
-func (c *Control) setState(ctx context.Context, depID, state, msg string, data map[string]any) error {
-	tx, err := c.DB.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	now := c.Clock.Now()
-	final := state == "live" || state == "failed"
-	var finished *time.Time
-	if final {
-		finished = &now
-	}
-	if _, err := tx.Exec(ctx,
-		`UPDATE deployments SET state = $2, started_at = COALESCE(started_at, $3), finished_at = COALESCE($4, finished_at), updated_at = $3 WHERE id = $1`,
-		depID, state, now, finished); err != nil {
-		return err
-	}
-	if err := c.addStep(ctx, tx, depID, state, msg, data); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
-func (c *Control) addStep(ctx context.Context, tx pgx.Tx, depID, state, msg string, data map[string]any) error {
-	var d []byte
-	if data != nil {
-		d, _ = json.Marshal(data)
-	}
-	msg = c.maskStep(ctx, depID, msg) // stored log lines never hold a secret value
-	if _, err := tx.Exec(ctx, `INSERT INTO deployment_steps (deployment_id, state, message, data) VALUES ($1,$2,$3,$4)`, depID, state, msg, d); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx,
-		`INSERT INTO deployment_logs (deployment_id, seq, stream, line)
-		 SELECT $1, COALESCE(MAX(seq),0)+1, 'deploy', $2 FROM deployment_logs WHERE deployment_id = $1`, depID, state+": "+msg); err != nil {
-		return err
-	}
-	payload, _ := json.Marshal(map[string]any{"state": state, "message": msg})
-	_, err := tx.Exec(ctx,
-		`INSERT INTO events (org_id, topic, object_id, payload)
-		 SELECT p.org_id, 'deployment', d.id, $2::jsonb FROM deployments d
-		   JOIN environments e ON e.id = d.environment_id JOIN projects p ON p.id = e.project_id
-		  WHERE d.id = $1`, depID, payload)
-	return err
-}
-
-// markFailed sets the failed state with the reason. It uses a fresh context if ctx is done.
-func (c *Control) markFailed(ctx context.Context, depID string, e *deployErr) {
-	if ctx.Err() != nil {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-	}
-	now := c.Clock.Now()
-	e = &deployErr{e.reason, c.maskStep(ctx, depID, e.detail)} // the detail goes to the database and the log
-	tx, err := c.DB.Begin(ctx)
-	if err != nil {
-		c.Log.Error("mark failed", "deployment", depID, "err", err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	_, err = tx.Exec(ctx,
-		`UPDATE deployments SET state = 'failed', failure_reason = $2, failure_detail = $3, finished_at = $4, updated_at = $4 WHERE id = $1`,
-		depID, e.reason, e.detail, now)
-	if err == nil {
-		err = c.addStep(ctx, tx, depID, "failed", e.reason+": "+e.detail, map[string]any{"reason": e.reason})
-	}
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	if err != nil {
-		c.Log.Error("mark failed", "deployment", depID, "err", err)
-		return
-	}
-	c.Log.Warn("deployment failed", "deployment", depID, "reason", e.reason, "detail", e.detail)
 }

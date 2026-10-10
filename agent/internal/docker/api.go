@@ -132,6 +132,8 @@ type Client interface {
 	VolumeList(ctx context.Context, labels map[string]string) ([]Volume, error)
 	// VolumeRemove removes a volume and its data. A missing volume returns ErrNotFound.
 	VolumeRemove(ctx context.Context, name string) error
+	// ImageRemove removes an image by reference. An image that a container uses is refused (the error says so).
+	ImageRemove(ctx context.Context, ref string) error
 	// Exec starts a command in a running container and attaches to it.
 	Exec(ctx context.Context, idOrName string, opts ExecOptions) (ExecConn, error)
 }

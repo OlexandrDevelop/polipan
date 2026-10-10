@@ -86,6 +86,8 @@ type Engine struct {
 	hold       bool
 	suppressed map[string]bool
 	pulled     map[string]bool
+	hs         map[string]*hstate // health state by placement
+	ingMu      sync.Mutex         // one ingress load at a time
 	ingSpec    [32]byte
 	ingHash    string
 	errs       []string
@@ -102,7 +104,7 @@ func New(d docker.Client, store *state.Store, network string, log *slog.Logger) 
 	}
 	return &Engine{Docker: d, Store: store, Network: network, Log: log, hold: true,
 		suppressed: map[string]bool{}, pulled: map[string]bool{}, inflight: map[string]bool{},
-		execs: map[string]*execSession{}, quotas: map[string]uint64{}, trigger: make(chan struct{}, 1)}
+		execs: map[string]*execSession{}, hs: map[string]*hstate{}, quotas: map[string]uint64{}, trigger: make(chan struct{}, 1)}
 }
 
 // Load reads the persisted desired state and the stored command acks.
@@ -186,6 +188,7 @@ func (e *Engine) Run(ctx context.Context) {
 	}
 	t := time.NewTicker(iv)
 	defer t.Stop()
+	go e.healthLoop(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -279,14 +282,8 @@ func (e *Engine) finish(ctx context.Context, ds *agentv1.DesiredState, errs []st
 		changed := h != e.ingSpec || e.ingHash == ""
 		e.mu.Unlock()
 		if changed {
-			if err := e.Ingress.Start(ctx); err != nil {
+			if _, err := e.applyIngress(ctx, spec); err != nil {
 				errs = append(errs, "caddy_load_failed: "+err.Error())
-			} else if nh, err := e.Ingress.Apply(ctx, spec); err != nil {
-				errs = append(errs, "caddy_load_failed: "+err.Error())
-			} else {
-				e.mu.Lock()
-				e.ingSpec, e.ingHash = h, nh
-				e.mu.Unlock()
 			}
 		}
 		domains = e.Ingress.DomainStatus(ctx, spec)
@@ -334,11 +331,8 @@ func (e *Engine) actual(ctx context.Context, ds *agentv1.DesiredState) *agentv1.
 			if !ic.StartedAt.IsZero() {
 				st.StartedUnixMs = ic.StartedAt.UnixMilli()
 			}
-			switch ic.Health {
-			case "healthy", "unhealthy", "starting":
-				st.Health = ic.Health
-			}
 		}
+		st.Health = e.healthOf(c.Labels[LabelPlacement])
 		if c.State == "running" {
 			running++
 		}

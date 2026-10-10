@@ -6,11 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"net"
-	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/polipan/polipan/agent/internal/docker"
@@ -109,6 +104,31 @@ func (e *Engine) run(ctx context.Context, cmd *agentv1.Command) ([]byte, string,
 		return res, "", ""
 	case *agentv1.Command_CheckHealth:
 		return e.checkHealth(ctx, b.CheckHealth)
+	case *agentv1.Command_ProbeHealth:
+		return e.probeHealthNow(ctx, b.ProbeHealth.PlacementId)
+	case *agentv1.Command_ProbeRoute:
+		return e.probeRoute(ctx, b.ProbeRoute)
+	case *agentv1.Command_RunOneOff:
+		return e.runOneOff(ctx, b.RunOneOff)
+	case *agentv1.Command_SwitchTraffic:
+		hash, err := e.applyIngress(ctx, b.SwitchTraffic.Ingress)
+		if err != nil {
+			return nil, "caddy_load_failed", err.Error()
+		}
+		return jsonBytes(map[string]string{"config_hash": hash}), "", ""
+	case *agentv1.Command_PruneImages:
+		removed := 0
+		for _, ref := range b.PruneImages.RemoveImageRefs {
+			if err := e.Docker.ImageRemove(ctx, ref); err != nil {
+				e.Log.Info("image not removed", "ref", ref, "error", err) // an image in use stays
+				continue
+			}
+			removed++
+			e.mu.Lock()
+			delete(e.pulled, ref)
+			e.mu.Unlock()
+		}
+		return jsonBytes(map[string]int{"removed": removed}), "", ""
 	case *agentv1.Command_StreamLogs:
 		return e.streamLogs(ctx, cmd.CommandId, b.StreamLogs)
 	case *agentv1.Command_StopWorkload:
@@ -233,93 +253,4 @@ func (e *Engine) streamLogs(ctx context.Context, cmdID string, sl *agentv1.Strea
 	e.send(&agentv1.AgentMessage{Body: &agentv1.AgentMessage_Chunk{Chunk: &agentv1.StreamChunk{
 		CommandId: cmdID, Stream: "log", Eof: true}}})
 	return []byte("{}"), "", ""
-}
-
-// checkHealth waits until the workload passes healthy_threshold probes in a row.
-func (e *Engine) checkHealth(ctx context.Context, ch *agentv1.CheckHealth) ([]byte, string, string) {
-	timeout := time.Duration(ch.TimeoutSeconds) * time.Second
-	if timeout == 0 {
-		timeout = 300 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	passes, lastErr, wasRunning := 0, "container is not running", false
-	for {
-		w := e.workload(ch.PlacementId)
-		interval, threshold := 2*time.Second, 2
-		if w != nil && w.Health != nil {
-			if w.Health.IntervalSeconds > 0 {
-				interval = time.Duration(w.Health.IntervalSeconds) * time.Second
-			}
-			if w.Health.HealthyThreshold > 0 {
-				threshold = int(w.Health.HealthyThreshold)
-			}
-		}
-		if w == nil {
-			passes, lastErr = 0, "workload is not in the desired state"
-		} else if cs, err := e.byPlacement(ctx, ch.PlacementId); err == nil && len(cs) > 0 && cs[0].State == "running" {
-			wasRunning = true
-			if err := probe(ctx, w, cs[0].IP); err != nil {
-				passes, lastErr = 0, err.Error()
-			} else if passes++; passes >= threshold {
-				return []byte("{}"), "", ""
-			}
-		} else {
-			passes, lastErr = 0, "container is not running"
-		}
-		select {
-		case <-ctx.Done():
-			if !wasRunning {
-				return nil, "container_start_failed", "container did not start in time: " + lastErr
-			}
-			return nil, "health_check_failed", "health check did not pass in time: " + lastErr
-		case <-time.After(interval):
-		}
-	}
-}
-
-func probe(ctx context.Context, w *agentv1.WorkloadSpec, ip string) error {
-	if ip == "" {
-		return errors.New("container has no address")
-	}
-	hc := w.Health
-	port := uint32(0)
-	if hc != nil {
-		port = hc.Port
-	}
-	if port == 0 && len(w.Ports) > 0 {
-		port = w.Ports[0].ContainerPort
-	}
-	if port == 0 {
-		return nil // nothing to probe: running is enough
-	}
-	addr := net.JoinHostPort(ip, strconv.Itoa(int(port)))
-	if hc != nil && hc.Type == "http" {
-		pctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		defer cancel()
-		req, _ := http.NewRequestWithContext(pctx, http.MethodGet, "http://"+addr+hc.Path, nil)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return err
-		}
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
-		lo, hi := hc.ExpectedStatusMin, hc.ExpectedStatusMax
-		if lo == 0 {
-			lo, hi = 200, 399
-		}
-		if hi == 0 {
-			hi = lo
-		}
-		if uint32(resp.StatusCode) < lo || uint32(resp.StatusCode) > hi {
-			return fmt.Errorf("status %d", resp.StatusCode)
-		}
-		return nil
-	}
-	d := net.Dialer{Timeout: 3 * time.Second}
-	c, err := d.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return err
-	}
-	return c.Close()
 }

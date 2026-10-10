@@ -232,6 +232,18 @@ func (c *HTTPClient) PullImage(ctx context.Context, ref, registryAuth string) (s
 	return repo + "@" + img.ID, nil
 }
 
+// ImageRemove removes an image. A missing image is not an error.
+func (c *HTTPClient) ImageRemove(ctx context.Context, ref string) error {
+	resp, err := c.do(ctx, http.MethodDelete, "/images/"+ref, url.Values{"force": {"false"}}, nil, nil)
+	if err != nil {
+		if isNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	return resp.Body.Close()
+}
+
 // CreateAndStart creates and starts a container.
 func (c *HTTPClient) CreateAndStart(ctx context.Context, spec ContainerSpec) (string, error) {
 	body := createBody(spec)

@@ -31,6 +31,11 @@ type StateProvider interface {
 	DesiredState(ctx context.Context, nodeID string) (*pb.DesiredState, error)
 }
 
+// HealthHook is told about a change of the health of a placement (REQ-HC-007).
+type HealthHook interface {
+	HealthChanged(ctx context.Context, nodeID, placementID, from, to string)
+}
+
 // Deps are the parts the gateway needs.
 type Deps struct {
 	DB     *pgxpool.Pool
@@ -39,6 +44,8 @@ type Deps struct {
 	Clock  clock.Clock // default clock.Real
 	Log    *slog.Logger
 	State  StateProvider
+	// Health is told when the health of a placement changes (optional). Control sets it after New.
+	Health HealthHook
 	// PingInterval (default 15 s) and IdleTimeout (default 30 s) can be changed by tests.
 	PingInterval time.Duration
 	IdleTimeout  time.Duration

@@ -41,7 +41,7 @@ func setup(t *testing.T) *fixture {
 		{`INSERT INTO projects (id, org_id, name, slug) VALUES ($1,$2,'p','p')`, []any{prj, env.OrgID}},
 		{`INSERT INTO environments (id, project_id, name, slug, kind) VALUES ($1,$2,'prod','prod','production')`, []any{envID, prj}},
 		{`INSERT INTO services (id, environment_id, name, type, source_type, config) VALUES ($1,$2,'web','app','image',
-		   '{"image":"nginx:1.27","port":8080,"health":{"type":"tcp","port":8080}}')`, []any{svc, envID}},
+		   '{"image":"nginx:1.27","port":8080,"health":{"type":"tcp","port":8080},"strategy_options":{"drain_seconds":0}}')`, []any{svc, envID}},
 	} {
 		if _, err := env.Pool.Exec(ctx, q.sql, q.args...); err != nil {
 			t.Fatal(err)
@@ -67,6 +67,8 @@ func okAgent(a *gatewaytest.Agent, healthErr *pb.CommandAck, pullErr *pb.Command
 	}
 }
 
+var terminalDeployment = map[string]bool{"live": true, "failed": true, "rolled_back": true, "cancelled": true, "superseded": true}
+
 func (f *fixture) waitDeployment(t *testing.T, id string) (state, reason string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -75,7 +77,7 @@ func (f *fixture) waitDeployment(t *testing.T, id string) (state, reason string)
 		if err := f.env.Pool.QueryRow(context.Background(), `SELECT state, failure_reason FROM deployments WHERE id = $1`, id).Scan(&state, &r); err != nil {
 			t.Fatal(err)
 		}
-		if state == "live" || state == "failed" {
+		if terminalDeployment[state] {
 			if r != nil {
 				reason = *r
 			}
@@ -290,7 +292,7 @@ func TestDeployFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state, reason := f.waitDeployment(t, id); state != "failed" || reason != "health_check_failed" {
+	if state, reason := f.waitDeployment(t, id); state != "failed" || reason != "health_timeout" {
 		t.Fatalf("health failure: %s %s", state, reason)
 	}
 	var live *string

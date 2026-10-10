@@ -128,6 +128,8 @@ message HealthReport {
   int32 consecutive_fails = 4;
   string last_error = 5;
   int64 checked_unix_ms = 6;
+  int32 last_status = 7;             // http status of the last check, 0 if none
+  string last_body = 8;              // first 1 KiB of the last response or command output
 }
 
 message ContainerEvent {
@@ -250,6 +252,8 @@ message HealthCheckSpec {
   uint32 healthy_threshold = 9;
   uint32 unhealthy_threshold = 10;
   uint32 start_period_seconds = 11;
+  string host = 12;                  // http: Host header
+  bool restart_on_unhealthy = 13;    // the agent restarts the container when it turns unhealthy (REQ-HC-007)
 }
 
 // IngressSpec: the agent builds the full Caddy JSON from this and sends one POST /load.
@@ -268,6 +272,7 @@ message Route {
   string redirect_www = 5;           // "" | to_www | to_apex
   repeated Upstream upstreams = 6;
   string service_id = 7;
+  uint32 stream_close_delay_seconds = 8;  // Caddy keeps WebSocket and other streams open this long after a config load (drain_seconds)
 }
 
 message Upstream {
@@ -307,6 +312,8 @@ message Command {
     StreamLogs stream_logs = 20;
     PruneImages prune_images = 21;
     ExecInput exec_input = 22;
+    ProbeHealth probe_health = 23;
+    ProbeRoute probe_route = 24;
   }
 }
 
@@ -323,4 +330,9 @@ message ExecSession { string placement_id = 1; repeated string command = 2; bool
 // ExecInput goes to a running exec session (command_id of the ExecSession): keys, a resize or the end.
 message ExecInput { string session_command_id = 1; bytes data = 2; uint32 rows = 3; uint32 cols = 4; bool eof = 5; }
 message StreamLogs { string placement_id = 1; int64 since_unix_ms = 2; bool follow = 3; }
-message PruneImages { repeated string keep_image_refs = 1; }
+message PruneImages { repeated string keep_image_refs = 1; repeated string remove_image_refs = 2; }
+// ProbeHealth runs the health check of a placement once. Result: {healthy, status, body_excerpt, duration_ms, error}.
+message ProbeHealth { string placement_id = 1; }
+// ProbeRoute sends requests to the local ingress for a host for duration_seconds (post-switch check).
+// Result: {total, failed}. A 5xx answer or a connection error counts as failed.
+message ProbeRoute { string host = 1; string path = 2; bool https = 3; uint32 duration_seconds = 4; }

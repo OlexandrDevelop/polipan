@@ -66,7 +66,7 @@ func gitSetup(t *testing.T, builder string) *gitFixture {
 
 	ctx := context.Background()
 	prj, envID, svc := gateway.NewID("prj"), gateway.NewID("env"), gateway.NewID("svc")
-	cfg := `{"port":8080,"git":{"repo":"https://git.example.com/acme/shop.git","branch":"main","path":"/","builder":"` + builder + `","dockerfile":"Dockerfile"}}`
+	cfg := `{"port":8080,"strategy_options":{"drain_seconds":0},"git":{"repo":"https://git.example.com/acme/shop.git","branch":"main","path":"/","builder":"` + builder + `","dockerfile":"Dockerfile"}}`
 	for _, q := range []struct {
 		sql  string
 		args []any
@@ -164,7 +164,7 @@ func TestAC_APP_02_MovingTagNewDigest(t *testing.T) {
 	f := setup(t) // image service nginx:1.27
 	ctx := context.Background()
 	a := f.env.NewReadyNode(t, "n1")
-	if _, err := f.env.Pool.Exec(ctx, `UPDATE services SET config = '{"image":"nginx:latest","port":8080}' WHERE id = $1`, f.serviceID); err != nil {
+	if _, err := f.env.Pool.Exec(ctx, `UPDATE services SET config = '{"image":"nginx:latest","port":8080,"strategy_options":{"drain_seconds":0}}' WHERE id = $1`, f.serviceID); err != nil {
 		t.Fatal(err)
 	}
 	digest := "sha256:" + strings.Repeat("1", 64)

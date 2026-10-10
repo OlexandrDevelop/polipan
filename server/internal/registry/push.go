@@ -230,3 +230,25 @@ func untar(path, dir string) error {
 func RepoName(serviceID string) string {
 	return url.PathEscape(strings.ToLower(strings.ReplaceAll(serviceID, "_", "-")))
 }
+
+// Delete removes the manifest of an image by digest (image GC of a pruned release, REQ-REL-006).
+// Other refs than the ones of this registry are ignored. The blobs go with the registry garbage collector.
+func (r *Registry) Delete(ctx context.Context, ref string) error {
+	if !r.IsOwnImage(ref) {
+		return nil
+	}
+	rest := strings.TrimPrefix(ref, r.Cfg.PullHost+"/")
+	repo, digest, ok := strings.Cut(rest, "@")
+	if !ok || repo == "" || !strings.HasPrefix(digest, "sha256:") {
+		return fmt.Errorf("registry: not an image by digest: %s", ref)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, r.Cfg.URL+"/v2/"+repo+"/manifests/"+digest, nil)
+	if err != nil {
+		return err
+	}
+	err = r.do(req, http.StatusAccepted)
+	if err != nil && strings.Contains(err.Error(), "status 404") {
+		return nil // gone already
+	}
+	return err
+}

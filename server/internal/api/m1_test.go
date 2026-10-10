@@ -54,6 +54,25 @@ func (f *fakeOrch) Deploy(ctx context.Context, serviceID, actorID, trigger strin
 	return id, err
 }
 
+// DeployWith is Deploy with the request of the API. Plan, Cancel and TestHealth are only what the handlers need.
+func (f *fakeOrch) DeployWith(ctx context.Context, p orchestrator.DeployParams) (string, []orchestrator.Warning, error) {
+	id, err := f.Deploy(ctx, p.ServiceID, p.ActorID, "manual")
+	return id, nil, err
+}
+
+func (f *fakeOrch) Plan(_ context.Context, p orchestrator.DeployParams) (orchestrator.Plan, error) {
+	if p.Strategy == "canary" {
+		return orchestrator.Plan{}, orchestrator.ErrStrategyUnavailable
+	}
+	return orchestrator.Plan{Strategy: "recreate", ExpectedDowntime: "short"}, nil
+}
+
+func (f *fakeOrch) Cancel(context.Context, string, string) error { return nil }
+
+func (f *fakeOrch) TestHealth(context.Context, string) (orchestrator.HealthResult, error) {
+	return orchestrator.HealthResult{Healthy: true, Status: 200}, nil
+}
+
 func (f *fakeOrch) SetRunning(_ context.Context, _ string, running bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -516,8 +535,8 @@ func TestAC_APP_05_StopStartDeploy(t *testing.T) {
 	if rec := c.do("POST", "/api/v1/services/"+svc+"/deploy", nil); rec.Code != 409 || !strings.Contains(rec.Body.String(), "node_unavailable") {
 		t.Fatalf("no node: %d %s", rec.Code, rec.Body)
 	}
-	if rec := c.do("POST", "/api/v1/services/"+svc+"/deploy", map[string]any{"dry_run": true, "strategy": "blue_green"}); rec.Code != 422 {
-		t.Fatalf("blue green: %d", rec.Code)
+	if rec := c.do("POST", "/api/v1/services/"+svc+"/deploy", map[string]any{"dry_run": true, "strategy": "canary"}); rec.Code != 422 {
+		t.Fatalf("canary: %d", rec.Code)
 	}
 	if plan := c.ok(200, "POST", "/api/v1/services/"+svc+"/deploy", map[string]any{"dry_run": true}); str(plan, "strategy") != "recreate" {
 		t.Fatalf("plan: %v", plan)

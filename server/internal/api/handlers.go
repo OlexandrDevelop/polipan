@@ -122,6 +122,21 @@ func (h *Handlers) orchestratorFailed(w http.ResponseWriter, r *http.Request, er
 		notFoundError(w, r)
 	case errors.Is(err, orchestrator.ErrNoNode):
 		WriteError(w, r, http.StatusConflict, CodeConflict, "no node is ready to run the service", map[string]any{"reason": "node_unavailable"})
+	case errors.Is(err, orchestrator.ErrAlreadyLive):
+		WriteError(w, r, http.StatusConflict, CodeAlreadyLive, "this release is the live release", nil)
+	case errors.Is(err, orchestrator.ErrImagePruned):
+		WriteError(w, r, http.StatusConflict, CodeReleaseImagePruned, "the image of this release was pruned. Start a normal deploy from its commit", nil)
+	case errors.Is(err, orchestrator.ErrSecretDestroyed):
+		WriteError(w, r, http.StatusConflict, CodeSecretVersionDestroyed, "a secret version of this release was destroyed. Nothing was started", nil)
+	case errors.Is(err, orchestrator.ErrNotCancellable):
+		WriteError(w, r, http.StatusConflict, CodeNotCancellable, "the deployment cannot be cancelled now. Let it finish, then roll back", nil)
+	case errors.Is(err, orchestrator.ErrDomainPortMismatch):
+		WriteError(w, r, http.StatusConflict, CodeDomainPortMismatch, "a domain points to a port this release does not expose. Send force to roll back anyway",
+			map[string]any{"warning": "domain_port_mismatch"})
+	case errors.Is(err, orchestrator.ErrNoLiveRelease):
+		WriteError(w, r, http.StatusConflict, CodeConflict, "the service has no live container", map[string]any{"reason": "no_live_release"})
+	case errors.Is(err, orchestrator.ErrStrategyUnavailable):
+		invalid(w, r, "strategy", "this strategy is not available in this version (use recreate or blue_green)")
 	case errors.Is(err, orchestrator.ErrDeployRunning):
 		WriteError(w, r, http.StatusConflict, CodeConflict, "a deployment of this service is running", map[string]any{"reason": "deploy_running"})
 	default:

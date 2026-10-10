@@ -17,7 +17,58 @@ var (
 	ErrNotFound      = errors.New("orchestrator: not found")
 	ErrNoNode        = errors.New("orchestrator: no ready node")           // 409 conflict, code node_unavailable in details
 	ErrDeployRunning = errors.New("orchestrator: a deployment is running") // 409 conflict
+
+	// M3 errors. The API gives each one the error code of the same name (05-api section 2).
+	ErrAlreadyLive         = errors.New("orchestrator: the release is live")                                   // 409 already_live
+	ErrImagePruned         = errors.New("orchestrator: the image of the release was pruned")                   // 409 release_image_pruned
+	ErrSecretDestroyed     = errors.New("orchestrator: a secret version of the release was destroyed")         // 409 secret_version_destroyed
+	ErrNotCancellable      = errors.New("orchestrator: the deployment cannot be cancelled now")                // 409 deployment_not_cancellable
+	ErrDomainPortMismatch  = errors.New("orchestrator: a domain points to a port the release does not expose") // 409 domain_port_mismatch
+	ErrStrategyUnavailable = errors.New("orchestrator: the strategy is not available")                         // 422
+	ErrNoLiveRelease       = errors.New("orchestrator: the service has no live container")                     // 409
 )
+
+// Warning is a note in a plan or a deployment (zero_downtime_not_available, migration_compat, domain_port_mismatch).
+type Warning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// DeployParams is a request to deploy or to roll back.
+type DeployParams struct {
+	ServiceID string
+	ActorID   string
+	// Trigger is manual, git_push, api, rollback ... Empty means manual (rollback when RollbackReleaseID is set).
+	Trigger string
+	// Strategy is recreate or blue_green. Empty means the service setting, then the default.
+	Strategy string
+	// DrainSeconds and AllowDowntimeOnLowCapacity override the service config for this deployment. Zero or nil = no override.
+	DrainSeconds               int
+	AllowDowntimeOnLowCapacity *bool
+	AllowOverlap               *bool
+	// RollbackReleaseID is the older release to go back to. No build runs.
+	RollbackReleaseID string
+	// Force accepts the warning domain_port_mismatch of a rollback.
+	Force bool
+}
+
+// Plan is what a deployment would do (REQ-DEPLOY-007).
+type Plan struct {
+	Strategy         string
+	Forced           bool
+	ExpectedDowntime string // none | short
+	Nodes            []string
+	Warnings         []Warning
+}
+
+// HealthResult is the result of one run of the health check (POST health-check:test).
+type HealthResult struct {
+	Healthy     bool   `json:"healthy"`
+	Status      int    `json:"status"`
+	BodyExcerpt string `json:"body_excerpt"`
+	DurationMS  int    `json:"duration_ms"`
+	Error       string `json:"error,omitempty"`
+}
 
 // JoinToken is a new node join token. The plain token is shown once.
 type JoinToken struct {
@@ -28,9 +79,16 @@ type JoinToken struct {
 
 // Orchestrator is what the API needs from the control side.
 type Orchestrator interface {
-	// Deploy creates a Release from the service config and starts a recreate Deployment
-	// in the background. It returns the deployment id at once (state queued).
+	// Deploy queues a manual or triggered deployment with the service settings. It returns the deployment id at once.
 	Deploy(ctx context.Context, serviceID, actorID, trigger string) (deploymentID string, err error)
+	// DeployWith queues a deployment or a rollback. A newer queued deployment replaces older queued ones (08 section 10).
+	DeployWith(ctx context.Context, p DeployParams) (deploymentID string, warnings []Warning, err error)
+	// Plan answers what DeployWith would do, without doing it (dry_run).
+	Plan(ctx context.Context, p DeployParams) (Plan, error)
+	// Cancel cancels a deployment up to health_checking. In switching and draining it gives ErrNotCancellable.
+	Cancel(ctx context.Context, deploymentID, actorID string) error
+	// TestHealth runs the health check of a live container once.
+	TestHealth(ctx context.Context, serviceID string) (HealthResult, error)
 	// SetRunning stops (false) or starts (true) the service containers. It changes services.desired_state,
 	// the placement role and the desired state of the node. No new Release is made (AC-APP-05).
 	SetRunning(ctx context.Context, serviceID string, running bool) error

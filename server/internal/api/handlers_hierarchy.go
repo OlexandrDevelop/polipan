@@ -488,6 +488,10 @@ func deploymentJSON(d *store.Deployment) gen.Deployment {
 	if json.Unmarshal(d.StrategyOptions, &opts) == nil {
 		out.StrategyOptions = &opts
 	}
+	var warnings []gen.Warning
+	if json.Unmarshal(d.Warnings, &warnings) == nil && len(warnings) > 0 {
+		out.Warnings = &warnings
+	}
 	if d.Steps != nil {
 		steps := make([]struct {
 			Message *string    `json:"message,omitempty"`
@@ -500,53 +504,6 @@ func deploymentJSON(d *store.Deployment) gen.Deployment {
 		out.Steps = &steps
 	}
 	return out
-}
-
-// DeployService starts a deployment and answers 202 with it. With dry_run it answers 200 with the plan.
-func (h *Handlers) DeployService(w http.ResponseWriter, r *http.Request, serviceID gen.ServiceId, _ gen.DeployServiceParams) {
-	var body gen.DeployRequest
-	if r.ContentLength != 0 && r.Body != nil {
-		if !decodeJSON(w, r, &body) {
-			return
-		}
-	}
-	s, err := h.Store.GetService(r.Context(), h.orgID(r), serviceID)
-	if fail(w, r, err) {
-		return
-	}
-	if denyProtected(w, r, "service:deploy", s.EnvProtected) {
-		return
-	}
-	if body.Strategy != nil && *body.Strategy != "recreate" {
-		invalid(w, r, "strategy", "only the recreate strategy is available in this version")
-		return
-	}
-	if body.Commit != nil && (s.SourceType != "git" || !git.ValidCommit(*body.Commit)) {
-		invalid(w, r, "commit", "commit must be a commit id of a git service")
-		return
-	}
-	if body.DryRun != nil && *body.DryRun {
-		nodes, _, err := h.Store.ReadyNodes(r.Context(), h.orgID(r))
-		if fail(w, r, err) {
-			return
-		}
-		if nodes == nil {
-			nodes = []string{}
-		}
-		downtime, strategy := gen.DeployPlanExpectedDowntime("short"), gen.Strategy("recreate")
-		WriteJSON(w, http.StatusOK, gen.DeployPlan{Strategy: &strategy, ExpectedDowntime: &downtime, Nodes: &nodes, Forced: ptr(false)})
-		return
-	}
-	depID, err := h.Orch.Deploy(deployContext(r.Context(), s.SourceType, body), serviceID, PrincipalFrom(r.Context()).User.ID, "manual")
-	if h.orchestratorFailed(w, r, err) {
-		return
-	}
-	d, err := h.Store.GetDeployment(r.Context(), h.orgID(r), depID)
-	if fail(w, r, err) {
-		return
-	}
-	w.Header().Set("Location", BasePath+"/deployments/"+depID)
-	WriteJSON(w, http.StatusAccepted, deploymentJSON(d))
 }
 
 // StopService stops the containers. The service, its release and its domains stay (AC-APP-05).

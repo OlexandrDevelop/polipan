@@ -97,6 +97,9 @@ var imageConfigKeys = map[string]bool{
 	"image": true, "port": true, "command": true, "entrypoint": true,
 	"restart_policy": true, "health": true, "strategy": true,
 	"files": true, "secret_files": true, // M2: file mounts and secret files
+	// M3: deploy settings
+	"host_port": true, "resources": true, "pre_deploy": true, "post_deploy": true,
+	"stop_grace_period": true, "retain_stopped": true, "strategy_options": true,
 }
 
 // buildImageConfig checks the config of an image service and fills the defaults.
@@ -171,22 +174,23 @@ func checkImageConfig(cfg map[string]any) (json.RawMessage, error) {
 		cfg["restart_policy"] = "always"
 	}
 	if v, ok := cfg["strategy"]; ok {
-		if s, _ := v.(string); s != "recreate" {
-			return nil, errors.New("config.strategy must be recreate in this version")
+		if s, _ := v.(string); s != "recreate" && s != "blue_green" {
+			return nil, errors.New("config.strategy must be recreate or blue_green in this version")
 		}
-	} else {
-		cfg["strategy"] = "recreate"
+	}
+	if err := checkDeployConfig(cfg); err != nil {
+		return nil, err
 	}
 	if v, ok := cfg["health"]; ok {
 		h, ok := v.(map[string]any)
 		if !ok {
 			return nil, errors.New("config.health must be an object")
 		}
-		if err := checkHealth(h); err != nil {
+		if err := checkHealth(h, port); err != nil {
 			return nil, err
 		}
 	} else if port > 0 {
-		cfg["health"] = map[string]any{"type": "tcp", "port": port}
+		cfg["health"] = map[string]any{"type": "tcp", "port": port} // REQ-HC-003
 	}
 	out, err := json.Marshal(cfg)
 	if err != nil {
@@ -195,12 +199,94 @@ func checkImageConfig(cfg map[string]any) (json.RawMessage, error) {
 	return out, nil
 }
 
-func checkHealth(h map[string]any) error {
+// checkDeployConfig checks the deploy keys of an image config (M3).
+func checkDeployConfig(cfg map[string]any) error {
+	num := func(key string, lo, hi float64) error {
+		if v, ok := cfg[key]; ok {
+			n, ok := v.(float64)
+			if !ok || n != float64(int(n)) || n < lo || n > hi {
+				return fmt.Errorf("config.%s must be a whole number from %d to %d", key, int(lo), int(hi))
+			}
+		}
+		return nil
+	}
+	if err := num("stop_grace_period", 0, 3600); err != nil {
+		return err
+	}
+	if err := num("retain_stopped", 0, 10); err != nil {
+		return err
+	}
+	if v, ok := cfg["host_port"]; ok {
+		p, ok := asPort(v)
+		if !ok {
+			return errors.New("config.host_port must be a number from 1 to 65535")
+		}
+		cfg["host_port"] = p
+	}
+	for _, k := range []string{"pre_deploy", "post_deploy"} {
+		if v, ok := cfg[k]; ok {
+			list, ok := v.([]any)
+			if !ok {
+				return fmt.Errorf("config.%s must be a list of strings", k)
+			}
+			for _, item := range list {
+				if _, ok := item.(string); !ok {
+					return fmt.Errorf("config.%s must be a list of strings", k)
+				}
+			}
+		}
+	}
+	if v, ok := cfg["resources"]; ok {
+		r, ok := v.(map[string]any)
+		if !ok {
+			return errors.New("config.resources must be an object")
+		}
+		for k, v := range r {
+			n, isNum := v.(float64)
+			if (k != "cpu_millis" && k != "memory_bytes") || !isNum || n < 0 || n != float64(int64(n)) {
+				return errors.New("config.resources can have cpu_millis and memory_bytes, whole numbers from 0")
+			}
+		}
+	}
+	if v, ok := cfg["strategy_options"]; ok {
+		o, ok := v.(map[string]any)
+		if !ok {
+			return errors.New("config.strategy_options must be an object")
+		}
+		for k, v := range o {
+			switch k {
+			case "drain_seconds":
+				n, ok := v.(float64)
+				if !ok || n != float64(int(n)) || n < 0 || n > 3600 {
+					return errors.New("config.strategy_options.drain_seconds must be a whole number from 0 to 3600")
+				}
+			case "allow_downtime_on_low_capacity", "allow_overlap":
+				if _, ok := v.(bool); !ok {
+					return fmt.Errorf("config.strategy_options.%s must be true or false", k)
+				}
+			default:
+				return fmt.Errorf("config.strategy_options.%s is not available in this version", k)
+			}
+		}
+	}
+	return nil
+}
+
+// checkHealth checks config.health (F05, REQ-HC-001, REQ-HC-002). Times are whole seconds.
+func checkHealth(h map[string]any, servicePort int) error {
+	whole := func(k string, v any, lo, hi float64) error {
+		n, ok := v.(float64)
+		if !ok || n != float64(int(n)) || n < lo || n > hi {
+			return fmt.Errorf("config.health.%s must be a whole number from %d to %d", k, int(lo), int(hi))
+		}
+		return nil
+	}
 	for k, v := range h {
+		var err error
 		switch k {
 		case "type":
-			if s, _ := v.(string); s != "tcp" {
-				return errors.New("config.health.type must be tcp in this version")
+			if s, _ := v.(string); s != "tcp" && s != "http" && s != "command" {
+				return errors.New("config.health.type must be tcp, http or command")
 			}
 		case "port":
 			p, ok := asPort(v)
@@ -208,20 +294,72 @@ func checkHealth(h map[string]any) error {
 				return errors.New("config.health.port must be a number from 1 to 65535")
 			}
 			h[k] = p
+		case "path":
+			if s, _ := v.(string); !validPathPrefix(s) {
+				return errors.New("config.health.path must start with /")
+			}
+		case "host":
+			if s, _ := v.(string); s == "" || len(s) > 253 || strings.ContainsAny(s, " \t\r\n/") {
+				return errors.New("config.health.host is not a valid host name")
+			}
+		case "command":
+			list, ok := v.([]any)
+			if !ok || len(list) == 0 {
+				return errors.New("config.health.command must be a list of strings")
+			}
+			for _, item := range list {
+				if _, ok := item.(string); !ok {
+					return errors.New("config.health.command must be a list of strings")
+				}
+			}
+		case "expected_status":
+			list, ok := v.([]any)
+			if !ok || len(list) == 0 || len(list) > 2 {
+				return errors.New("config.health.expected_status must be [status] or [from, to]")
+			}
+			for _, item := range list {
+				n, ok := item.(float64)
+				if !ok || n < 100 || n > 599 || n != float64(int(n)) {
+					return errors.New("config.health.expected_status must hold HTTP statuses from 100 to 599")
+				}
+			}
+		case "interval", "timeout":
+			err = whole(k, v, 1, 3600)
+		case "healthy_threshold", "unhealthy_threshold":
+			err = whole(k, v, 1, 100)
+		case "start_period":
+			err = whole(k, v, 0, 3600)
 		case "deploy_timeout":
-			n, ok := v.(float64)
-			if !ok || n < 1 || n > 3600 {
-				return errors.New("config.health.deploy_timeout must be a number of seconds from 1 to 3600")
+			err = whole(k, v, 1, 3600)
+		case "restart_on_unhealthy":
+			if _, ok := v.(bool); !ok {
+				return errors.New("config.health.restart_on_unhealthy must be true or false")
 			}
 		default:
 			return fmt.Errorf("config.health.%s is not available in this version", k)
 		}
+		if err != nil {
+			return err
+		}
 	}
-	if _, ok := h["type"]; !ok {
-		h["type"] = "tcp"
+	typ, _ := h["type"].(string)
+	if typ == "" {
+		typ = "tcp"
+		h["type"] = typ
 	}
-	if _, ok := h["port"]; !ok {
-		return errors.New("config.health.port is required")
+	_, hasPort := h["port"]
+	switch typ {
+	case "tcp", "http":
+		if !hasPort && servicePort == 0 {
+			return errors.New("config.health.port is required when the service has no port")
+		}
+		if !hasPort {
+			h["port"] = servicePort
+		}
+	case "command":
+		if _, ok := h["command"]; !ok {
+			return errors.New("config.health.command is required for a command check")
+		}
 	}
 	return nil
 }

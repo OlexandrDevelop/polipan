@@ -56,6 +56,14 @@ type Deps struct {
 	Build *BuildDeps
 	// MonitorInterval is how often Run checks the node states (default 1 s).
 	MonitorInterval time.Duration
+	// SwitchAckTimeout is how long an ingress node has to ack a traffic switch (default 30 s, switch_ack_timeout).
+	SwitchAckTimeout time.Duration
+	// PostSwitchCheck is how long the public route is probed after a switch (default 15 s, post_switch_check).
+	PostSwitchCheck time.Duration
+	// FailedGreenKeep is how long the stopped containers of a failed deployment stay (default 10 min, failed_green_keep).
+	FailedGreenKeep time.Duration
+	// Max5xxRate is the failure rate of the post-switch check that triggers a rollback (default 0.02, canary_max_5xx_rate).
+	Max5xxRate float64
 }
 
 // Control implements orchestrator.Orchestrator.
@@ -71,7 +79,7 @@ type Control struct {
 	wg     sync.WaitGroup
 
 	mu     sync.Mutex
-	active map[string]bool // deployments run by this process
+	active map[string]*activeDep // deployments run by this process
 }
 
 var _ orchestrator.Orchestrator = (*Control)(nil)
@@ -91,11 +99,23 @@ func New(d Deps) *Control {
 	if d.MonitorInterval == 0 {
 		d.MonitorInterval = time.Second
 	}
+	if d.SwitchAckTimeout == 0 {
+		d.SwitchAckTimeout = 30 * time.Second
+	}
+	if d.PostSwitchCheck == 0 {
+		d.PostSwitchCheck = 15 * time.Second
+	}
+	if d.FailedGreenKeep == 0 {
+		d.FailedGreenKeep = 10 * time.Minute
+	}
+	if d.Max5xxRate == 0 {
+		d.Max5xxRate = 0.02
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Control{Deps: d, runCtx: ctx, stop: cancel, active: map[string]bool{}}
+	return &Control{Deps: d, runCtx: ctx, stop: cancel, active: map[string]*activeDep{}}
 }
 
-// Run marks the deployments that a former server left running as failed (server_restarted),
+// Run finishes the deployments that a former server left running (REQ-DEPLOY-107),
 // then watches the node states until ctx ends. On exit it stops the deployments and waits for them.
 func (c *Control) Run(ctx context.Context) error {
 	defer c.Close()

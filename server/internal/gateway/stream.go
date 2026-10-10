@@ -5,9 +5,11 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
@@ -323,19 +325,29 @@ func (g *Gateway) onActualState(ctx context.Context, nodeID string, a *pb.Actual
 		nodeID, a.GetAppliedStateVersion()); err != nil {
 		return err
 	}
+	type change struct{ placement, from, to string }
+	var changes []change
 	for _, c := range a.GetContainers() {
-		_, err := tx.Exec(ctx,
-			`UPDATE placements SET
+		var from, to string
+		err := tx.QueryRow(ctx,
+			`WITH old AS (SELECT health FROM placements WHERE id = $1 AND node_id = $2)
+			 UPDATE placements SET
 			   container_id = COALESCE(NULLIF($3,''), container_id),
 			   health = CASE
 			     WHEN $4 IN ('unknown','starting','healthy','unhealthy') AND $4 <> '' THEN $4
 			     WHEN $5 = 'exited' AND role <> 'stopped' THEN 'unhealthy'
 			     ELSE health END,
 			   updated_at = now()
-			 WHERE id = $1 AND node_id = $2`,
-			c.GetPlacementId(), nodeID, c.GetContainerId(), c.GetHealth(), c.GetState())
+			 WHERE id = $1 AND node_id = $2 RETURNING (SELECT health FROM old), health`,
+			c.GetPlacementId(), nodeID, c.GetContainerId(), c.GetHealth(), c.GetState()).Scan(&from, &to)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
 		if err != nil {
 			return err
+		}
+		if from != to {
+			changes = append(changes, change{c.GetPlacementId(), from, to})
 		}
 	}
 	for _, d := range a.GetDomains() {

@@ -62,6 +62,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	builds := control.SetupBuilds(ctx, pool, ca, kek, os.Getenv, log) // git builds and registry (S-B)
 	ctl := control.New(control.Deps{DB: pool, Clock: clk, Log: log, Config: cfg, CA: ca, Sender: gw, Secrets: sec, Build: builds})
 	gw.State = ctl
+	gw.Health = ctl
 
 	handler, err := api.NewRouter(api.Deps{
 		Log: log, DB: pool, Pool: pool, Clock: clk, RateLimit: cfg.APIRateLimit, Web: web.Handler(),

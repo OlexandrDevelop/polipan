@@ -79,7 +79,7 @@ func (c *Control) SSRFPolicy(ctx context.Context, orgID string) ssrf.Policy {
 // image ref by digest. For an image service it returns "". A failure leaves the live release alone.
 func (c *Control) buildIfGit(ctx context.Context, depID, serviceID string) (string, *deployErr) {
 	fail := func(reason, format string, a ...any) (string, *deployErr) {
-		return "", &deployErr{reason, fmt.Sprintf(format, a...)}
+		return "", &deployErr{reason: reason, detail: fmt.Sprintf(format, a...)}
 	}
 	var sourceType, orgID, projectID string
 	var raw []byte

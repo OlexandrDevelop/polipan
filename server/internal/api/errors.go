@@ -25,6 +25,13 @@ const (
 	// Specific codes of the list in 05-api.md section 2.
 	CodeDomainInUse  = "domain_in_use" // 409
 	CodeNameConflict = "name_conflict" // 409
+
+	// M3 codes.
+	CodeAlreadyLive         = "already_live"               // 409
+	CodeReleaseImagePruned  = "release_image_pruned"       // 409
+	CodeNotCancellable      = "deployment_not_cancellable" // 409
+	CodeDomainPortMismatch  = "domain_port_mismatch"       // 409
+	CodeIdempotencyKeyReuse = "idempotency_key_reuse"      // 409
 )
 
 // WriteError writes the error object {code, message, details, request_id}.

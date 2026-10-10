@@ -47,21 +47,21 @@ func (c *Control) pickNodeForService(ctx context.Context, serviceID string) (rea
 func (c *Control) resolveRelease(ctx context.Context, serviceID, nodeID string) (*vars.Snapshot, *deployErr) {
 	if _, err := c.DB.Exec(ctx, `UPDATE volumes SET node_id = $2 WHERE service_id = $1 AND node_id IS NULL AND kind <> 'tmpfs'`,
 		serviceID, nodeID); err != nil {
-		return nil, &deployErr{ReasonInvalidConfig, "pin volumes: " + err.Error()}
+		return nil, &deployErr{reason: ReasonInvalidConfig, detail: "pin volumes: " + err.Error()}
 	}
 	snap, err := vars.Build(ctx, c.DB, serviceID)
 	var unresolved *vars.UnresolvedError
 	var cycle *vars.CycleError
 	switch {
 	case errors.As(err, &unresolved):
-		return nil, &deployErr{ReasonUnresolvedReference, unresolved.Error()}
+		return nil, &deployErr{reason: ReasonUnresolvedReference, detail: unresolved.Error()}
 	case errors.As(err, &cycle):
-		return nil, &deployErr{ReasonReferenceCycle, cycle.Error()}
+		return nil, &deployErr{reason: ReasonReferenceCycle, detail: cycle.Error()}
 	case err != nil:
-		return nil, &deployErr{ReasonInvalidConfig, "resolve variables: " + err.Error()}
+		return nil, &deployErr{reason: ReasonInvalidConfig, detail: "resolve variables: " + err.Error()}
 	}
 	if len(snap.Secrets) > 0 && c.Secrets == nil {
-		return nil, &deployErr{ReasonInvalidConfig, "the service uses secrets but the secrets store is not set up"}
+		return nil, &deployErr{reason: ReasonInvalidConfig, detail: "the service uses secrets but the secrets store is not set up"}
 	}
 	return snap, nil
 }
