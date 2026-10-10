@@ -8,6 +8,8 @@ package apiops
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -75,6 +77,13 @@ func Do(ctx context.Context, c *gen.Client, opID string, in Input) (*http.Respon
 		}
 		for k, v := range in.Header {
 			req.Header[k] = v
+		}
+		// A POST that starts work accepts an idempotency key (REQ-API-005).
+		if req.Method == http.MethodPost && req.Header.Get("Idempotency-Key") == "" {
+			b := make([]byte, 16)
+			if _, err := rand.Read(b); err == nil {
+				req.Header.Set("Idempotency-Key", hex.EncodeToString(b))
+			}
 		}
 		return nil
 	}

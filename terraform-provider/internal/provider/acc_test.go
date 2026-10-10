@@ -87,11 +87,6 @@ resource "polipan_team" "t" {
   name = "acc-team-%[1]s"
 }
 
-resource "polipan_api_token" "tok" {
-  name   = "acc-token-%[1]s"
-  scopes = ["read"]
-}
-
 data "polipan_project" "by_slug" {
   slug = polipan_project.p.slug
 }

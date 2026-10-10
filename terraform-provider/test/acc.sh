@@ -53,7 +53,7 @@ if [ -n "${TERRAFORM_BIN:-}" ]; then
   cp "$TERRAFORM_BIN" "$TFDIR/terraform"
 else
   echo "== download terraform $TF_VERSION"
-  docker run --rm -v "$DL:/dl" -v "$TFDIR:/tf" alpine:latest sh -c \
+  docker run --rm --user "$(id -u):$(id -g)" -v "$DL:/dl" -v "$TFDIR:/tf" alpine:latest sh -c \
     "wget -q -O /dl/tf.zip https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip && unzip -q -o /dl/tf.zip -d /tf" \
     || { echo "cannot download terraform: no internet access? Set TERRAFORM_BIN to a local binary."; exit 2; }
 fi
@@ -64,7 +64,7 @@ echo "== build server"
 git -C "$ROOT" archive HEAD | tar -x -C "$SRC"
 docker run --rm -e GOTOOLCHAIN=local -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false \
   -v "$SRC:/src" -v "$OUT:/out" -v ppgocache:/root/.cache/go-build -v ppgomod:/go/pkg/mod -w /src "$GO_IMAGE" \
-  go build -trimpath -o /out/polipan-server ./server/cmd/polipan-server
+  sh -c "go build -trimpath -o /out/polipan-server ./server/cmd/polipan-server && chown -R $(id -u):$(id -g) /out"
 
 # 3. fresh database
 echo "== create database $DB"
@@ -79,7 +79,6 @@ SERVER_ENV=(-e "POLIPAN_DATABASE_URL=postgres://postgres:${PG_PASS}@127.0.0.1:${
   -e "POLIPAN_LISTEN=127.0.0.1:${PORT}" -e "POLIPAN_AGENT_LISTEN=127.0.0.1:${GRPC_PORT}"
   -e "POLIPAN_EXTERNAL_URL=http://127.0.0.1:${PORT}" -e "POLIPAN_AGENT_HOSTS=127.0.0.1,localhost"
   -e POLIPAN_MASTER_KEY_FILE=/work/master.key -e POLIPAN_API_RATE_LIMIT=100000)
-server_run() { docker run "$@" --user "$(id -u):$(id -g)" --network host "${SERVER_ENV[@]}" -v "$OUT/polipan-server:/polipan-server:ro" -v "$WORK/master.key:/work/master.key:ro" alpine:latest /polipan-server; }
 
 echo "== start server on port $PORT"
 docker run -d --name "$SERVER_NAME" --user "$(id -u):$(id -g)" --network host "${SERVER_ENV[@]}" \

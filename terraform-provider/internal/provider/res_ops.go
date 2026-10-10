@@ -315,7 +315,7 @@ type alertRuleModel struct {
 	Threshold             types.Float64 `tfsdk:"threshold"`
 	ForSeconds            types.Int64   `tfsdk:"for_seconds"`
 	Query                 types.String  `tfsdk:"query"`
-	Count                 types.Int64   `tfsdk:"count"`
+	Count                 types.Int64   `tfsdk:"event_count"`
 	RepeatIntervalSeconds types.Int64   `tfsdk:"repeat_interval_seconds"`
 	Enabled               types.Bool    `tfsdk:"enabled"`
 }
@@ -378,7 +378,7 @@ var alertRuleSpec = spec[alertRuleModel]{
 			"threshold":               schema.Float64Attribute{Optional: true, Description: "Threshold of the rule."},
 			"for_seconds":             schema.Int64Attribute{Optional: true, Description: "The condition must hold this long."},
 			"query":                   schema.StringAttribute{Optional: true, Description: "Log query, for rules on log lines."},
-			"count":                   schema.Int64Attribute{Optional: true, Description: "Number of events, for rules on log lines."},
+			"event_count":                   schema.Int64Attribute{Optional: true, Description: "Number of events, for rules on log lines."},
 			"repeat_interval_seconds": schema.Int64Attribute{Optional: true, Computed: true, Description: "Seconds between repeated alerts. Server default 14400.", PlanModifiers: intKeep},
 			"enabled":                 schema.BoolAttribute{Optional: true, Computed: true, Description: "Turn the rule on or off. Default true.", PlanModifiers: boolKeep},
 		},
