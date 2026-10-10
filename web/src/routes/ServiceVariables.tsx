@@ -2,7 +2,7 @@
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import type { components } from '@api/schema'
 import { api } from '@/api/client'
 import { ApiError, unwrap } from '@/api/errors'
@@ -18,6 +18,7 @@ import {
   EmptyState,
   SecretField,
   SelectField,
+  LockIcon,
   Skeleton,
   TextAreaField,
   TextField,
@@ -709,7 +710,7 @@ function VersionsPanel({
   )
 }
 
-function Chip({ children }: { children: string }) {
+function Chip({ children }: { children: ReactNode }) {
   return (
     <span className="inline-flex items-center rounded-full border border-border-strong px-2 py-0.5 text-xs">
       {children}
@@ -843,7 +844,11 @@ export function ServiceVariables({
                 {r.kind === 'secret' && <Chip>{t('variables.secret')}</Chip>}
                 {r.item.build_time && <Chip>{t('variables.build_time_short')}</Chip>}
                 {r.item.preview && <Chip>{t('variables.preview_short')}</Chip>}
-                {r.item.git_managed && <Chip>{t('variables.git_managed')}</Chip>}
+                {r.item.git_managed && (
+                  <Chip>
+                    <LockIcon /> {t('variables.git_managed')}
+                  </Chip>
+                )}
               </span>
             ),
           },

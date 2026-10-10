@@ -21,6 +21,15 @@ export interface MockState {
   rollbackCalls: { release_id?: string }[]
   // True: the event stream answers 503 (the server is paused).
   eventsDown: boolean
+  // UI-29: the sync state, the answer of the plan call and the bodies of the apply calls.
+  configState: NonNullable<Schemas['Project']['config_sync_state']>
+  configPlan: Schemas['ConfigPlan']
+  // A 422 answer of the plan call (a file with errors). It wins over configPlan.
+  configPlanError?: { code: string; message: string; details: Record<string, unknown> }
+  planBodies: string[]
+  applyCalls: { config?: string; plan_hash?: string; prune?: boolean; prune_data?: boolean }[]
+  // The code of a 409 answer of the apply call.
+  applyConflict?: string
 }
 
 export const LEAKED_SECRET = 'sk_live_must_never_show'
@@ -66,6 +75,10 @@ export function defaultState(role: Schemas['Role'] = 'owner'): MockState {
     deployCalls: [],
     rollbackCalls: [],
     eventsDown: false,
+    configState: 'in_sync',
+    configPlan: { plan_hash: 'h1', valid: true, changes: [] },
+    planBodies: [],
+    applyCalls: [],
     variables: [
       { id: 'v1', name: 'LOG_LEVEL', value: 'info', environment_id: 'e1', service_id: 's1' },
     ],
@@ -152,6 +165,36 @@ export async function mockApi(page: Page, state: MockState) {
     if (method === 'GET' && path === '/org')
       return json(route, { id: 'o1', name: 'Acme', slug: 'acme' })
     if (method === 'GET' && path === '/projects') return json(route, { items: [project] })
+    if (method === 'GET' && path === '/projects/p1') {
+      return json(route, {
+        ...project,
+        config_source: { repo: 'acme/shop', branch: 'main', path: 'polipan.yaml' },
+        config_sync_state: state.configState,
+      })
+    }
+    if (method === 'GET' && path === '/projects/p1/config') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/yaml',
+        body: 'version: 1\nservices: {}\n',
+      })
+    }
+    if (method === 'POST' && path === '/projects/p1/config/plan') {
+      state.planBodies.push(request.postData() ?? '')
+      if (state.configPlanError) return json(route, state.configPlanError, 422)
+      return json(route, state.configPlan)
+    }
+    if (method === 'POST' && path === '/projects/p1/config/apply') {
+      state.applyCalls.push(request.postDataJSON() as MockState['applyCalls'][number])
+      if (state.applyConflict) {
+        return json(
+          route,
+          { code: state.applyConflict, message: 'conflict', request_id: 'mock' },
+          409,
+        )
+      }
+      return json(route, { deployments: [] }, 202)
+    }
     if (method === 'GET' && path === '/projects/p1/environments') return json(route, [environment])
     if (method === 'GET' && path === '/environments/e1/services') return json(route, state.services)
     if (method === 'GET' && path === '/services/s1') return json(route, service)
