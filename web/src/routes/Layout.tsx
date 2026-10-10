@@ -8,10 +8,12 @@ import { unwrap } from '@/api/errors'
 import { sessionWasActive, useMe } from '@/auth'
 import { CommandPalette } from '@/components/CommandPalette'
 import { ContextSwitcher } from '@/components/ContextSwitcher'
+import { NotificationsBell } from '@/components/NotificationsBell'
 import { ThemeCycle } from '@/components/ThemeToggle'
-import { Button, Skeleton } from '@/components/ui'
+import { Banner, Button, Skeleton } from '@/components/ui'
 import { saveContext } from '@/context'
 import { t } from '@/i18n'
+import { useLiveEvents } from '@/live'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { queryClient } from '@/queryClient'
 
@@ -35,10 +37,11 @@ const navLink =
 // The frame of every signed-in page: navigation, top bar and the sign-in check.
 export function AppShell() {
   const { org } = useParams({ from: '/o/$org' })
-  const { project, env } = useParams({ strict: false })
+  const { project, env, deployment } = useParams({ strict: false })
   const me = useMe()
   const [palette, setPalette] = useState(false)
   const userId = me.data?.user?.id
+  const live = useLiveEvents(Boolean(me.data))
 
   // Ctrl+K or Cmd+K opens the command palette on every signed-in page (REQ-UI-019).
   useEffect(() => {
@@ -105,6 +108,11 @@ export function AppShell() {
             </Link>
           </li>
           <li className="flex-1 sm:flex-none">
+            <Link to="/o/$org/deployments" params={{ org }} className={navLink}>
+              {t('nav.deployments')}
+            </Link>
+          </li>
+          <li className="flex-1 sm:flex-none">
             <Link to="/o/$org/nodes" params={{ org }} className={navLink}>
               {t('nav.nodes')}
             </Link>
@@ -133,6 +141,7 @@ export function AppShell() {
                 {t('palette.shortcut')}
               </kbd>
             </Button>
+            <NotificationsBell org={org} notices={live.notices} onClear={live.clearNotices} />
             <span className="hidden sm:inline-flex">
               <ThemeCycle />
             </span>
@@ -146,7 +155,17 @@ export function AppShell() {
           tabIndex={-1}
           className="mx-auto w-full max-w-[1600px] p-4 pb-24 outline-none sm:p-6 sm:pb-6 lg:p-8"
         >
-          {wrongOrg ? <NotFoundPage /> : <Outlet />}
+          {/* The deployment page shows its own banner for its own stream. */}
+          {live.disconnected && !deployment && (
+            <div className="mb-4">
+              <Banner variant="warning" title={t('live.paused')}>
+                {t('live.paused_text')}
+              </Banner>
+            </div>
+          )}
+          <div data-stale={live.disconnected || undefined}>
+            {wrongOrg ? <NotFoundPage /> : <Outlet />}
+          </div>
         </main>
         {palette && (
           <CommandPalette

@@ -5,12 +5,14 @@ import { HomeRedirect, LoginPage, SetupPage } from '@/routes/Auth'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { AppShell, RootLayout } from '@/routes/Layout'
 import { DeploymentPage } from '@/routes/DeploymentPage'
+import { DeploymentsPage } from '@/routes/DeploymentsPage'
 import { NewServicePage } from '@/routes/NewService'
 import type { SourceKind } from '@/routes/NewService'
 import { NodesPage } from '@/routes/Nodes'
 import { ProfilePage } from '@/routes/Profile'
 import { ProjectPage } from '@/routes/ProjectPage'
 import { DashboardPage, ProjectsPage } from '@/routes/Projects'
+import { ReleaseDiffPage } from '@/routes/ReleaseDiffPage'
 import { ServicePage } from '@/routes/ServicePage'
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFoundPage })
@@ -54,6 +56,20 @@ const nodesRoute = createRoute({
   path: 'nodes',
   component: NodesPage,
 })
+const deploymentsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'deployments',
+  component: DeploymentsPage,
+  // The filters stay in the URL, so a link restores the view (navigation, section 2).
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { project?: string; env?: string; state?: string; service?: string } => ({
+    ...(typeof search.project === 'string' && search.project ? { project: search.project } : {}),
+    ...(typeof search.env === 'string' && search.env ? { env: search.env } : {}),
+    ...(typeof search.state === 'string' && search.state ? { state: search.state } : {}),
+    ...(typeof search.service === 'string' && search.service ? { service: search.service } : {}),
+  }),
+})
 const profileRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'settings/profile',
@@ -82,6 +98,11 @@ const deploymentRoute = createRoute({
   path: 'p/$project/e/$env/s/$service/deployments/$deployment',
   component: DeploymentPage,
 })
+const releaseDiffRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'p/$project/e/$env/s/$service/releases/$release/diff/$other',
+  component: ReleaseDiffPage,
+})
 const serviceRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'p/$project/e/$env/s/$service',
@@ -100,6 +121,7 @@ const routeTree = rootRoute.addChildren([
   orgRoute.addChildren([
     dashboardRoute,
     projectsRoute,
+    deploymentsRoute,
     nodesRoute,
     profileRoute,
     projectRoute,
@@ -108,6 +130,7 @@ const routeTree = rootRoute.addChildren([
     serviceRoute,
     serviceTabRoute,
     deploymentRoute,
+    releaseDiffRoute,
   ]),
 ])
 

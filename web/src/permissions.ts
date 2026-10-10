@@ -5,7 +5,8 @@ import { useMe } from '@/auth'
 
 export type Role = components['schemas']['Role']
 
-// The permissions of the M1 and M2 screens. Rules follow the matrix in docs/spec/10-security.md.
+// The permissions of the M1 to M3 screens. Rules follow the matrix in docs/spec/10-security.md.
+//   all:   every role
 //   dev:   owner, admin, developer
 //   admin: owner, admin
 //   p:     owner, admin; developer only on a non-protected environment
@@ -15,6 +16,9 @@ export type Permission =
   | 'service:create'
   | 'service:update'
   | 'service:deploy'
+  | 'service:rollback'
+  | 'deployment:read'
+  | 'deployment:cancel'
   | 'service:restart'
   | 'service:exec'
   | 'domain:manage'
@@ -26,12 +30,15 @@ export type Permission =
   | 'volume:manage'
   | 'git:manage'
 
-const rules: Record<Permission, 'dev' | 'admin' | 'p'> = {
+const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'project:create': 'dev',
   'env:create': 'dev',
   'service:create': 'p',
   'service:update': 'p',
   'service:deploy': 'p',
+  'service:rollback': 'p',
+  'deployment:read': 'all',
+  'deployment:cancel': 'p',
   'service:restart': 'dev',
   'service:exec': 'p',
   'domain:manage': 'p',
@@ -54,6 +61,7 @@ export function accessFor(
 ): Access {
   if (role === 'owner' || role === 'admin') return 'allow'
   const rule = rules[permission]
+  if (rule === 'all') return role ? 'allow' : 'hidden'
   if (role === 'developer' && rule !== 'admin') {
     return rule === 'p' && isProtected ? 'blocked' : 'allow'
   }

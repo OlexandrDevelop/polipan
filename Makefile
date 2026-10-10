@@ -86,8 +86,9 @@ lint-web:
 	cd web && npm ci --no-audit --no-fund && npm run lint && npm run typecheck && npm run format:check
 
 .PHONY: gate3
-gate3: ## Gate 3: OpenAPI lint and breaking-change check
+gate3: ## Gate 3: OpenAPI lint, breaking-change check and screens operationId check
 	sh test/ci/check-sync.sh
+	sh test/ci/check-screens-operations.sh
 	$(REDOCLY) lint api/openapi.yaml
 	sh test/ci/openapi-breaking.sh
 

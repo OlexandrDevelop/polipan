@@ -8,6 +8,7 @@ import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Modal } from '@/components/Modal'
+import { Onboarding } from '@/components/Onboarding'
 import { PageHeader } from '@/components/PageHeader'
 import { Button, Card, EmptyState, Skeleton, StatusBadge, TextField } from '@/components/ui'
 import { t, tState } from '@/i18n'
@@ -144,10 +145,15 @@ export function DashboardPage() {
   return (
     <section className="space-y-6">
       <PageHeader title={t('dashboard.title')} />
+      <Onboarding />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <h2 className="font-semibold">{t('dashboard.projects')}</h2>
-          <p className="text-2xl">{projects.data?.length ?? '-'}</p>
+          {projects.isError ? (
+            <ErrorBanner error={projects.error} onRetry={() => void projects.refetch()} />
+          ) : (
+            <p className="text-2xl">{projects.data?.length ?? '-'}</p>
+          )}
         </Card>
         <Card className="space-y-2">
           <h2 className="font-semibold">

@@ -2,13 +2,15 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from '@/api/client'
 import { ApiError, unwrap } from '@/api/errors'
 import { DataList } from '@/components/DataList'
+import { DeployDialog } from '@/components/DeployDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { PageHeader } from '@/components/PageHeader'
+import { RollbackDialog } from '@/components/RollbackDialog'
 import { Time } from '@/components/Time'
 import {
   Banner,
@@ -25,6 +27,8 @@ import { useMe } from '@/auth'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { ServiceDomains } from '@/routes/ServiceDomains'
 import { ServiceLogs } from '@/routes/ServiceLogs'
+import { ServiceHealth } from '@/routes/ServiceHealth'
+import { ServiceReleases, useReleases } from '@/routes/ServiceReleases'
 import { ServiceSettings } from '@/routes/ServiceSettings'
 import { ServiceStorage } from '@/routes/ServiceStorage'
 import { ServiceTerminal } from '@/routes/ServiceTerminal'
@@ -36,9 +40,11 @@ import { deploymentTone, isDeploymentActive, serviceTone } from '@/status'
 const tabs = [
   'overview',
   'deployments',
+  'releases',
   'domains',
   'env',
   'volumes',
+  'health',
   'logs',
   'terminal',
   'settings',
@@ -69,8 +75,17 @@ function sourceText(service: Service): string {
   return typeof config.image === 'string' ? config.image : '-'
 }
 
-function Overview({ service, serviceId }: { service: Service; serviceId: string }) {
+function Overview({
+  service,
+  serviceId,
+  base,
+}: {
+  service: Service
+  serviceId: string
+  base: { org: string; project: string; env: string; service: string }
+}) {
   const deployments = useDeployments(serviceId)
+  const releases = useReleases(serviceId)
   const nodes = useNodes()
   const domains = useQuery({
     queryKey: ['domains', serviceId],
@@ -80,11 +95,31 @@ function Overview({ service, serviceId }: { service: Service; serviceId: string 
       ),
   })
   const latest = deployments.data?.items?.[0]
+  const liveRelease = releases.data?.items?.find((r) => r.id === service.live_release_id)
   const nodeName = (id?: string) => nodes.data?.find((n) => n.id === id)?.name ?? id ?? '-'
   const config = service.config ?? {}
 
   return (
     <div className="space-y-4">
+      {deployments.isError && (
+        <ErrorBanner error={deployments.error} onRetry={() => void deployments.refetch()} />
+      )}
+      {latest && isDeploymentActive(latest.state) && (
+        <Banner
+          title={t('service.deploying_title')}
+          action={
+            <Link
+              to="/o/$org/p/$project/e/$env/s/$service/deployments/$deployment"
+              params={{ ...base, deployment: latest.id ?? '' }}
+              className="text-primary underline"
+            >
+              {t('service.open_deployment')}
+            </Link>
+          }
+        >
+          {tState('status.deployment', latest.state)}
+        </Banner>
+      )}
       {latest?.state === 'failed' && (
         <Banner variant="danger" title={t('deployment.failed_title')}>
           <p>{tState('deployment.reason', latest.failure_reason)}</p>
@@ -104,7 +139,23 @@ function Overview({ service, serviceId }: { service: Service; serviceId: string 
         </Card>
         <Card className="space-y-1">
           <h2 className="font-semibold">{t('service.release')}</h2>
-          <p className="break-all text-sm">{service.live_release_id ?? t('service.no_release')}</p>
+          {releases.isPending && Boolean(service.live_release_id) ? (
+            <Skeleton lines={1} />
+          ) : (
+            <p className="break-all text-sm">
+              {liveRelease
+                ? `v${liveRelease.number ?? ''}${liveRelease.source?.commit_sha ? ` · ${liveRelease.source.commit_sha.slice(0, 7)}` : ''}`
+                : (service.live_release_id ?? t('service.no_release'))}
+            </p>
+          )}
+          {liveRelease?.created_at && (
+            <p className="text-sm text-muted">
+              <Time value={liveRelease.created_at} />
+            </p>
+          )}
+          {releases.isError && (
+            <ErrorBanner error={releases.error} onRetry={() => void releases.refetch()} />
+          )}
           <p className="text-sm text-muted">
             {t('service.desired')}: {tState('status.desired', service.desired_state)}
           </p>
@@ -117,14 +168,18 @@ function Overview({ service, serviceId }: { service: Service; serviceId: string 
           <ul className="space-y-1 text-sm">
             {(service.placements ?? []).map((p) => (
               <li key={p.id}>
-                {nodeName(p.node_id)} · {tState('status.role', p.role)} ·{' '}
-                {tState('status.health', p.health)}
+                #{(p.replica_index ?? 0) + 1} {nodeName(p.node_id)} ·{' '}
+                {tState('status.role', p.role)} · {tState('status.health', p.health)}
               </li>
             ))}
           </ul>
         </Card>
         <Card className="space-y-1 sm:col-span-2 lg:col-span-3">
           <h2 className="font-semibold">{t('service.urls')}</h2>
+          {domains.isPending && <Skeleton lines={1} />}
+          {domains.isError && (
+            <ErrorBanner error={domains.error} onRetry={() => void domains.refetch()} />
+          )}
           {domains.data?.length === 0 && <p className="text-muted">{t('service.no_urls')}</p>}
           <ul className="space-y-1">
             {(domains.data ?? []).map((d) => (
@@ -235,6 +290,8 @@ export function ServicePage() {
   const [notice, setNotice] = useState<ReactNode>(null)
   // A change made on this page shows the banner at once, before the server reports it.
   const [localPending, setLocalPending] = useState(false)
+  const [dialog, setDialog] = useState<'deploy' | 'rollback' | null>(null)
+  const releases = useReleases(serviceId)
 
   const live = useQuery({
     queryKey: ['service', serviceId],
@@ -250,20 +307,13 @@ export function ServicePage() {
       queryClient.invalidateQueries({ queryKey: ['deployments', serviceId] }),
     ])
   }
-  const deploy = useMutation({
+  const restart = useMutation({
     mutationFn: () =>
       unwrap(
-        api.POST('/services/{service_id}/deploy', {
-          params: {
-            path: { service_id: serviceId },
-            header: { 'Idempotency-Key': crypto.randomUUID() },
-          },
-          body: { dry_run: false },
-        }),
+        api.POST('/services/{service_id}/restart', { params: { path: { service_id: serviceId } } }),
       ),
     onSuccess: async () => {
-      setNotice(t('service.deploy_started'))
-      setLocalPending(false)
+      setNotice(t('service.restart_started'))
       await refresh()
     },
   })
@@ -288,6 +338,24 @@ export function ServicePage() {
     },
   })
 
+  // The key "d" opens the deploy dialog. It never starts a deploy (navigation, section 5).
+  const environmentForKey = scope.environment
+  const keyAllowed =
+    scope.state === 'ok' &&
+    accessFor(me.data?.org_role, 'service:deploy', environmentForKey?.protected) === 'allow'
+  useEffect(() => {
+    if (!keyAllowed) return
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const typing = target?.closest('input, textarea, select, [contenteditable], dialog')
+      if (event.key === 'd' && !event.ctrlKey && !event.metaKey && !event.altKey && !typing) {
+        setDialog('deploy')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [keyAllowed])
+
   if (scope.state === 'pending') return <Skeleton />
   if (scope.state === 'error') return <ErrorBanner error={scope.error} onRetry={scope.retry} />
   if (scope.state === 'notfound' || !scope.service || !scope.environment) return <NotFoundPage />
@@ -301,7 +369,19 @@ export function ServicePage() {
   const protectedReason = t('common.needs_admin')
   const busyReason = t('service.busy')
 
-  const mutationError = [deploy, stop, start].find((m) => m.error)?.error
+  const rollbackAccess = accessFor(role, 'service:rollback', environment.protected)
+  const restartAccess = accessFor(role, 'service:restart')
+  const previous = releases.data?.items?.find((r) => r.status === 'previous')
+  const rollbackReason =
+    rollbackAccess === 'blocked'
+      ? protectedReason
+      : busy
+        ? busyReason
+        : previous
+          ? undefined
+          : t('service.no_previous')
+
+  const mutationError = [restart, stop, start].find((m) => m.error)?.error
   const conflict = mutationError instanceof ApiError && mutationError.status === 409
 
   const actions = (
@@ -309,14 +389,37 @@ export function ServicePage() {
       {deployAccess !== 'hidden' && (
         <Button
           variant="primary"
-          loading={deploy.isPending}
+          aria-keyshortcuts="d"
           reason={deployAccess === 'blocked' ? protectedReason : busy ? busyReason : undefined}
           onClick={() => {
             setNotice(null)
-            deploy.mutate()
+            setDialog('deploy')
           }}
         >
           {environment.kind === 'production' ? t('service.deploy_production') : t('service.deploy')}
+        </Button>
+      )}
+      {rollbackAccess !== 'hidden' && (
+        <Button
+          reason={rollbackReason}
+          onClick={() => {
+            setNotice(null)
+            setDialog('rollback')
+          }}
+        >
+          {t('service.rollback')}
+        </Button>
+      )}
+      {restartAccess !== 'hidden' && (
+        <Button
+          loading={restart.isPending}
+          reason={busy ? busyReason : undefined}
+          onClick={() => {
+            setNotice(null)
+            restart.mutate()
+          }}
+        >
+          {t('service.restart')}
         </Button>
       )}
       {updateAccess !== 'hidden' &&
@@ -392,11 +495,10 @@ export function ServicePage() {
             action={
               deployAccess === 'allow' ? (
                 <Button
-                  loading={deploy.isPending}
                   reason={busy ? busyReason : undefined}
                   onClick={() => {
                     setNotice(null)
-                    deploy.mutate()
+                    setDialog('deploy')
                   }}
                 >
                   {t('service.redeploy')}
@@ -432,8 +534,16 @@ export function ServicePage() {
           ))}
         </ul>
       </nav>
-      {tab === 'overview' && <Overview service={service} serviceId={serviceId} />}
+      {tab === 'overview' && <Overview service={service} serviceId={serviceId} base={base} />}
       {tab === 'deployments' && <Deployments serviceId={serviceId} base={base} />}
+      {tab === 'releases' && (
+        <ServiceReleases
+          service={service}
+          environment={environment}
+          base={base}
+          onDeploy={() => setDialog('deploy')}
+        />
+      )}
       {tab === 'domains' && (
         <ServiceDomains service={service} environmentProtected={environment.protected} />
       )}
@@ -448,6 +558,14 @@ export function ServicePage() {
       {tab === 'volumes' && (
         <ServiceStorage service={service} environmentProtected={environment.protected} />
       )}
+      {tab === 'health' && (
+        <ServiceHealth
+          key={service.id}
+          service={service}
+          environmentProtected={environment.protected}
+          onChanged={changed}
+        />
+      )}
       {tab === 'logs' && <ServiceLogs serviceId={serviceId} />}
       {tab === 'terminal' && (
         <ServiceTerminal service={service} environmentProtected={environment.protected} />
@@ -458,6 +576,23 @@ export function ServicePage() {
           service={service}
           environmentProtected={environment.protected}
           onChanged={changed}
+        />
+      )}
+      {dialog === 'deploy' && (
+        <DeployDialog
+          service={service}
+          environment={environment}
+          onClose={() => setDialog(null)}
+          onDeployed={() => setLocalPending(false)}
+        />
+      )}
+      {dialog === 'rollback' && previous?.id && (
+        <RollbackDialog
+          service={service}
+          environment={environment}
+          releaseId={previous.id}
+          onClose={() => setDialog(null)}
+          onDeployInstead={() => setDialog('deploy')}
         />
       )}
     </section>

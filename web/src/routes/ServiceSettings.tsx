@@ -8,7 +8,9 @@ import { ApiError, unwrap } from '@/api/errors'
 import { useMe } from '@/auth'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { useUnsavedGuard } from '@/components/UnsavedGuard'
-import { Banner, Button, SelectField, TextField } from '@/components/ui'
+import { Banner, Button, CheckboxField, SelectField, TextField } from '@/components/ui'
+import { obj, str, wholeNumber } from '@/configForm'
+import type { Config } from '@/configForm'
 import { joinCommand, splitCommand } from '@/envText'
 import { t } from '@/i18n'
 import { accessFor } from '@/permissions'
@@ -29,21 +31,18 @@ interface Form {
   replicas: string
   cpu: string
   memory: string
-}
-
-type Config = Record<string, unknown>
-
-function str(v: unknown, fallback = ''): string {
-  return typeof v === 'string' || typeof v === 'number' ? String(v) : fallback
-}
-
-function obj(v: unknown): Config {
-  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Config) : {}
+  strategy: string
+  drain: string
+  allowDowntime: boolean
+  allowOverlap: boolean
+  preDeploy: string
+  postDeploy: string
 }
 
 function readForm(config: Config): Form {
   const source = obj(config.source)
   const resources = obj(config.resources)
+  const options = obj(config.strategy_options)
   return {
     image: str(config.image),
     repo: str(source.repo),
@@ -56,6 +55,12 @@ function readForm(config: Config): Form {
     replicas: str(config.replicas, '1'),
     cpu: str(resources.cpu),
     memory: str(resources.memory),
+    strategy: str(config.strategy),
+    drain: str(options.drain_seconds),
+    allowDowntime: options.allow_downtime_on_low_capacity === true,
+    allowOverlap: options.allow_overlap !== false,
+    preDeploy: joinCommand(config.pre_deploy),
+    postDeploy: joinCommand(config.post_deploy),
   }
 }
 
@@ -84,6 +89,20 @@ function writeConfig(config: Config, f: Form, git: boolean): Config {
   set('replicas', f.replicas ? Number(f.replicas) : undefined)
   const resources = { ...(f.cpu ? { cpu: f.cpu } : {}), ...(f.memory ? { memory: f.memory } : {}) }
   set('resources', Object.keys(resources).length > 0 ? resources : undefined)
+  set('strategy', f.strategy || undefined)
+  const options = {
+    ...(f.drain ? { drain_seconds: Number(f.drain) } : {}),
+    ...(f.allowDowntime ? { allow_downtime_on_low_capacity: true } : {}),
+    ...(f.allowOverlap ? {} : { allow_overlap: false }),
+  }
+  set('strategy_options', Object.keys(options).length > 0 ? options : undefined)
+  for (const [key, text] of [
+    ['pre_deploy', f.preDeploy],
+    ['post_deploy', f.postDeploy],
+  ] as const) {
+    const command = splitCommand(text)
+    set(key, command.length > 0 ? command : undefined)
+  }
   return next
 }
 
@@ -103,6 +122,7 @@ function validate(f: Form, git: boolean) {
   if (!Number.isInteger(r) || r < 0 || r > 100) e.replicas = t('settings.replicas_invalid')
   if (f.cpu !== '' && !CPU_PATTERN.test(f.cpu)) e.cpu = t('settings.cpu_invalid')
   if (f.memory !== '' && !MEMORY_PATTERN.test(f.memory)) e.memory = t('settings.memory_invalid')
+  if (f.drain !== '' && !wholeNumber(f.drain, 0)) e.drain = t('settings.drain_invalid')
   return e
 }
 
@@ -296,6 +316,66 @@ export function ServiceSettings({
           error={errors.memory}
           value={form.memory}
           onChange={(e) => set({ memory: e.target.value })}
+        />
+      </fieldset>
+      <fieldset className="space-y-4">
+        <legend className="mb-2 text-lg font-semibold">{t('settings.deploy')}</legend>
+        <SelectField
+          label={t('settings.strategy')}
+          hint={managedHint('strategy') ?? t('settings.strategy_hint')}
+          disabled={lock('strategy')}
+          value={form.strategy}
+          onChange={(e) => set({ strategy: e.target.value })}
+        >
+          <option value="">{t('settings.strategy_default')}</option>
+          <option value="blue_green">{t('deploy.strategy_value.blue_green')}</option>
+          <option value="recreate">{t('deploy.strategy_value.recreate')}</option>
+        </SelectField>
+        <TextField
+          label={t('settings.drain')}
+          hint={t('settings.drain_hint')}
+          placeholder="30"
+          readOnly={lock('strategy')}
+          type="number"
+          inputMode="numeric"
+          error={errors.drain}
+          value={form.drain}
+          onChange={(e) => set({ drain: e.target.value })}
+        />
+        <CheckboxField
+          label={t('settings.allow_downtime')}
+          hint={t('settings.allow_downtime_hint')}
+          disabled={lock('strategy')}
+          checked={form.allowDowntime}
+          onChange={(e) => set({ allowDowntime: e.target.checked })}
+        />
+        <CheckboxField
+          label={t('settings.allow_overlap')}
+          hint={t('settings.allow_overlap_hint')}
+          disabled={lock('strategy')}
+          checked={form.allowOverlap}
+          onChange={(e) => set({ allowOverlap: e.target.checked })}
+        />
+        <TextField
+          label={t('settings.pre_deploy')}
+          hint={managedHint('pre_deploy') ?? t('settings.pre_deploy_hint')}
+          readOnly={lock('pre_deploy')}
+          autoComplete="off"
+          spellCheck={false}
+          value={form.preDeploy}
+          onChange={(e) => set({ preDeploy: e.target.value })}
+        />
+        {form.preDeploy.trim() !== '' && form.strategy !== 'recreate' && (
+          <Banner variant="warning">{t('settings.migration_warning')}</Banner>
+        )}
+        <TextField
+          label={t('settings.post_deploy')}
+          hint={managedHint('post_deploy') ?? t('settings.post_deploy_hint')}
+          readOnly={lock('post_deploy')}
+          autoComplete="off"
+          spellCheck={false}
+          value={form.postDeploy}
+          onChange={(e) => set({ postDeploy: e.target.value })}
         />
       </fieldset>
       {access === 'allow' && (
