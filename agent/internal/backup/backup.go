@@ -106,8 +106,12 @@ func (r *Runner) resolve(ctx context.Context, ref string) (string, error) {
 		return "", fail(CodeContainerNotFound, "no container is given")
 	}
 	if spec, ok := strings.CutPrefix(ref, "label:"); ok {
-		k, v, _ := strings.Cut(spec, "=")
-		list, err := r.Docker.List(ctx, map[string]string{k: v})
+		labels := map[string]string{}
+		for _, pair := range strings.Split(spec, ",") {
+			k, v, _ := strings.Cut(pair, "=")
+			labels[k] = v
+		}
+		list, err := r.Docker.List(ctx, labels)
 		if err != nil {
 			return "", err
 		}

@@ -138,7 +138,7 @@ func (s *Service) dataNode(ctx context.Context, p *Policy) (node string, source 
 	src := &pb.BackupSource{Engine: engine, PreHook: p.Hooks.Pre, PostHook: p.Hooks.Post}
 	switch engine {
 	case "controlplane":
-		src.Container = "label:com.docker.compose.service=postgres"
+		src.Container = "label:com.docker.compose.project=polipan,com.docker.compose.service=postgres"
 		n, err := s.anyNode(ctx, p.OrgID, "")
 		return n, src, err
 	case "volume":

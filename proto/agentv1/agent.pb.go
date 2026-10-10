@@ -3452,7 +3452,7 @@ func (x *BackupTargetSpec) GetSftpCommand() string {
 type BackupSource struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Engine    string                 `protobuf:"bytes,1,opt,name=engine,proto3" json:"engine,omitempty"`       // postgres | mysql | mariadb | mongo | redis | volume | controlplane
-	Container string                 `protobuf:"bytes,2,opt,name=container,proto3" json:"container,omitempty"` // container name of the database, or label:key=value. The user, the database and the
+	Container string                 `protobuf:"bytes,2,opt,name=container,proto3" json:"container,omitempty"` // container name of the database, or label:key=value[,key=value]. The user, the database and the
 	// password come from the environment of that container (DB_USER, DB_NAME, DB_PASSWORD).
 	VolumeName    string   `protobuf:"bytes,6,opt,name=volume_name,json=volumeName,proto3" json:"volume_name,omitempty"` // Docker volume name (volume policies, and the data of redis)
 	PreHook       []string `protobuf:"bytes,7,rep,name=pre_hook,json=preHook,proto3" json:"pre_hook,omitempty"`          // commands in the container before the dump (REQ-BKP-011)

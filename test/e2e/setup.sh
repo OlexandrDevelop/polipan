@@ -5,7 +5,7 @@
 set -eu
 
 cd /e2e
-mkdir -p /etc/polipan /opt/polipan /var/lib/polipan-agent
+mkdir -p /etc/polipan /opt/polipan /var/lib/polipan-agent /var/lib/polipan/backups
 head -c 32 /dev/urandom | base64 > /etc/polipan/master.key
 chown 65532:65532 /etc/polipan/master.key
 chmod 0400 /etc/polipan/master.key
@@ -44,6 +44,7 @@ docker compose exec -T server /polipan-server setup-url > /e2e/setup-url
 agent_run() {
   docker run "$@" --net host --privileged -v /var/run/docker.sock:/var/run/docker.sock \
     -v /var/lib/polipan-agent:/var/lib/polipan-agent -v /e2e:/e2e \
+    -v /var/lib/docker/volumes:/var/lib/docker/volumes -v /var/lib/polipan/backups:/var/lib/polipan/backups \
     -e POLIPAN_AGENT_SERVER=127.0.0.1:9443 -e POLIPAN_AGENT_FIREWALL=false \
     -e POLIPAN_AGENT_ACME_CA_URL=https://pebble:14000/dir \
     -e POLIPAN_AGENT_ACME_TRUSTED_ROOTS=/e2e/pebble.minica.pem \

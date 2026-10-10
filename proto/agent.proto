@@ -341,7 +341,7 @@ message BackupTargetSpec {
 // BackupSource tells what is backed up and where the data is.
 message BackupSource {
   string engine = 1;                 // postgres | mysql | mariadb | mongo | redis | volume | controlplane
-  string container = 2;              // container name of the database, or label:key=value. The user, the database and the
+  string container = 2;              // container name of the database, or label:key=value[,key=value]. The user, the database and the
                                      // password come from the environment of that container (DB_USER, DB_NAME, DB_PASSWORD).
   string volume_name = 6;            // Docker volume name (volume policies, and the data of redis)
   repeated string pre_hook = 7;      // commands in the container before the dump (REQ-BKP-011)

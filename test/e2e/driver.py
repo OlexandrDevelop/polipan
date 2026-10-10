@@ -5,6 +5,7 @@ AC-DEPLOY-01, 02, 09, AC-REL-01, 02, 07, AC-HC-01, 03, 04, 05 and the chaos kill
 It runs inside the test Docker host with host networking. The panel is reached through the
 Caddy of the node (Host: panel.test), so the panel route is tested too.
 Usage: driver.py flow | gitflow | rollback | zerodowntime | chaos-start | chaos-end | serving | after
+M4 (run-m4.sh): m4-setup | m4-backup | m4-restore | m4-check-corrupt | m4-volume | m4-controlplane | m4-template
 """
 import http.client
 import json
@@ -696,6 +697,255 @@ def chaos_end():
     print("CHAOS PASSED")
 
 
+
+# ---- M4: databases, templates, backups (run-m4.sh) ----
+
+M4 = "/e2e/m4.json"
+MINIO = {"endpoint": "http://127.0.0.1:9000", "bucket": "backups", "path": "pp"}
+MINIO_CREDS = {"access_key_id": "minio", "secret_access_key": "minio-secret-123"}
+
+
+def m4_state():
+    return json.load(open(M4))
+
+
+def m4_save(**kv):
+    st = m4_state() if __import__("os").path.exists(M4) else {}
+    st.update(kv)
+    json.dump(st, open(M4, "w"))
+
+
+def m4_panel():
+    p = Panel()
+    p.login()
+    return p
+
+
+def wait_run(p, policy_id, want="succeeded", timeout=240, newer_than=None):
+    def done():
+        _, runs = p.call("GET", f"/backup-policies/{policy_id}/runs", expect=200)
+        for r in runs["items"]:
+            if newer_than and r["id"] in newer_than:
+                continue
+            if r["state"] in ("succeeded", "failed"):
+                return r
+        return None
+    r = wait(f"backup run of {policy_id} ends", done, timeout=timeout, every=2)
+    if r["state"] != want:
+        fail(f"run {r['id']} is {r['state']}: {r.get('error')}")
+    return r
+
+
+def wait_check(p, policy_id, want, known=(), timeout=300):
+    def done():
+        _, cs = p.call("GET", f"/restore-checks?policy_id={policy_id}", expect=200)
+        for c in cs["items"]:
+            if c["id"] not in known and c["state"] in ("passed", "failed"):
+                return c
+        return None
+    c = wait(f"restore check of {policy_id} ends", done, timeout=timeout, every=3)
+    if c["state"] != want:
+        fail(f"restore check {c['id']} is {c['state']}: {json.dumps(c.get('checks'))}")
+    return c
+
+
+def m4_setup():
+    """AC-DB-01, AC-DB-02, AC-DB-03, AC-DB-04 in a real stack, and the two backup targets (MinIO and SFTP)."""
+    p = Panel()
+    wait("panel behind caddy", lambda: http_get(PANEL, "/healthz")[0] == 200, timeout=180)
+    token = re.search(r"token=([0-9a-f]+)", open("/e2e/setup-url").read()).group(1)
+    p.call("POST", "/setup/first-user", {"setup_token": token, "email": EMAIL, "name": "Owner", "password": PASSWORD}, expect=201)
+    p.login()
+    _, proj = p.call("POST", "/projects", {"name": "Shop"}, expect=201)
+    _, envs = p.call("GET", f"/projects/{proj['id']}/environments", expect=200)
+    env = next(e for e in envs if e["kind"] == "production")
+    _, db = p.call("POST", f"/environments/{env['id']}/services", {"name": "main", "type": "database", "db_engine": "postgres"}, expect=201)
+    if db["backup"]["status"] != "none" or "host_port" in db["config"]:
+        fail(f"AC-DB-03: {db['backup']} {db['config']}")
+    ok("AC-DB-03: a new database has no host port and the UI gets a backup suggestion")
+    _, plan = p.call("POST", f"/services/{db['id']}/deploy", {"dry_run": True, "strategy": "blue_green"}, expect=200)
+    if plan["strategy"] != "recreate" or "zero_downtime_not_available" not in json.dumps(plan):
+        fail(f"AC-DB-02: {plan}")
+    ok("AC-DB-02: blue_green on a database is the forced recreate with the warning")
+    deploy_wait(p, db["id"])
+    _, secrets = p.call("GET", f"/projects/{proj['id']}/secrets?service_id={db['id']}", expect=200)
+    if not any(x["name"] == "DB_PASSWORD" for x in secrets) or "value" in json.dumps(secrets):
+        fail(f"AC-DB-01: secrets {secrets}")
+    # AC-DB-04: a service that points to a database that does not exist fails and nothing deploys.
+    _, bad = p.call("POST", f"/environments/{env['id']}/services",
+                    {"name": "bad", "type": "app", "source": {"image": "nginx:alpine"}, "config": {"image": "nginx:alpine", "port": 80}}, expect=201)
+    p.call("POST", f"/projects/{proj['id']}/variables", {"name": "DATABASE_URL", "value": "${{db.missing.URL}}", "service_id": bad["id"]}, expect=201)
+    d = deploy_wait(p, bad["id"], state="failed")
+    if d["failure_reason"] != "unresolved_reference":
+        fail(f"AC-DB-04: {d}")
+    _, sv = p.call("GET", f"/services/{bad['id']}", expect=200)
+    if sv.get("live_release_id"):
+        fail("AC-DB-04: a release was made")
+    ok("AC-DB-04: unresolved_reference, no release, nothing deployed")
+    # AC-DB-01: a second service resolves ${{db.main.URL}} after a new release.
+    _, api = p.call("POST", f"/environments/{env['id']}/services",
+                    {"name": "api", "type": "app", "source": {"image": "nginx:alpine"}, "config": {"image": "nginx:alpine", "port": 80}}, expect=201)
+    p.call("POST", f"/projects/{proj['id']}/variables", {"name": "DATABASE_URL", "value": "${{db.main.URL}}", "service_id": api["id"]}, expect=201)
+    deploy_wait(p, api["id"])
+    ok("AC-DB-01: DB_PASSWORD is a secret without a value in the API, and ${{db.main.URL}} resolved after a new release")
+
+    # The targets: MinIO (S3) and SFTP, both real servers in the test Docker host.
+    _, minio = p.call("POST", "/backup-targets", {"name": "minio", "kind": "s3", "config": MINIO, "credentials": MINIO_CREDS}, expect=201)
+    key = open("/e2e/sftp/id_ed25519").read()
+    _, sftp = p.call("POST", "/backup-targets", {"name": "sftp", "kind": "sftp",
+                     "config": {"host": "127.0.0.1", "port": 2222, "user": "bk", "path": "/srv/restic"}, "credentials": {"private_key": key}}, expect=201)
+    for t in (minio, sftp):
+        _, res = p.call("POST", f"/backup-targets/{t['id']}/test", expect=200)
+        if not res["ok"]:
+            fail(f"target {t['name']} test: {res}")
+    ok("both targets (MinIO and SFTP) pass the test action")
+    m4_save(project=proj["id"], env=env["id"], db=db["id"], api=api["id"], minio=minio["id"], sftp=sftp["id"])
+    print("M4 SETUP PASSED")
+
+
+def m4_backup():
+    """AC-BKP-01 (two targets, one snapshot on each), AC-BKP-03 (manual run), AC-BKP-07 (the check restores in a temporary container)."""
+    p = m4_panel()
+    st = m4_state()
+    _, pol = p.call("POST", f"/services/{st['db']}/backup-policies",
+                    {"schedule": "0 2 * * *", "target_ids": [st["minio"], st["sftp"]], "retention": {"keep_daily": 7}}, expect=201)
+    _, run = p.call("POST", f"/backup-policies/{pol['id']}/run", expect=202)
+    r = wait_run(p, pol["id"])
+    snaps = {s["target_id"]: s for s in r["snapshots"]}
+    if set(snaps) != {st["minio"], st["sftp"]} or not all(s["ok"] and s["snapshot_id"] for s in snaps.values()):
+        fail(f"AC-BKP-01: {r['snapshots']}")
+    if r["trigger"] != "manual" or not r["manifest"].get("tables"):
+        fail(f"run: {r}")
+    ok(f"AC-BKP-01 and AC-BKP-03: manual run, one snapshot on each target, manifest {r['manifest']}")
+    c = wait_check(p, pol["id"], "passed")
+    names = [x["name"] for x in c["checks"]]
+    if c["trigger"] != "first_backup" or "table_count" not in names or "row_estimate" not in names or c["target_id"] != st["minio"]:
+        fail(f"AC-BKP-07: {c}")
+    ok(f"AC-BKP-07: the restore check ran by itself after the first backup and passed: {names}")
+    m4_save(policy=pol["id"], run=r["id"], check1=c["id"])
+    _, got = p.call("GET", f"/backup-policies/{pol['id']}", expect=200)
+    if got["health"] != "verified":
+        fail(f"health: {got['health']}")
+    print("M4 BACKUP PASSED")
+
+
+def m4_restore():
+    """AC-BKP-04 (restore into a new service), the restore in place with a safety backup."""
+    p = m4_panel()
+    st = m4_state()
+    run_id = st["run"]
+    _, out = p.call("POST", f"/backup-runs/{run_id}/restore", {"target_id": st["minio"], "mode": "new_service", "new_service_name": "main-copy"}, expect=202)
+
+    def done():
+        _, j = p.call("GET", f"/backup-restores/{out['job_id']}", expect=200)
+        return j if j["state"] in ("succeeded", "failed") else None
+    j = wait("restore into a new service", done, timeout=420, every=3)
+    if j["state"] != "succeeded":
+        fail(f"AC-BKP-04: {j}")
+    m4_save(copy=out["service_id"])
+    ok("AC-BKP-04: the snapshot was restored into the new service main-copy")
+    print("M4 RESTORE PASSED")
+
+
+def m4_restore_inplace():
+    p = m4_panel()
+    st = m4_state()
+    _, runs = p.call("GET", f"/backup-policies/{st['policy']}/runs", expect=200)
+    _, out = p.call("POST", f"/backup-runs/{st['run']}/restore", {"target_id": st["sftp"], "mode": "in_place", "confirm": "main"}, expect=202)
+
+    def done():
+        _, j = p.call("GET", f"/backup-restores/{out['job_id']}", expect=200)
+        return j if j["state"] in ("succeeded", "failed") else None
+    j = wait("restore in place", done, timeout=300, every=3)
+    if j["state"] != "succeeded":
+        fail(f"restore in place: {j}")
+    _, runs = p.call("GET", f"/backup-policies/{st['policy']}/runs", expect=200)
+    if not any(r["trigger"] == "safety" and r["state"] == "succeeded" for r in runs["items"]):
+        fail("no safety backup before the restore")
+    ok("restore in place from the SFTP target worked, after a safety backup")
+    print("M4 INPLACE PASSED")
+
+
+def m4_check_corrupt():
+    """AC-BKP-08: the snapshot on the SFTP target was corrupted: the check fails and a critical alert is raised."""
+    p = m4_panel()
+    st = m4_state()
+    _, cs = p.call("GET", f"/restore-checks?policy_id={st['policy']}", expect=200)
+    known = [c["id"] for c in cs["items"]]
+    _, chk = p.call("POST", f"/backup-policies/{st['policy']}/restore-checks", expect=202)
+    c = wait_check(p, st["policy"], "failed", known=known)
+    if c["target_id"] != st["sftp"]:
+        fail(f"the check should rotate to the SFTP target: {c['target_id']}")
+    ok(f"AC-BKP-08: the check of the corrupted snapshot failed: {json.dumps(c['checks'])[:200]}")
+    m4_save(failed_check=c["id"])
+    print("M4 CORRUPT PASSED")
+
+
+def m4_volume():
+    """AC-BKP-09: a volume policy: the restore check restores to a temporary folder and compares file count and size."""
+    p = m4_panel()
+    st = m4_state()
+    _, files = p.call("POST", f"/environments/{st['env']}/services",
+                      {"name": "files", "type": "app", "source": {"image": "nginx:alpine"}, "config": {"image": "nginx:alpine", "port": 80}}, expect=201)
+    _, vol = p.call("POST", f"/services/{files['id']}/volumes", {"name": "data", "mount_path": "/data"}, expect=201)
+    deploy_wait(p, files["id"])
+    m4_save(files=files["id"], volume=vol["id"])
+    print("M4 VOLUME STARTED")
+
+
+def m4_volume_backup():
+    p = m4_panel()
+    st = m4_state()
+    _, pol = p.call("POST", f"/services/{st['files']}/backup-policies",
+                    {"volume_id": st["volume"], "target_ids": [st["minio"]], "retention": {"keep_daily": 7}}, expect=201)
+    p.call("POST", f"/backup-policies/{pol['id']}/run", expect=202)
+    r = wait_run(p, pol["id"])
+    if r["manifest"].get("files") != 200:
+        fail(f"manifest: {r['manifest']}")
+    c = wait_check(p, pol["id"], "passed")
+    names = {x["name"]: x for x in c["checks"]}
+    if "file_count" not in names or "total_size" not in names or not names["file_count"]["ok"]:
+        fail(f"AC-BKP-09: {c['checks']}")
+    ok(f"AC-BKP-09: volume check passed: {names['file_count']['detail']}; {names['total_size']['detail']}")
+    print("M4 VOLUME PASSED")
+
+
+def m4_controlplane():
+    """AC-BKP-06: the control-plane database is backed up daily by the built-in policy."""
+    p = m4_panel()
+    _, pols = p.call("GET", "/backup-policies", expect=200)
+    cp = next((x for x in pols if x.get("control_plane")), None)
+    if not cp or cp["schedule"] != "0 3 * * *" or not cp["local_only"]:
+        fail(f"AC-BKP-06: {pols}")
+    p.call("POST", f"/backup-policies/{cp['id']}/run", expect=202)
+    r = wait_run(p, cp["id"])
+    ok(f"AC-BKP-06: the control-plane policy exists (daily, local target with a warning) and its run succeeded: {r['snapshots']}")
+    c = wait_check(p, cp["id"], "passed", timeout=300)
+    ok(f"the restore check of the control-plane dump passed: {[x['name'] for x in c['checks']]}")
+    m4_save(cp=cp["id"])
+    print("M4 CONTROLPLANE PASSED")
+
+
+def m4_template():
+    """AC-TPL-01 in a real stack: WordPress and MySQL, the password is a generated secret, both go live."""
+    p = m4_panel()
+    st = m4_state()
+    _, svcs = p.call("POST", "/templates/wordpress/instantiate", {"environment_id": st["env"], "inputs": {"domain": "blog.test"}}, expect=201)
+    by = {s["name"]: s for s in svcs}
+    if set(by) != {"wordpress", "wordpress-db"}:
+        fail(f"services: {list(by)}")
+    deploy_wait(p, by["wordpress-db"]["id"], timeout=420)
+    deploy_wait(p, by["wordpress"]["id"], timeout=420)
+    _, secrets = p.call("GET", f"/projects/{st['project']}/secrets?service_id={by['wordpress-db']['id']}", expect=200)
+    if not any(x["name"] == "DB_PASSWORD" for x in secrets) or "value" in json.dumps(secrets):
+        fail(f"secrets: {secrets}")
+    ok("AC-TPL-01: WordPress and its MySQL are live, the database password is a generated secret")
+    m4_save(wordpress=by["wordpress"]["id"], wordpress_db=by["wordpress-db"]["id"])
+    print("M4 TEMPLATE PASSED")
+
+
 if __name__ == "__main__":
     {"flow": flow, "serving": serving, "after": after, "gitflow": gitflow, "rollback": rollback, "zerodowntime": zerodowntime,
-     "chaos-start": chaos_start, "chaos-end": chaos_end}[sys.argv[1]]()
+     "chaos-start": chaos_start, "chaos-end": chaos_end, "m4-setup": m4_setup, "m4-backup": m4_backup, "m4-restore": m4_restore,
+     "m4-restore-inplace": m4_restore_inplace, "m4-check-corrupt": m4_check_corrupt, "m4-volume": m4_volume,
+     "m4-volume-backup": m4_volume_backup, "m4-controlplane": m4_controlplane, "m4-template": m4_template}[sys.argv[1]]()
