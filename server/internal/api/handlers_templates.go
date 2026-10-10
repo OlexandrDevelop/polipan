@@ -309,7 +309,7 @@ func (h *Handlers) InstantiateTemplate(w http.ResponseWriter, r *http.Request, s
 	if fail(w, r, err) {
 		return
 	}
-	if denyProtected(w, r, "service:create", env.Protected) {
+	if h.denyInProject(w, r, env.ProjectID, "service:create", env.Protected) {
 		return
 	}
 	if h.Secrets == nil {

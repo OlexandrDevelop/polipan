@@ -247,6 +247,11 @@ func TestAC_RBAC_03_ProjectRoleOverride(t *testing.T) {
 		t.Fatalf("me project_roles: %v", me["project_roles"])
 	}
 
+	// SEC-1: the project is in the body of instantiateTemplate, the override must count there too.
+	tplBody := map[string]any{"environment_id": envs["staging"], "inputs": map[string]any{}}
+	if rec := dev.do("POST", "/api/v1/templates/wordpress/instantiate", tplBody); rec.Code != 403 {
+		t.Fatalf("developer with a viewer override instantiates a template: %d %s", rec.Code, rec.Body)
+	}
 	// A team with the developer role on the project raises the viewer. The highest override wins.
 	team := owner.ok(201, "POST", "/api/v1/teams", map[string]any{"name": "web"})
 	owner.ok(204, "PUT", "/api/v1/teams/"+str(team, "id")+"/members/usr_v", nil)

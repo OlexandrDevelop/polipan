@@ -161,6 +161,31 @@ func (h *Handlers) authorize(w http.ResponseWriter, r *http.Request, p *Principa
 	return true
 }
 
+// denyInProject is for an operation whose project is in the body, not in the path (the guard cannot see it).
+// It applies the effective role of the project, the protected flag and the project limit of an API token like the
+// guard does. It answers 403 and returns true when the request is refused.
+func (h *Handlers) denyInProject(w http.ResponseWriter, r *http.Request, projectID, perm string, protected bool) bool {
+	p := PrincipalFrom(r.Context())
+	if p == nil {
+		return false
+	}
+	overrides, err := h.Store.ProjectRoleNames(r.Context(), projectID, p.User.ID)
+	if err != nil {
+		internalError(w, r, err)
+		return true
+	}
+	p.Role = auth.EffectiveRole(p.OrgRole, overrides)
+	if t := p.Token; t != nil && t.ProjectID != nil && *t.ProjectID != projectID {
+		WriteError(w, r, http.StatusForbidden, CodeForbidden, "the API token is limited to another project", map[string]any{"permission": perm, "reason": "token_project"})
+		return true
+	}
+	if !auth.Can(p.Role, perm, false) {
+		WriteError(w, r, http.StatusForbidden, CodeForbidden, "you do not have the permission for this action", map[string]any{"permission": perm})
+		return true
+	}
+	return denyProtected(w, r, perm, protected)
+}
+
 // pathScope finds the project and the protected flag of the object in the path.
 func (h *Handlers) pathScope(r *http.Request, orgID string) (store.AuthScope, bool, error) {
 	if h.Store == nil {
