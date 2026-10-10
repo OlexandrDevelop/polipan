@@ -409,3 +409,19 @@ func (h *Handlers) DiffReleases(w http.ResponseWriter, r *http.Request, releaseI
 	diffMaps("secrets", a.SecretVersions, b.SecretVersions, "")
 	WriteJSON(w, http.StatusOK, map[string]any{"changes": changes})
 }
+
+// RestartService restarts the containers of the live release. No new release is made.
+func (h *Handlers) RestartService(w http.ResponseWriter, r *http.Request, serviceID gen.ServiceId) {
+	s, err := h.Store.GetService(r.Context(), h.orgID(r), serviceID)
+	if fail(w, r, err) {
+		return
+	}
+	if denyProtected(w, r, "service:restart", s.EnvProtected) {
+		return
+	}
+	if h.orchestratorFailed(w, r, h.Orch.Restart(r.Context(), serviceID)) {
+		return
+	}
+	h.auditUser(r, s.OrgID, s.ProjectID, "service.restart", "service", serviceID, nil)
+	w.WriteHeader(http.StatusAccepted)
+}

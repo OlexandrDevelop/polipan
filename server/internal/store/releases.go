@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -134,7 +135,7 @@ func (s *Store) IdempotencyGet(ctx context.Context, actorID, key string) (hash [
 	err = s.Pool.QueryRow(ctx, `SELECT request_hash, response_status, response_body FROM idempotency_keys
 		WHERE actor_id = $1 AND key = $2 AND created_at > now() - interval '24 hours'`, actorID, key).Scan(&hash, &status, &body)
 	if err != nil {
-		if e := notFound(err); e == ErrNotFound {
+		if errors.Is(notFound(err), ErrNotFound) {
 			return nil, 0, nil, false, nil
 		}
 		return nil, 0, nil, false, err

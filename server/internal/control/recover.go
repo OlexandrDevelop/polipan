@@ -83,10 +83,7 @@ func (r *run) resume(ctx context.Context) *deployErr {
 			r.releaseID, r.imageRef = *d.releaseID, image
 		}
 	}
-	committed := false
-	if d.releaseID != nil && r.svc.liveRelease != nil && *r.svc.liveRelease == *d.releaseID {
-		committed = true
-	}
+	committed := d.releaseID != nil && r.svc.liveRelease != nil && *r.svc.liveRelease == *d.releaseID
 	switch {
 	case d.state == "draining" || (d.state == "switching" && committed):
 		// The old containers are in the database as draining (blue_green) or stopped (recreate).

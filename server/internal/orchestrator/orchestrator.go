@@ -87,6 +87,8 @@ type Orchestrator interface {
 	Plan(ctx context.Context, p DeployParams) (Plan, error)
 	// Cancel cancels a deployment up to health_checking. In switching and draining it gives ErrNotCancellable.
 	Cancel(ctx context.Context, deploymentID, actorID string) error
+	// Restart restarts the containers of the live release. No new release is made.
+	Restart(ctx context.Context, serviceID string) error
 	// TestHealth runs the health check of a live container once.
 	TestHealth(ctx context.Context, serviceID string) (HealthResult, error)
 	// SetRunning stops (false) or starts (true) the service containers. It changes services.desired_state,

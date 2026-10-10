@@ -23,6 +23,7 @@ const (
 type svcInfo struct {
 	id, envID, orgID, projectID, name, typ, sourceType string
 	protected                                          bool
+	envStrategy                                        string // strategy of the environment settings (REQ-DEPLOY-005)
 	raw                                                []byte
 	cfg                                                serviceConfig
 	liveRelease                                        *string
@@ -31,9 +32,9 @@ type svcInfo struct {
 func (c *Control) loadService(ctx context.Context, q dbq, serviceID string) (*svcInfo, error) {
 	var s svcInfo
 	var deleted any
-	err := q.QueryRow(ctx, `SELECT s.id, s.environment_id, p.org_id, p.id, s.name, s.type, s.source_type, e.protected, s.config, s.live_release_id, s.deleted_at
+	err := q.QueryRow(ctx, `SELECT s.id, s.environment_id, p.org_id, p.id, s.name, s.type, s.source_type, e.protected, COALESCE(e.settings->>'strategy',''), s.config, s.live_release_id, s.deleted_at
 		FROM services s JOIN environments e ON e.id = s.environment_id JOIN projects p ON p.id = e.project_id WHERE s.id = $1`, serviceID).
-		Scan(&s.id, &s.envID, &s.orgID, &s.projectID, &s.name, &s.typ, &s.sourceType, &s.protected, &s.raw, &s.liveRelease, &deleted)
+		Scan(&s.id, &s.envID, &s.orgID, &s.projectID, &s.name, &s.typ, &s.sourceType, &s.protected, &s.envStrategy, &s.raw, &s.liveRelease, &deleted)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && deleted != nil) {
 		return nil, orchestrator.ErrNotFound
 	}
@@ -71,9 +72,12 @@ func resolveOptions(cfg serviceConfig, p orchestrator.DeployParams) deployOption
 // (the release config for a rollback).
 func (c *Control) plan(ctx context.Context, s *svcInfo, cfg serviceConfig, p orchestrator.DeployParams, opts deployOptions) (orchestrator.Plan, error) {
 	plan := orchestrator.Plan{ExpectedDowntime: "none", Nodes: []string{}}
-	requested := p.Strategy
+	requested := p.Strategy // the request wins, then the service, then the environment (REQ-DEPLOY-005)
 	if requested == "" {
 		requested = cfg.Strategy
+	}
+	if requested == "" {
+		requested = s.envStrategy
 	}
 	if requested == "canary" {
 		return plan, orchestrator.ErrStrategyUnavailable
@@ -94,7 +98,7 @@ func (c *Control) plan(ctx context.Context, s *svcInfo, cfg serviceConfig, p orc
 		reason = "the service has a volume with one writer"
 	case s.typ == "database":
 		reason = "the service is a database"
-	case !hasDomain && cfg.Port == 0 && !(s.typ == "worker" && opts.AllowOverlap):
+	case !hasDomain && cfg.Port == 0 && (s.typ != "worker" || !opts.AllowOverlap):
 		reason = "the service has no domain and no port"
 	case cfg.HostPort != 0:
 		reason = "the service publishes a host port"

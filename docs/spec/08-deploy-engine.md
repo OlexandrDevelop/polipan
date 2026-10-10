@@ -53,7 +53,7 @@ Rules for states:
 - `failed` and `rolled_back` always leave the previous Release live and serving. If there is no previous Release, the service has no live Release and the state is shown as "no live release".
 - Terminal states: `live`, `failed`, `rolled_back`, `cancelled`, `superseded`.
 - Every transition writes a `deployment_steps` row and an `events` row, and (for the user actions) an audit event.
-- `failure_reason` codes: `build_failed`, `build_timeout`, `image_pull_failed`, `pre_deploy_failed`, `container_start_failed`, `health_timeout`, `health_failed`, `gate_5xx`, `gate_latency`, `switch_failed`, `node_unavailable`, `cancelled_by_user`, `superseded`, `internal_error`.
+- `failure_reason` codes: `build_failed`, `build_timeout`, `image_pull_failed`, `pre_deploy_failed`, `container_start_failed`, `health_timeout`, `health_failed`, `gate_5xx`, `gate_latency`, `switch_failed`, `node_unavailable`, `cancelled_by_user`, `superseded`, `server_restarted` (the server restarted before the switch was saved, section 11), `internal_error`.
 
 ## 3. Strategy selection
 
@@ -133,7 +133,7 @@ Why this is "pointing to another image address": the Release's `image_ref` is an
 
 ## 11. Failure and recovery
 
-- Server crash during a Deployment: on start, the server reads active Deployments and resumes from `state`. Steps are idempotent by `command_id`.
+- Server crash during a Deployment: on start, the server reads active Deployments and resumes from `state`. Steps are idempotent by `command_id`. Before the switch is saved, the new containers are removed and the Deployment ends `failed` / `server_restarted` (in `switching`: `rolled_back`). After the switch is saved (`services.live_release_id` is the new Release), the Deployment goes on: acks, drain, stop blue, `live`.
 - Agent offline during `starting` or `health_checking`: wait up to 60 s (`node_down_after`), then `failed` / `node_unavailable`, blue untouched.
 - Agent offline during `switching`: see section 5.3.
 - Green containers of a failed Deployment are removed after 10 minutes (kept for log reading).

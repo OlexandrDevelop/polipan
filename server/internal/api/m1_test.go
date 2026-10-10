@@ -67,6 +67,8 @@ func (f *fakeOrch) Plan(_ context.Context, p orchestrator.DeployParams) (orchest
 	return orchestrator.Plan{Strategy: "recreate", ExpectedDowntime: "short"}, nil
 }
 
+func (f *fakeOrch) Restart(context.Context, string) error { return nil }
+
 func (f *fakeOrch) Cancel(context.Context, string, string) error { return nil }
 
 func (f *fakeOrch) TestHealth(context.Context, string) (orchestrator.HealthResult, error) {
@@ -547,8 +549,8 @@ func TestAC_APP_05_StopStartDeploy(t *testing.T) {
 		t.Fatalf("logs: %d %s tail %d", rec.Code, rec.Body, e.orch.logsTail)
 	}
 
-	// Restart is not part of M1.
-	if rec := c.do("POST", "/api/v1/services/"+svc+"/restart", nil); rec.Code != 501 {
+	// Restart restarts the live containers (M3).
+	if rec := c.do("POST", "/api/v1/services/"+svc+"/restart", nil); rec.Code != 202 {
 		t.Fatalf("restart: %d", rec.Code)
 	}
 

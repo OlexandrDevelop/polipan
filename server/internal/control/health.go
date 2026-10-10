@@ -81,3 +81,34 @@ func (c *Control) TestHealth(ctx context.Context, serviceID string) (orchestrato
 	_ = json.Unmarshal(ack.GetResultJson(), &res)
 	return res, nil
 }
+
+// Restart restarts the live containers of the service: stop with the grace period, then the desired state starts them again.
+// No release is made (restartService).
+func (c *Control) Restart(ctx context.Context, serviceID string) error {
+	s, err := c.loadService(ctx, c.DB, serviceID)
+	if err != nil {
+		return err
+	}
+	live, err := c.placementList(ctx, `SELECT id, node_id FROM placements WHERE service_id = $1 AND role = 'live'`, serviceID)
+	if err != nil {
+		return err
+	}
+	if len(live) == 0 {
+		return orchestrator.ErrNoLiveRelease
+	}
+	for _, p := range live {
+		if c.Sender == nil || !c.Sender.Connected(p.node) {
+			return orchestrator.ErrNoNode
+		}
+	}
+	for _, p := range live {
+		cctx, cancel := context.WithTimeout(ctx, time.Duration(s.cfg.stopGraceSeconds()+30)*time.Second)
+		_, err := c.Sender.Send(cctx, p.node, &pb.Command{Body: &pb.Command_StopWorkload{
+			StopWorkload: &pb.StopWorkload{PlacementId: p.id, GraceSeconds: uint32(s.cfg.stopGraceSeconds())}}})
+		cancel()
+		if err != nil {
+			return err
+		}
+	}
+	return c.change(ctx, func(tx pgx.Tx) ([]string, error) { return nodesOf(live), nil })
+}
