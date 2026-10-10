@@ -452,6 +452,15 @@ func (s Settings) panelPortClash(raw json.RawMessage) error {
 	return nil
 }
 
+// checkPublishedPort is the host port rule for config as code: the range and the reserved ports, and the ports of
+// the panel and the agent gateway.
+func (s Settings) checkPublishedPort(p int) error {
+	if err := checkHostPort(p); err != nil {
+		return err
+	}
+	return s.panelPortClash(json.RawMessage(fmt.Sprintf(`{"host_port":%d}`, p)))
+}
+
 func asPort(v any) (int, bool) {
 	f, ok := v.(float64)
 	if !ok || f != float64(int(f)) || f < 1 || f > 65535 {

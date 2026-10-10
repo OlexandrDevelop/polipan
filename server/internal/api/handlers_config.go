@@ -51,7 +51,7 @@ func (h *Handlers) initConfig(pool *pgxpool.Pool) {
 		ap.DomainsChanged = h.Orch.DomainsChanged
 		ap.Removed = h.Orch.ServiceRemoved
 	}
-	h.Config = &cac.Syncer{Pool: pool, Store: h.Store, Applier: ap, Fetch: h.fetchConfig, Status: h.postConfigStatus,
+	h.Config = &cac.Syncer{Pool: pool, Store: h.Store, Applier: ap, Fetch: h.fetchConfig, Status: h.postConfigStatus, CheckHostPort: h.Settings.checkPublishedPort,
 		LinkURL: func(ctx context.Context, projectID string) string {
 			if h.Settings.ExternalURL == "" {
 				return ""

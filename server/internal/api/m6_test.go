@@ -519,3 +519,21 @@ func TestM6_SpecExamplesApply(t *testing.T) {
 		})
 	}
 }
+
+// SEC-1: the file follows the host port rule of the API (30000-39999, not reserved, not a panel port).
+func TestM6_HostPortRuleInFile(t *testing.T) {
+	e := newM6Env(t)
+	c := e.owner()
+	prj, _ := c.project("blog")
+	for port, ok := range map[string]bool{"22": false, "443": false, "9443": false, "80": false, "40000": false, "30500": true} {
+		file := "version: 1\nproject: blog\nservices:\n  web:\n    source: { image: { name: nginx } }\n    ports:\n      - { container: 80, host: " + port + " }\n"
+		pl := c.plan(prj, file)
+		if (pl["valid"] == true) != ok {
+			t.Errorf("host port %s: valid=%v errors=%v", port, pl["valid"], pl["errors"])
+		}
+	}
+	db := "version: 1\nproject: blog\nservices:\n  db:\n    type: database\n    db: { engine: postgres, expose_host_port: 5432 }\n"
+	if pl := c.plan(prj, db); pl["valid"] == true {
+		t.Errorf("db port 5432 is accepted")
+	}
+}

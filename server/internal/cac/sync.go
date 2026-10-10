@@ -70,6 +70,8 @@ type Syncer struct {
 	Status func(ctx context.Context, orgID string, src ConfigSource, commit string, st git.Status)
 	// LinkURL is the address of the config screen of a project, for the commit status.
 	LinkURL func(ctx context.Context, projectID string) string
+	// CheckHostPort is the API rule for a published host port (range, reserved and panel ports).
+	CheckHostPort func(port int) error
 }
 
 // Push is a push to the tracked branch.
@@ -165,7 +167,7 @@ func (s *Syncer) BuildPlan(ctx context.Context, orgID, projectID string, content
 	if err != nil {
 		return nil, err
 	}
-	bc := BuildContext{}
+	bc := BuildContext{CheckHostPort: s.CheckHostPort}
 	if src, ok := ParseSource(mustRaw(live.ConfigSource)); ok {
 		bc.DefaultConnectionID = src.ConnectionID
 	}

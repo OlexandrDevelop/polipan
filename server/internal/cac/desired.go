@@ -98,6 +98,8 @@ func ServiceKey(env, name string) string { return env + "/" + name }
 type BuildContext struct {
 	// DefaultConnectionID is the Git connection of config_source. A git service without connection uses it.
 	DefaultConnectionID string
+	// CheckHostPort is the rule of the API for a published host port. Nil: no check (tests of the engine only).
+	CheckHostPort func(port int) error
 }
 
 var _ = sort.Strings
@@ -286,6 +288,11 @@ func (p *Parsed) desireService(eff *Effective, env, where string, live *Live, bc
 		set("port", s.Ports[0].Container, "config.port")
 		for _, pt := range s.Ports {
 			if pt.Host != 0 {
+				if bc.CheckHostPort != nil {
+					if err := bc.CheckHostPort(pt.Host); err != nil {
+						return nil, nil, err
+					}
+				}
 				set("host_port", pt.Host, "config.host_port")
 				break
 			}
@@ -424,6 +431,11 @@ func (p *Parsed) desireService(eff *Effective, env, where string, live *Live, bc
 			return nil, nil, fmt.Errorf("a database needs db.engine")
 		}
 		if s.DB.ExposeHostPort != 0 {
+			if bc.CheckHostPort != nil {
+				if err := bc.CheckHostPort(s.DB.ExposeHostPort); err != nil {
+					return nil, nil, err
+				}
+			}
 			set("host_port", s.DB.ExposeHostPort, "config.host_port")
 		}
 		// A database takes only these keys (the same list as the API). The others are left out with a warning.
