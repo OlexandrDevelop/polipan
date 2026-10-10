@@ -184,6 +184,18 @@ message DesiredState {
   repeated BackupJobSpec backup_jobs = 5;
   repeated ScrapeTarget scrape_targets = 6;
   repeated RegistryAuth registry_auths = 7;  // credentials for image pulls, only for this node's workloads
+  // Workloads of other nodes in the same environments as the workloads of this node: names and mesh
+  // addresses for the internal DNS, and the sets of the environment firewall (REQ-NODE-009, REQ-SEC-106). No secrets.
+  repeated Endpoint remote_endpoints = 8;
+  string mesh_cidr = 9;              // the pool of all mesh subnets, for the firewall
+}
+
+// Endpoint is a workload on another node: its DNS names and its fixed address in the subnet of that node.
+message Endpoint {
+  repeated string names = 1;
+  string ip = 2;
+  string environment_id = 3;
+  string service_id = 4;
 }
 
 // RegistryAuth is the pull credential behind a registry_auth_ref. Only sent over the mTLS stream.
@@ -216,6 +228,7 @@ message WorkloadSpec {
   repeated string network_aliases = 19;
   map<string, string> labels = 20;
   string registry_auth_ref = 21;     // credentials key for pulls from an external registry
+  string ip = 22;                    // fixed address in the network of the node (inside the mesh subnet of the node)
 }
 
 message Mount {
@@ -317,6 +330,7 @@ message Command {
     RestoreSnapshot restore_snapshot = 25;
     TestBackupTarget test_backup_target = 26;
     DeleteSnapshots delete_snapshots = 27;
+    SelfCheck self_check = 28;
   }
 }
 
@@ -410,3 +424,6 @@ message ProbeRoute { string host = 1; string path = 2; bool https = 3; uint32 du
 
 // TestBackupTarget writes and reads a small test repository on the target (REQ-BKP-002).
 message TestBackupTarget { BackupTargetSpec target = 1; string repo_password = 2; }
+
+// SelfCheck asks the agent to test Docker, Caddy and WireGuard. Result: {docker, caddy, wireguard, clock_skew_ms, errors}.
+message SelfCheck {}
