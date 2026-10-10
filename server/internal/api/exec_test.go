@@ -157,7 +157,7 @@ func TestAC_APP_07_ExecRelayAuditIdle(t *testing.T) {
 		return data, binary
 	}
 	audits := func(action string) []map[string]any {
-		rows, err := ge.Pool.Query(ctx, `SELECT payload FROM events WHERE topic = 'audit' AND object_id = $1 AND payload->>'action' = $2`, svc, action)
+		rows, err := ge.Pool.Query(ctx, `SELECT jsonb_build_object('action', action, 'diff', diff, 'actor_id', actor_id, 'target_id', target_id) FROM audit_events WHERE target_id = $1 AND action = $2`, svc, action)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -236,7 +236,7 @@ func TestAC_APP_07_ExecRelayAuditIdle(t *testing.T) {
 		t.Fatalf("end audits: %v", end)
 	}
 	var all string
-	_ = ge.Pool.QueryRow(ctx, `SELECT string_agg(payload::text, ' ') FROM events WHERE topic = 'audit'`).Scan(&all)
+	_ = ge.Pool.QueryRow(ctx, `SELECT string_agg(diff::text, ' ') FROM audit_events`).Scan(&all)
 	if strings.Contains(all, "hello") || strings.Contains(all, "ls\\n") {
 		t.Fatalf("terminal content in the audit: %s", all)
 	}

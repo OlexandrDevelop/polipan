@@ -31,7 +31,11 @@ type Actor struct {
 }
 
 func (a Actor) audit(orgID, projectID, action, targetType, targetID string, diff any) secrets.AuditEvent {
-	return secrets.AuditEvent{OrgID: orgID, ActorType: "user", ActorID: a.UserID, Action: action, TargetType: targetType,
+	typ := "user"
+	if a.UserID == "" {
+		typ = "system"
+	}
+	return secrets.AuditEvent{OrgID: orgID, ActorType: typ, ActorID: a.UserID, Action: action, TargetType: targetType,
 		TargetID: targetID, ProjectID: projectID, Diff: diff, IP: a.IP, RequestID: a.RequestID}
 }
 

@@ -1039,7 +1039,10 @@ type Me struct {
 
 // Member defines model for Member.
 type Member struct {
-	Email       *string       `json:"email,omitempty"`
+	Email *string `json:"email,omitempty"`
+
+	// InviteUrl Link to accept an invitation. Only in the answer of inviteMember: there is no email server, the admin sends it.
+	InviteUrl   *string       `json:"invite_url,omitempty"`
 	LastLoginAt *time.Time    `json:"last_login_at,omitempty"`
 	Name        *string       `json:"name,omitempty"`
 	Role        *Role         `json:"role,omitempty"`
@@ -1178,9 +1181,11 @@ type ProjectConfigSyncState string
 
 // ProjectRole defines model for ProjectRole.
 type ProjectRole struct {
-	Role   ProjectRoleRole `json:"role"`
-	TeamId *string         `json:"team_id,omitempty"`
-	UserId *string         `json:"user_id,omitempty"`
+	// ProjectId Set in GET /me, where the roles of the user come from many projects
+	ProjectId *string         `json:"project_id,omitempty"`
+	Role      ProjectRoleRole `json:"role"`
+	TeamId    *string         `json:"team_id,omitempty"`
+	UserId    *string         `json:"user_id,omitempty"`
 }
 
 // ProjectRoleRole defines model for ProjectRole.Role.

@@ -341,8 +341,8 @@ func TestAC_SEC_02_ReleaseRecordsVersions(t *testing.T) {
 		t.Fatalf("destroy a used version: %d", rec.Code)
 	}
 	c.ok(204, "DELETE", "/api/v1/secrets/"+str(x, "id")+"/versions/1", nil)
-	uses := e.count(`SELECT count(*) FROM events WHERE topic = 'audit' AND payload->>'action' = 'secret.use'
-		AND payload->'diff'->'secrets'->0->>'version' = '2'`)
+	uses := e.count(`SELECT count(*) FROM audit_events WHERE action = 'secret.use'
+		AND diff->'secrets'->0->>'version' = '2'`)
 	if uses != 1 {
 		t.Fatalf("secret.use audit records: %d", uses)
 	}
@@ -621,7 +621,7 @@ func TestGate9_SecretLeak(t *testing.T) {
 			t.Fatalf("%s: no rows, the scan proves nothing", q)
 		}
 	}
-	if e.count(`SELECT count(*) FROM events WHERE topic = 'audit' AND payload->>'action' = 'secret.use'`) == 0 {
+	if e.count(`SELECT count(*) FROM audit_events WHERE action = 'secret.use'`) == 0 {
 		t.Fatal("no secret.use audit record")
 	}
 }

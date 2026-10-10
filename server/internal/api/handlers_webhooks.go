@@ -3,6 +3,7 @@
 package api
 
 import (
+	"github.com/polipan/polipan/server/internal/audit"
 	"crypto/subtle"
 	"errors"
 	"io"
@@ -91,6 +92,8 @@ func (h *Handlers) ReceiveGitWebhook(w http.ResponseWriter, r *http.Request, web
 		}
 		log.Info("git push: deployment queued", "service_id", s.ID, "deployment_id", id, "commit", d.Push.Commit,
 			"author", d.Push.Author, "actor", "system:"+hook.ID)
+		h.auditSystemDeploy(r, hook, s.ID, id, map[string]any{"trigger": "git_push", "commit": d.Push.Commit, "branch": d.Push.Branch,
+			"author": d.Push.Author, "repo": d.Push.Repo})
 		queued = append(queued, id)
 	}
 	WriteJSON(w, http.StatusAccepted, map[string]any{"event": d.Event, "deployments": queued})
@@ -125,5 +128,22 @@ func (h *Handlers) ReceiveDeployHook(w http.ResponseWriter, r *http.Request, web
 	if h.orchestratorFailed(w, r, err) {
 		return
 	}
+	h.auditSystemDeploy(r, hook, hook.ServiceID, id, map[string]any{"trigger": "deploy_hook"})
 	WriteJSON(w, http.StatusAccepted, map[string]any{"deployments": []string{id}})
+}
+
+// auditSystemDeploy writes the audit event of a deployment that a trigger started: actor_type system, the id of
+// the trigger as actor, and the commit author when there is one (REQ-AUDIT-007).
+func (h *Handlers) auditSystemDeploy(r *http.Request, hook *store.Webhook, serviceID, deploymentID string, diff map[string]any) {
+	ctx := r.Context()
+	diff["service_id"] = serviceID
+	projectID := ""
+	if svc, err := h.Store.GetService(ctx, hook.OrgID, serviceID); err == nil {
+		projectID = svc.ProjectID
+	}
+	err := audit.Write(ctx, h.Store.Pool, audit.Event{OrgID: hook.OrgID, ActorType: audit.ActorSystem, ActorID: "webhook:" + hook.ID,
+		Action: "deployment.create", TargetType: "deployment", TargetID: deploymentID, ProjectID: projectID, Diff: diff})
+	if err != nil {
+		logging.From(ctx).Error("audit event of a webhook deploy not written", "error", err, "deployment_id", deploymentID)
+	}
 }

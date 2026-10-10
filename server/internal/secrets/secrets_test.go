@@ -163,7 +163,7 @@ func TestAC_SEC_04_RotateKEKAndDEK(t *testing.T) {
 	}
 	check(np)
 	var audits int
-	_ = f.pool.QueryRow(ctx, `SELECT count(*) FROM events WHERE topic = 'audit' AND payload->>'action' IN ('secret.rotate_kek','secret.rotate_dek')`).Scan(&audits)
+	_ = f.pool.QueryRow(ctx, `SELECT count(*) FROM audit_events WHERE action IN ('secret.rotate_kek','secret.rotate_dek')`).Scan(&audits)
 	if audits != 2 {
 		t.Fatalf("rotation audit records: %d", audits)
 	}

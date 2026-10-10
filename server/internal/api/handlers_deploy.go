@@ -66,9 +66,9 @@ func (h *Handlers) saveIdempotent(r *http.Request, id *idem, status int, v any) 
 
 // auditUser writes the audit record of a user action (REQ-AUDIT-002).
 func (h *Handlers) auditUser(r *http.Request, orgID, projectID, action, targetType, targetID string, diff any) {
-	p := PrincipalFrom(r.Context())
-	err := secrets.WriteAudit(r.Context(), h.Store.Pool, secrets.AuditEvent{OrgID: orgID, ActorType: "user", ActorID: p.User.ID, Action: action,
-		TargetType: targetType, TargetID: targetID, ProjectID: projectID, Diff: diff, IP: clientKey(r), RequestID: RequestIDFrom(r.Context())})
+	// The actor, the address and the request id come from the request in the context.
+	err := secrets.WriteAudit(r.Context(), h.Store.Pool, secrets.AuditEvent{OrgID: orgID, Action: action,
+		TargetType: targetType, TargetID: targetID, ProjectID: projectID, Diff: diff})
 	if err != nil {
 		logging.From(r.Context()).Warn("audit record not written", "error", err, "action", action)
 	}

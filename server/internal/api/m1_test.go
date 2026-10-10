@@ -129,7 +129,7 @@ func newTestEnv(t *testing.T, externalURL string) *testEnv {
 	clk := clock.NewFake(time.Now())
 	h, err := api.NewRouter(api.Deps{
 		Log: slog.New(slog.NewJSONHandler(io.Discard, nil)), DB: pool, Clock: clk, RateLimit: 100000,
-		Pool: pool, Orchestrator: orch, ExternalURL: externalURL, AgentListen: ":9443", SetupToken: "setup-secret",
+		Pool: pool, Orchestrator: orch, ExternalURL: externalURL, AgentListen: ":9443", SetupToken: "setup-secret", KEK: testKEK,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -801,3 +801,6 @@ func TestR7_TrustedProxyClientAddress(t *testing.T) {
 		}
 	}
 }
+
+// testKEK is the master key of the test servers (it encrypts TOTP secrets).
+var testKEK = bytes.Repeat([]byte{7}, 32)

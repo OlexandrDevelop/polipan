@@ -58,6 +58,8 @@ type Deps struct {
 	Exec ExecGateway
 	// Backup is the backup service (M4).
 	Backup *backup.Service
+	// KEK is the master key. It encrypts the TOTP secrets (M5).
+	KEK []byte
 	// MaxBodyBytes is the size limit of a request body. Default 1 MiB.
 	MaxBodyBytes int64
 }
@@ -84,7 +86,9 @@ func NewRouter(d Deps) (http.Handler, error) {
 		return nil, err
 	}
 	perms := make(map[Route]string, len(ops))
+	opIDs := make(map[Route]string, len(ops))
 	for _, o := range ops {
+		opIDs[Route{Method: o.Method, Pattern: normalize(o.FullPath())}] = o.OperationID
 		perms[Route{Method: o.Method, Pattern: normalize(o.FullPath())}] = o.Permission
 	}
 	if d.MaxBodyBytes <= 0 {
@@ -111,6 +115,8 @@ func NewRouter(d Deps) (http.Handler, error) {
 			SessionTTL: d.SessionTTL, SessionAbsoluteTTL: d.SessionAbsoluteTTL},
 		cookieSecure: secureCookies(d.ExternalURL),
 		perms:        perms,
+		opIDs:        opIDs,
+		KEK:          d.KEK,
 		Secrets:      d.Secrets,
 		Git:          d.Git,
 		Exec:         d.Exec,

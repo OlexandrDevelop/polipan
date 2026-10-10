@@ -148,7 +148,7 @@ func TestReleasesListNoteDiff(t *testing.T) {
 	if str(rel, "note") != "the good one" {
 		t.Fatalf("note: %v", rel)
 	}
-	if e.count(`SELECT count(*) FROM events WHERE topic = 'audit' AND payload->>'action' = 'release.annotate'`) != 1 {
+	if e.count(`SELECT count(*) FROM audit_events WHERE action = 'release.annotate'`) != 1 {
 		t.Fatal("the note was not audited")
 	}
 	diff := c.ok(200, "GET", "/api/v1/releases/rel_a/diff/rel_b", nil)

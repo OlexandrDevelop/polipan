@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/polipan/polipan/server/internal/api"
+	"github.com/polipan/polipan/server/internal/audit"
 	"github.com/polipan/polipan/server/internal/backup"
 	"github.com/polipan/polipan/server/internal/config"
 	"github.com/polipan/polipan/server/internal/control"
@@ -69,7 +70,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	handler, err := api.NewRouter(api.Deps{
 		Log: log, DB: pool, Pool: pool, Clock: clk, RateLimit: cfg.APIRateLimit, Web: web.Handler(),
 		Orchestrator: ctl, ExternalURL: cfg.ExternalURL, TrustedProxies: cfg.TrustedProxies, AgentListen: cfg.AgentListen,
-		Secrets: sec, Exec: gw, Backup: bk,
+		Secrets: sec, Exec: gw, Backup: bk, KEK: kek,
 		Git:        &api.GitDeps{Keys: builds.Keys, Policy: ctl.SSRFPolicy},
 		SetupToken: pki.SetupToken(kek), SessionTTL: cfg.SessionTTL, SessionAbsoluteTTL: cfg.SessionAbsoluteTTL,
 	})
@@ -96,6 +97,11 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 			log.Error("backup service stopped", "error", err)
 		}
 	}()
+	auditDone := make(chan struct{})
+	go func() {
+		defer close(auditDone)
+		audit.Run(runCtx, pool, log, audit.ArchiveKey(kek))
+	}()
 	ctlDone := make(chan struct{})
 	go func() {
 		defer close(ctlDone)
@@ -108,6 +114,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		<-gwDone
 		<-ctlDone
 		<-bkDone
+		<-auditDone
 	}()
 
 	host, _ := os.Hostname()

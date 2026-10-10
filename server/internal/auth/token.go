@@ -35,3 +35,22 @@ func CSRFToken(cookieValue string) string {
 	sum := sha256.Sum256([]byte("pp-csrf:" + cookieValue))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
+
+// APITokenPrefix starts every API token. The token is "pp_" and 40 random characters.
+const APITokenPrefix = "pp_"
+
+// NewAPIToken returns a new API token. Show it once, store only HashToken of it.
+func NewAPIToken() (string, error) {
+	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, 40)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("random api token: %w", err)
+	}
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
+	return APITokenPrefix + string(b), nil
+}
+
+// NewOneTimeToken returns a random value for invitation and password reset links.
+func NewOneTimeToken() (string, error) { return NewSessionValue() }

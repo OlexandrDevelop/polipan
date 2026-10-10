@@ -58,8 +58,12 @@ type Handlers struct {
 	// Backup is the backup service (M4). Without it the backup operations answer 500.
 	Backup *backup.Service
 
+	// KEK encrypts the TOTP secrets of users. Without it the 2FA operations answer 500.
+	KEK []byte
+
 	cookieSecure bool
 	perms        map[Route]string
+	opIDs        map[Route]string
 }
 
 // healthTimeout is the longest wait for the database in /healthz.

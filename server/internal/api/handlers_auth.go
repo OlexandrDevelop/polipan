@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -12,7 +13,9 @@ import (
 	"time"
 
 	"github.com/polipan/polipan/api/gen"
+	"github.com/polipan/polipan/server/internal/audit"
 	"github.com/polipan/polipan/server/internal/auth"
+	"github.com/polipan/polipan/server/internal/logging"
 	"github.com/polipan/polipan/server/internal/store"
 )
 
@@ -130,8 +133,9 @@ func (h *Handlers) SetupFirstUser(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, userJSON(user))
 }
 
-// Login checks email and password and starts a session. 5 failed tries in 15 minutes for one account
-// or one IP lock it for 15 minutes (429 with Retry-After).
+// Login checks email and password (and the TOTP code or a recovery code when the user has 2FA) and starts a session.
+// 5 failed tries in 15 minutes for one account or one IP lock it for 15 minutes (429 with Retry-After).
+// Every try is audited, good and failed (REQ-AUDIT-001).
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var body gen.LoginJSONBody
 	if !decodeJSON(w, r, &body) {
@@ -148,6 +152,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, store.ErrNotFound) || (err == nil && (user.PasswordHash == nil || user.Disabled)):
 		burnPasswordTime(body.Password)
+		user = nil
 	case err != nil:
 		internalError(w, r, err)
 		return
@@ -158,12 +163,19 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Two-factor login comes with M5. A user with TOTP on cannot log in with a password alone.
+	reason := "bad_password"
 	if good && user.TotpEnabled {
-		good = false
+		if body.TotpCode == nil || strings.TrimSpace(*body.TotpCode) == "" {
+			// The password was right: ask for the code. This is not a failed try.
+			h.auditLogin(r, user, email, "auth.login_totp_required", nil)
+			WriteError(w, r, http.StatusUnauthorized, CodeUnauthenticated, "the two-factor code is needed", map[string]any{"reason": "totp_required"})
+			return
+		}
+		good, reason = h.checkSecondFactor(r, user, *body.TotpCode), "bad_totp"
 	}
 	if !good {
 		h.Throttle.Fail(ipKey, acctKey)
+		h.auditLogin(r, user, email, "auth.login_failed", map[string]any{"reason": reason})
 		WriteError(w, r, http.StatusUnauthorized, CodeUnauthenticated, "email or password is wrong", nil)
 		return
 	}
@@ -173,15 +185,71 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.Store.SetLastLogin(r.Context(), user.ID, h.Clock.Now())
+	h.auditLogin(r, user, email, "auth.login", nil)
 	WriteJSON(w, http.StatusOK, userJSON(user))
 }
 
-// Logout ends the current session.
+// checkSecondFactor checks a TOTP code (6 digits) or a recovery code of the user. A TOTP step works once.
+func (h *Handlers) checkSecondFactor(r *http.Request, user *store.User, code string) bool {
+	ctx := r.Context()
+	t, err := h.Store.GetTOTP(ctx, user.ID)
+	if err != nil || !t.Enabled || len(h.KEK) == 0 {
+		return false
+	}
+	code = strings.TrimSpace(code)
+	if len(strings.ReplaceAll(code, " ", "")) == 6 {
+		secret, err := auth.Open(h.KEK, t.SecretEnc, "totp:"+user.ID)
+		if err != nil {
+			return false
+		}
+		step, ok := auth.CheckTOTP(secret, code, h.Clock.Now())
+		if !ok {
+			return false
+		}
+		fresh, err := h.Store.UseTOTPStep(ctx, user.ID, step)
+		return err == nil && fresh
+	}
+	used, err := h.Store.UseRecoveryCode(ctx, user.ID, auth.HashToken(auth.NormalizeRecoveryCode(code)))
+	if err == nil && used {
+		h.auditLogin(r, user, user.Email, "auth.recovery_code_used", nil)
+	}
+	return err == nil && used
+}
+
+// auditLogin writes an audit event of a login try. When it cannot be written it is only logged:
+// a login must not fail because of it (F07, edge cases).
+func (h *Handlers) auditLogin(r *http.Request, user *store.User, email, action string, diff map[string]any) {
+	ctx := context.WithoutCancel(r.Context())
+	e := audit.Event{ActorType: audit.ActorSystem, ActorID: "anonymous", Action: action, TargetType: "user", Diff: diff}
+	if user != nil {
+		e.OrgID, e.ActorType, e.ActorID, e.TargetID = user.OrgID, audit.ActorUser, user.ID, user.ID
+	} else {
+		org, err := h.Store.OnlyOrgID(ctx)
+		if err != nil {
+			return
+		}
+		e.OrgID = org
+		e.Diff = map[string]any{"email": email}
+		for k, v := range diff {
+			e.Diff.(map[string]any)[k] = v
+		}
+	}
+	if err := audit.Write(ctx, h.Store.Pool, e); err != nil {
+		logging.From(r.Context()).Error("login audit event not written", "error", err, "action", action)
+	}
+}
+
+// Logout ends the current session. An API token has no session to end.
 func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	p := PrincipalFrom(r.Context())
-	if err := h.Store.DeleteSession(r.Context(), p.SessionID); err != nil {
-		internalError(w, r, err)
-		return
+	if p.SessionID != "" {
+		if err := h.Store.DeleteSession(r.Context(), p.SessionID); err != nil {
+			internalError(w, r, err)
+			return
+		}
+	}
+	if err := audit.Write(context.WithoutCancel(r.Context()), h.Store.Pool, audit.Event{OrgID: p.OrgID, Action: "auth.logout", TargetType: "user", TargetID: p.User.ID}); err != nil {
+		logging.From(r.Context()).Error("logout audit event not written", "error", err)
 	}
 	h.clearCookie(w)
 	w.WriteHeader(http.StatusNoContent)
@@ -192,7 +260,18 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 	p := PrincipalFrom(r.Context())
 	role := gen.Role(p.Role)
 	w.Header().Set(CSRFHeader, p.CSRF)
-	WriteJSON(w, http.StatusOK, gen.Me{User: ptr(userJSON(p.User)), OrgRole: &role, ProjectRoles: &[]gen.ProjectRole{}})
+	roles := []gen.ProjectRole{}
+	if h.Store != nil {
+		list, err := h.Store.ProjectRolesOf(r.Context(), p.User.ID)
+		if err != nil {
+			internalError(w, r, err)
+			return
+		}
+		for _, pr := range list {
+			roles = append(roles, gen.ProjectRole{ProjectId: ptr(pr.ProjectID), Role: gen.ProjectRoleRole(pr.Role)})
+		}
+	}
+	WriteJSON(w, http.StatusOK, gen.Me{User: ptr(userJSON(p.User)), OrgRole: &role, ProjectRoles: &roles})
 }
 
 // UpdateMe changes the own name, and the own password when current_password and new_password are given.
@@ -268,23 +347,4 @@ func (h *Handlers) GetOrg(w http.ResponseWriter, r *http.Request) {
 	var settings gen.OrgSettings
 	_ = json.Unmarshal(o.Settings, &settings)
 	WriteJSON(w, http.StatusOK, gen.Org{Id: &o.ID, Name: &o.Name, Slug: &o.Slug, SsoRequired: &o.SSORequired, Settings: &settings})
-}
-
-// ListMembers lists the members of the org.
-func (h *Handlers) ListMembers(w http.ResponseWriter, r *http.Request, _ gen.ListMembersParams) {
-	list, err := h.Store.ListMembers(r.Context(), PrincipalFrom(r.Context()).OrgID)
-	if err != nil {
-		internalError(w, r, err)
-		return
-	}
-	items := make([]gen.Member, 0, len(list))
-	for _, m := range list {
-		role, source, status := gen.Role(m.Role), gen.MemberSource(m.Source), gen.MemberStatus("active")
-		if m.Disabled {
-			status = "disabled"
-		}
-		items = append(items, gen.Member{UserId: ptr(m.UserID), Email: ptr(m.Email), Name: ptr(m.Name), Role: &role,
-			Source: &source, Status: &status, LastLoginAt: m.LastLoginAt})
-	}
-	WriteJSON(w, http.StatusOK, page[gen.Member]{Items: items})
 }
