@@ -174,31 +174,33 @@ func (r *Runner) DeleteSnapshots(ctx context.Context, cmd *pb.DeleteSnapshots) e
 }
 
 // TestTarget writes a small snapshot into a test repository on the target and reads it back (REQ-BKP-002).
-func (r *Runner) TestTarget(ctx context.Context, cmd *pb.TestBackupTarget) error {
+// It returns the host key that ssh saw for an SFTP target without a pinned key, as one known_hosts line, so the
+// server can save it and every later job checks it strictly (R16). Otherwise it returns "".
+func (r *Runner) TestTarget(ctx context.Context, cmd *pb.TestBackupTarget) (string, error) {
 	t := proto2test(cmd.Target)
 	rp, err := r.openRepo(t, cmd.RepoPassword)
 	if err != nil {
-		return fail(CodeTargetFailed, "%v", r.scrub(err.Error()))
+		return "", fail(CodeTargetFailed, "%v", r.scrub(err.Error()))
 	}
 	defer rp.Close()
 	if err := r.ensureRepo(ctx, rp); err != nil {
-		return fail(CodeTargetFailed, "%v", r.scrub(err.Error()))
+		return "", fail(CodeTargetFailed, "%v", r.scrub(err.Error()))
 	}
 	payload := "polipan target test"
 	var out limited
 	out.max = 4 << 10
 	if err := r.restic(ctx, rp, stringsReader(payload), &out, "backup", "--json", "--host", "polipan-test", "--tag", "test", "--stdin", "--stdin-filename", "test.txt"); err != nil {
-		return fail(CodeTargetFailed, "cannot write to the target: %v", r.scrub(err.Error()))
+		return "", fail(CodeTargetFailed, "cannot write to the target: %v", r.scrub(err.Error()))
 	}
 	s, ok := parseSummary([]byte(out.String()))
 	if !ok {
-		return fail(CodeTargetFailed, "restic gave no snapshot")
+		return "", fail(CodeTargetFailed, "restic gave no snapshot")
 	}
 	var got limited
 	got.max = 4 << 10
 	if err := r.dumpTo(ctx, rp, s.SnapshotID, "test.txt", &got); err != nil || got.String() != payload {
-		return fail(CodeTargetFailed, "cannot read back from the target: %v", r.scrub(errString(err)))
+		return "", fail(CodeTargetFailed, "cannot read back from the target: %v", r.scrub(errString(err)))
 	}
 	_ = r.restic(ctx, rp, nil, io.Discard, "forget", "--prune", s.SnapshotID)
-	return nil
+	return rp.firstHostKey(), nil
 }

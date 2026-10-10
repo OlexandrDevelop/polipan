@@ -321,12 +321,12 @@ func TestVolumeRestore(t *testing.T) {
 func TestTargetTest(t *testing.T) {
 	needRestic(t)
 	r := newRunner(&fakeDocker{}, t)
-	if err := r.TestTarget(context.Background(), &pb.TestBackupTarget{Target: target("bkp_a", t.TempDir()), RepoPassword: "x-pass"}); err != nil {
+	if _, err := r.TestTarget(context.Background(), &pb.TestBackupTarget{Target: target("bkp_a", t.TempDir()), RepoPassword: "x-pass"}); err != nil {
 		t.Fatal(err)
 	}
 	bad := filepath.Join(t.TempDir(), "f")
 	_ = os.WriteFile(bad, nil, 0o600)
-	if err := r.TestTarget(context.Background(), &pb.TestBackupTarget{Target: target("bkp_a", filepath.Join(bad, "x")), RepoPassword: "x-pass"}); err == nil {
+	if _, err := r.TestTarget(context.Background(), &pb.TestBackupTarget{Target: target("bkp_a", filepath.Join(bad, "x")), RepoPassword: "x-pass"}); err == nil {
 		t.Fatal("a target that cannot be written passed")
 	}
 }

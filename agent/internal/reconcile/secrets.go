@@ -60,6 +60,9 @@ func secretValues(ds *agentv1.DesiredState) []string {
 	return out
 }
 
+// Scrub is scrub for the backup runner (R11): its run and check results go to the server too.
+func (e *Engine) Scrub(s string) string { return e.scrub(s) }
+
 // scrub replaces every secret value in s with ***. It is used on every error text the agent logs
 // or sends, so a Docker message that repeats an env value or the inspect output does not leak it.
 func (e *Engine) scrub(s string) string {

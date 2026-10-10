@@ -66,7 +66,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	gw.State = ctl
 	gw.Health = ctl
 
-	bk := backup.New(backup.Deps{DB: pool, Secrets: sec, Sender: gw, Orch: ctl, Clock: clk, Log: log})
+	bk := backup.New(backup.Deps{DB: pool, Secrets: sec, Sender: gw, Orch: ctl, Clock: clk, Log: log, SSRF: ctl.SSRFPolicy})
 	handler, err := api.NewRouter(api.Deps{
 		Log: log, DB: pool, Pool: pool, Clock: clk, RateLimit: cfg.APIRateLimit, Web: web.Handler(),
 		Orchestrator: ctl, ExternalURL: cfg.ExternalURL, TrustedProxies: cfg.TrustedProxies, AgentListen: cfg.AgentListen,

@@ -24,6 +24,7 @@ import (
 	"github.com/polipan/polipan/server/internal/db"
 	"github.com/polipan/polipan/server/internal/db/dbtest"
 	"github.com/polipan/polipan/server/internal/orchestrator"
+	"github.com/polipan/polipan/server/internal/secrets"
 	"github.com/polipan/polipan/server/internal/shared/clock"
 	"github.com/polipan/polipan/server/internal/store"
 )
@@ -125,11 +126,15 @@ func newTestEnv(t *testing.T, externalURL string) *testEnv {
 	if _, err := db.Migrate(context.Background(), pool); err != nil {
 		t.Fatal(err)
 	}
+	sec, err := secrets.NewManager(pool, testKEK)
+	if err != nil {
+		t.Fatal(err)
+	}
 	orch := &fakeOrch{pool: pool}
 	clk := clock.NewFake(time.Now())
 	h, err := api.NewRouter(api.Deps{
 		Log: slog.New(slog.NewJSONHandler(io.Discard, nil)), DB: pool, Clock: clk, RateLimit: 100000,
-		Pool: pool, Orchestrator: orch, ExternalURL: externalURL, AgentListen: ":9443", SetupToken: "setup-secret", KEK: testKEK,
+		Pool: pool, Orchestrator: orch, ExternalURL: externalURL, AgentListen: ":9443", SetupToken: "setup-secret", KEK: testKEK, Secrets: sec,
 	})
 	if err != nil {
 		t.Fatal(err)

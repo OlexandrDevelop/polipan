@@ -22,6 +22,7 @@ import (
 	"github.com/polipan/polipan/server/internal/orchestrator"
 	"github.com/polipan/polipan/server/internal/secrets"
 	"github.com/polipan/polipan/server/internal/shared/clock"
+	"github.com/polipan/polipan/server/internal/ssrf"
 	"github.com/polipan/polipan/server/internal/store"
 )
 
@@ -49,6 +50,9 @@ type Deps struct {
 	DatabaseVersion func(ctx context.Context) (int, error)
 	// LocalRoot is the only folder tree where "local" targets may live. Default /var/lib/polipan/backups.
 	LocalRoot string
+	// SSRF gives the deny list of an org. The host of an S3 endpoint and of an SFTP target is checked against it
+	// (REQ-SEC-104, R12). Nil means no check (tests).
+	SSRF func(ctx context.Context, orgID string) ssrf.Policy
 	// StableWait is how long a run waits for a deployment of the service to end (REQ edge case, default 10 min).
 	StableWait time.Duration
 }

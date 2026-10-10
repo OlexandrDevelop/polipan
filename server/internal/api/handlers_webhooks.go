@@ -3,9 +3,9 @@
 package api
 
 import (
-	"github.com/polipan/polipan/server/internal/audit"
 	"crypto/subtle"
 	"errors"
+	"github.com/polipan/polipan/server/internal/audit"
 	"io"
 	"net/http"
 

@@ -148,7 +148,7 @@ func runAgent(cfg config.Config) error {
 	eng := reconcile.New(d, store, cfg.Network, log)
 	eng.Ingress, eng.DNS, eng.Firewall = ing, dnsSrv, fw
 	eng.FilesDir = filepath.Join(cfg.DataDir, "files")
-	eng.Backup = &backup.Runner{Docker: d, TmpDir: filepath.Join(cfg.DataDir, "tmp"), Log: log, PullAuth: eng.PullAuthFor}
+	eng.Backup = &backup.Runner{Docker: d, TmpDir: filepath.Join(cfg.DataDir, "tmp"), Log: log, PullAuth: eng.PullAuthFor, Scrub: eng.Scrub}
 	dnsStarted := false
 	eng.Infra = func(ctx context.Context) error {
 		gw, err := d.EnsureNetwork(ctx, cfg.Network, cfg.Subnet)

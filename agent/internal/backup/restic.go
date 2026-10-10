@@ -27,6 +27,25 @@ type repo struct {
 	args     []string // global restic options, for example -o sftp.command=...
 	password string
 	dir      string // temporary folder of this repository (key files)
+	// learned is the known_hosts file that ssh fills on the first connection. Empty when the key is pinned.
+	learned string
+}
+
+// firstHostKey returns the host key line that ssh saved on the first connection, or "".
+func (rp *repo) firstHostKey() string {
+	if rp.learned == "" {
+		return ""
+	}
+	raw, err := os.ReadFile(rp.learned)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+			return line
+		}
+	}
+	return ""
 }
 
 func (rp *repo) Close() {
@@ -104,6 +123,8 @@ func (r *Runner) sftpSetup(rp *repo, t *pb.BackupTargetSpec) error {
 	content := ""
 	if t.SshKnownHost != "" {
 		content, strict = strings.TrimSpace(t.SshKnownHost)+"\n", "yes"
+	} else {
+		rp.learned = known
 	}
 	if err := os.WriteFile(known, []byte(content), 0o600); err != nil {
 		return err

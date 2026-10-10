@@ -13,6 +13,9 @@
 //	polipan-server [-config file] admin rotate-kek            make a new master key and re-wrap all data keys
 //	polipan-server [-config file] admin rotate-dek --project <id or slug>  re-encrypt the secrets of a project
 //	polipan-server [-config file] admin backup-password --policy <id>  print the restic password and the repositories of a policy
+//	polipan-server [-config file] admin reset-password <email>  print a one-hour link to set a new password
+//	polipan-server [-config file] admin disable-2fa <email>  turn two-factor login off for a user
+//	polipan-server [-config file] admin audit-verify         check the audit hash chain
 //	polipan-server version                    print the version
 package main
 
@@ -28,6 +31,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/polipan/polipan/server/internal/admin"
 	"github.com/polipan/polipan/server/internal/backup"
 	"github.com/polipan/polipan/server/internal/config"
 	"github.com/polipan/polipan/server/internal/control"
@@ -97,8 +101,14 @@ func run() error {
 			return secrets.RotateDEKCommand(ctx, cfg, flag.Args()[2:], os.Getenv, os.Stdout)
 		case "backup-password":
 			return backup.PasswordCommand(ctx, cfg, flag.Args()[2:], os.Getenv, os.Stdout)
+		case "reset-password":
+			return admin.ResetPassword(ctx, cfg, flag.Args()[2:], os.Stdout)
+		case "disable-2fa":
+			return admin.DisableTOTP(ctx, cfg, flag.Args()[2:], os.Stdout)
+		case "audit-verify":
+			return admin.AuditVerify(ctx, cfg, os.Stdout)
 		}
-		return fmt.Errorf("unknown admin command %q (rotate-kek, rotate-dek, backup-password)", flag.Arg(1))
+		return fmt.Errorf("unknown admin command %q (rotate-kek, rotate-dek, backup-password, reset-password, disable-2fa, audit-verify)", flag.Arg(1))
 	case "healthcheck":
 		return healthcheck(ctx, cfg.Listen)
 	default:

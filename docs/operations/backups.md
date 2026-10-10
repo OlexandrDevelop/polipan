@@ -17,10 +17,18 @@ inside `/var/lib/polipan/backups`. Mount it too when the agent runs in a contain
 Add targets in **Backups → Backup targets** (S3 compatible, Backblaze B2, SFTP, local folder, Azure Blob, Google Cloud Storage).
 Keys are write-only. Press **Test** to write and read a small test repository.
 
-SFTP uses a private key. Without a host key in the target, the key of the server is trusted the first time.
-Put the `known_hosts` line in the target to pin it.
+SFTP uses a private key. The first **Test** of an SFTP target saves the host key that the node saw in the target
+(`known_host`). From then on every job checks it strictly (`StrictHostKeyChecking=yes`). You can also put the `known_hosts`
+line in the target yourself. If the server changes its key, the jobs fail until you give the new line.
+
+S3 endpoints and SFTP hosts must be public addresses. A loopback, link-local, mesh, Docker or private address is refused, unless
+the organization setting `allow_private_targets` is on. The result of **Test** is a fixed message. The details are in the server log.
+To change a target that a policy of a protected environment (or the control-plane policy) uses, you need the admin role.
 
 ## Policies, runs and restore checks
+
+- **Hooks must not hold secrets.** The command of a pre or post hook is stored in the policy and shown in the API, the audit log
+  and the run history. Never put a password or a key in it. Read it from the environment of the container instead.
 
 - A policy has a schedule (cron, UTC), one or more targets, a retention (`keep_daily`, `keep_weekly`, `keep_monthly`) and a restore check.
   A retention object with only some keys uses only those rules. Without a retention the default is 7 daily, 4 weekly, 6 monthly.

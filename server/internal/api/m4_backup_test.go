@@ -36,6 +36,8 @@ type m4Env struct {
 	onBackup  func(c *pb.RunBackup) *pb.CommandAck
 	onCheck   func(c *pb.RunRestoreCheck) *pb.CommandAck
 	onRestore func(c *pb.RestoreSnapshot) *pb.CommandAck
+	// onTest answers TestBackupTarget. The default is ok.
+	onTest func(c *pb.TestBackupTarget) *pb.CommandAck
 }
 
 func okSnapshots(c *pb.RunBackup, fail map[string]bool) *pb.CommandAck {
@@ -77,7 +79,7 @@ func newM4Env(t *testing.T) *m4Env {
 	e.agent.OnCommand = func(c *pb.Command) *pb.CommandAck {
 		e.mu.Lock()
 		e.commands = append(e.commands, c)
-		onBackup, onCheck, onRestore := e.onBackup, e.onCheck, e.onRestore
+		onBackup, onCheck, onRestore, onTest := e.onBackup, e.onCheck, e.onRestore, e.onTest
 		e.mu.Unlock()
 		switch b := c.Body.(type) {
 		case *pb.Command_PullImage:
@@ -99,6 +101,9 @@ func newM4Env(t *testing.T) *m4Env {
 			}
 			return &pb.CommandAck{Ok: true, ResultJson: []byte("{}")}
 		case *pb.Command_TestBackupTarget:
+			if onTest != nil {
+				return onTest(b.TestBackupTarget)
+			}
 			return &pb.CommandAck{Ok: true, ResultJson: []byte("{}")}
 		}
 		return &pb.CommandAck{Ok: true}

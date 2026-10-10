@@ -130,3 +130,6 @@ func newGCM(key []byte) (cipher.AEAD, error) {
 	}
 	return cipher.NewGCM(block)
 }
+
+// TOTPCode is the code that an authenticator app shows at a moment. Tests use it.
+func TOTPCode(secret []byte, t time.Time) string { return totpCode(secret, TOTPStep(t)) }

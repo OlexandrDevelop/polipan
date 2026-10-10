@@ -536,4 +536,3 @@ func (h *Handlers) UpdateOrg(w http.ResponseWriter, r *http.Request) {
 	_ = json.Unmarshal(o.Settings, &settings)
 	WriteJSON(w, http.StatusOK, gen.Org{Id: &o.ID, Name: &o.Name, Slug: &o.Slug, SsoRequired: &o.SSORequired, Settings: &settings})
 }
-

@@ -34,6 +34,12 @@ func backupSecrets(targets []*agentv1.BackupTargetSpec, password string) []strin
 	return out
 }
 
+// scrubResult makes the JSON of a run or check result. The text fields hold no secret: the known values
+// of the job and of the services are replaced in the whole text, as a last net (R11).
+func (e *Engine) scrubResult(res any, secrets []string) []byte {
+	return []byte(scrubWith(secrets, e.scrub(string(jsonBytes(res)))))
+}
+
 func scrubWith(secrets []string, s string) string {
 	for _, v := range secrets {
 		s = strings.ReplaceAll(s, v, "***")
@@ -57,22 +63,24 @@ func (e *Engine) runBackup(ctx context.Context, rb *agentv1.RunBackup) ([]byte, 
 	if e.Backup == nil {
 		return nil, "unsupported_version", "this agent has no backup runner"
 	}
+	secrets := backupSecrets(rb.Targets, rb.RepoPassword)
 	res, err := e.Backup.Run(ctx, rb)
 	if err != nil {
-		return e.backupFailed(err, backupSecrets(rb.Targets, rb.RepoPassword))
+		return e.backupFailed(err, secrets)
 	}
-	return jsonBytes(res), "", ""
+	return e.scrubResult(res, secrets), "", ""
 }
 
 func (e *Engine) runRestoreCheck(ctx context.Context, rc *agentv1.RunRestoreCheck) ([]byte, string, string) {
 	if e.Backup == nil {
 		return nil, "unsupported_version", "this agent has no backup runner"
 	}
+	secrets := backupSecrets([]*agentv1.BackupTargetSpec{rc.Target}, rc.RepoPassword)
 	res, err := e.Backup.RunCheck(ctx, rc)
 	if err != nil {
-		return e.backupFailed(err, backupSecrets([]*agentv1.BackupTargetSpec{rc.Target}, rc.RepoPassword))
+		return e.backupFailed(err, secrets)
 	}
-	return jsonBytes(res), "", ""
+	return e.scrubResult(res, secrets), "", ""
 }
 
 func (e *Engine) restoreSnapshot(ctx context.Context, rs *agentv1.RestoreSnapshot) ([]byte, string, string) {
@@ -118,10 +126,12 @@ func (e *Engine) testBackupTarget(ctx context.Context, t *agentv1.TestBackupTarg
 	if e.Backup == nil {
 		return nil, "unsupported_version", "this agent has no backup runner"
 	}
-	if err := e.Backup.TestTarget(ctx, t); err != nil {
+	knownHost, err := e.Backup.TestTarget(ctx, t)
+	if err != nil {
 		return e.backupFailed(err, backupSecrets([]*agentv1.BackupTargetSpec{t.Target}, t.RepoPassword))
 	}
-	return []byte("{}"), "", ""
+	// The host key of an SFTP server that was seen for the first time. The server keeps it (R16).
+	return jsonBytes(map[string]string{"known_host": knownHost}), "", ""
 }
 
 func (e *Engine) deleteSnapshots(ctx context.Context, d *agentv1.DeleteSnapshots) ([]byte, string, string) {

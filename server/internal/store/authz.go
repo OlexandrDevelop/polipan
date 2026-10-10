@@ -153,6 +153,6 @@ func (s *Store) GetTokenByHash(ctx context.Context, hash string, now time.Time) 
 
 // TouchToken stores the last use of a token, at most once a minute.
 func (s *Store) TouchToken(ctx context.Context, id string, now time.Time) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE api_tokens SET last_used_at = $2 WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < $2 - interval '1 minute')`, id, now)
+	_, err := s.Pool.Exec(ctx, `UPDATE api_tokens SET last_used_at = $2::timestamptz WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < $2::timestamptz - interval '1 minute')`, id, now)
 	return err
 }

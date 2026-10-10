@@ -109,6 +109,14 @@ func (h *Handlers) UpdateBackupTarget(w http.ResponseWriter, r *http.Request, ta
 	if !decodeJSON(w, r, &body) {
 		return
 	}
+	// A target that a policy of a protected environment (or the control-plane policy) uses needs an admin (R13).
+	protected, err := h.Backup.TargetUsedByProtected(r.Context(), h.orgID(r), targetID)
+	if h.backupFailed(w, r, err) {
+		return
+	}
+	if denyProtected(w, r, "backup:manage", protected) {
+		return
+	}
 	t, err := h.Backup.UpdateTarget(r.Context(), h.orgID(r), targetID, targetInput(body))
 	if h.backupFailed(w, r, err) {
 		return

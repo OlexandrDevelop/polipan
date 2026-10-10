@@ -17,7 +17,9 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	pb "github.com/polipan/polipan/proto/agentv1"
+	"github.com/polipan/polipan/server/internal/audit"
 	"github.com/polipan/polipan/server/internal/gateway"
+	"github.com/polipan/polipan/server/internal/ssrf"
 	"github.com/polipan/polipan/server/internal/store"
 )
 
@@ -95,8 +97,23 @@ func checkHostAllowed(host string) error {
 	return nil
 }
 
+// checkSSRF refuses a host that is loopback, link-local, in the mesh or a Docker network, or private unless the org
+// setting allow_private_targets is on (REQ-SEC-104). The answer does not say more than that.
+func (s *Service) checkSSRF(ctx context.Context, orgID, host string) error {
+	if s.SSRF == nil {
+		return nil
+	}
+	if _, err := s.SSRF(ctx, orgID).Resolve(ctx, host); err != nil {
+		if errors.Is(err, ssrf.ErrDenied) {
+			return errors.New("this address is private or not allowed (the organization setting allow_private_targets is off)")
+		}
+		return errors.New("the host name cannot be resolved")
+	}
+	return nil
+}
+
 // validateTarget checks the config and the credentials of a target. Credentials are checked when given.
-func (s *Service) validateTarget(kind string, cfg map[string]any, creds map[string]string, needCreds bool) (map[string]any, error) {
+func (s *Service) validateTarget(ctx context.Context, orgID, kind string, cfg map[string]any, creds map[string]string, needCreds bool) (map[string]any, error) {
 	allowed, ok := configKeys[kind]
 	if !ok {
 		return nil, invalid("kind", "kind must be s3, b2, sftp, local, azure or gcs")
@@ -148,6 +165,9 @@ func (s *Service) validateTarget(kind string, cfg map[string]any, creds map[stri
 				return nil, invalid("config.endpoint", "config.endpoint must be a host or an http(s) address without a path")
 			}
 			if err := checkHostAllowed(u.Hostname()); err != nil {
+				return nil, invalid("config.endpoint", "config.endpoint: %v", err)
+			}
+			if err := s.checkSSRF(ctx, orgID, u.Hostname()); err != nil {
 				return nil, invalid("config.endpoint", "config.endpoint: %v", err)
 			}
 			clean["endpoint"] = u.Scheme + "://" + u.Host
@@ -212,6 +232,9 @@ func (s *Service) validateTarget(kind string, cfg map[string]any, creds map[stri
 			return nil, invalid("config.host", "config.host is not a valid host name")
 		}
 		if err := checkHostAllowed(host); err != nil {
+			return nil, invalid("config.host", "config.host: %v", err)
+		}
+		if err := s.checkSSRF(ctx, orgID, host); err != nil {
 			return nil, invalid("config.host", "config.host: %v", err)
 		}
 		user, err := need("user")
@@ -312,7 +335,7 @@ func (s *Service) CreateTarget(ctx context.Context, orgID string, in TargetInput
 	if !nameRe.MatchString(in.Name) {
 		return nil, invalid("name", "name must be 1 to 63 characters: letters, digits, space . _ -")
 	}
-	cfg, err := s.validateTarget(in.Kind, in.Config, in.Credentials, true)
+	cfg, err := s.validateTarget(ctx, orgID, in.Kind, in.Config, in.Credentials, true)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +387,7 @@ func (s *Service) UpdateTarget(ctx context.Context, orgID, id string, in TargetI
 	if cfgIn == nil {
 		cfgIn = cur.Config
 	}
-	cfg, err := s.validateTarget(cur.Kind, cfgIn, in.Credentials, false)
+	cfg, err := s.validateTarget(ctx, orgID, cur.Kind, cfgIn, in.Credentials, false)
 	if err != nil {
 		return nil, err
 	}
@@ -389,6 +412,21 @@ func (s *Service) UpdateTarget(ctx context.Context, orgID, id string, in TargetI
 		return nil, err
 	}
 	return s.GetTarget(ctx, orgID, id)
+}
+
+// TargetUsedByProtected tells if a policy of a protected environment, or the control-plane policy, uses the target.
+// A target that no policy uses is not protected. It returns ErrNotFound for a target of another org.
+func (s *Service) TargetUsedByProtected(ctx context.Context, orgID, id string) (bool, error) {
+	if _, err := s.GetTarget(ctx, orgID, id); err != nil {
+		return false, err
+	}
+	var used bool
+	err := s.DB.QueryRow(ctx, `SELECT EXISTS (
+		SELECT 1 FROM backup_policies bp
+		LEFT JOIN services sv ON sv.id = bp.service_id
+		LEFT JOIN environments e ON e.id = sv.environment_id
+		WHERE bp.org_id = $1 AND $2 = ANY(bp.target_ids) AND (bp.service_id IS NULL OR e.protected))`, orgID, id).Scan(&used)
+	return used, err
 }
 
 // DeleteTarget removes a target that no policy uses (409 otherwise).
@@ -509,12 +547,18 @@ func (s *Service) TestTarget(ctx context.Context, orgID, id string) (ok bool, me
 	ack, err := s.Sender.Send(cctx, node, &pb.Command{CommandId: gateway.NewID("cmd"),
 		Body: &pb.Command_TestBackupTarget{TestBackupTarget: &pb.TestBackupTarget{Target: sp, RepoPassword: "polipan-target-test"}}})
 	okTest := err == nil && ack.GetOk()
+	// The text of an error can show internal addresses or paths, so the caller gets a fixed message (R12).
+	// The details go to the log, with the secrets already removed by the agent.
 	msg := ""
 	switch {
 	case err != nil:
-		msg = "node unavailable: " + err.Error()
+		msg = "no node could run the test"
+		s.Log.Warn("backup target test: node error", "target_id", id, "error", err)
 	case !ack.GetOk():
-		msg = ack.GetErrorMessage()
+		msg = "the test failed: the node could not write and read a test object. Check the address, the credentials and the path"
+		s.Log.Warn("backup target test failed", "target_id", id, "code", ack.GetErrorCode(), "detail", firstLine(ack.GetErrorMessage()))
+	case t.Kind == "sftp" && str(t.Config, "known_host") == "":
+		s.saveHostKey(ctx, t, ack.GetResultJson())
 	}
 	now := s.now()
 	if _, e := s.DB.Exec(ctx, `UPDATE backup_targets SET last_test_at = $2, last_test_ok = $3 WHERE id = $1`, id, now, okTest); e != nil {
@@ -540,4 +584,41 @@ func (s *Service) anyNode(ctx context.Context, orgID, prefer string) (string, er
 		}
 	}
 	return "", ErrNoNode
+}
+
+// saveHostKey keeps the SFTP host key that the node saw on the first connection in the config of the target.
+// From then on every job uses StrictHostKeyChecking=yes (R16). A bad answer is ignored: the target stays on first use.
+func (s *Service) saveHostKey(ctx context.Context, t *Target, result []byte) {
+	var res struct {
+		KnownHost string `json:"known_host"`
+	}
+	if json.Unmarshal(result, &res) != nil {
+		return
+	}
+	line := strings.TrimSpace(res.KnownHost)
+	if line == "" || strings.ContainsAny(line, "\n\r") || len(line) > 1000 || len(strings.Fields(line)) < 3 {
+		return
+	}
+	tag, err := s.DB.Exec(ctx, `UPDATE backup_targets SET config = config || jsonb_build_object('known_host', $2::text)
+		WHERE id = $1 AND NOT (config ? 'known_host')`, t.ID, line)
+	if err != nil {
+		s.Log.Warn("backup target: host key not saved", "target_id", t.ID, "error", err)
+		return
+	}
+	if tag.RowsAffected() == 1 {
+		err := audit.Write(ctx, s.DB, audit.Event{OrgID: t.OrgID, Action: "backup_target.host_key_pinned", TargetType: "backup_target",
+			TargetID: t.ID, Diff: map[string]any{"host": str(t.Config, "host")}})
+		if err != nil {
+			s.Log.Warn("backup target: audit event not written", "target_id", t.ID, "error", err)
+		}
+	}
+}
+
+// firstLine is the first line of a text, cut to 200 characters, for the log.
+func firstLine(s string) string {
+	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
+	if len(s) > 200 {
+		s = s[:200]
+	}
+	return s
 }

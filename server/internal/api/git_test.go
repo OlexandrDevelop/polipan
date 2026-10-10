@@ -134,6 +134,12 @@ func TestAC_APP_03_PushWebhookQueuesDeployment(t *testing.T) {
 	if n := e.count(`SELECT count(*) FROM deployments`); n != 1 {
 		t.Fatalf("protected or other repo was deployed: %d", n)
 	}
+	// AC-AUDIT-03: the auto deploy is an audit event of the system with the trigger and the commit author.
+	if n := e.count(`SELECT count(*) FROM audit_events WHERE actor_type = 'system' AND actor_id = $1 AND action = 'deployment.create'
+		AND target_type = 'deployment' AND diff->>'author' = 'ann' AND diff->>'trigger' = 'git_push'
+		AND diff->>'commit' = '0123456789abcdef0123456789abcdef01234567' AND diff->>'service_id' = $2`, "webhook:"+connID, staging); n != 1 {
+		t.Fatalf("auto deploy audit events: %d", n)
+	}
 
 	// Replay of the same delivery: refused, nothing new.
 	if rec := e.hook(path, git.SignatureHeaders(git.Gitea, []byte(secret), body, "d-1"), body); rec.Code != 409 {
