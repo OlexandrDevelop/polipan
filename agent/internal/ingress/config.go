@@ -16,6 +16,9 @@ const (
 	// AdminListen is the Caddy admin address inside the container. It is a unix socket, never TCP (REQ-AGENT-010).
 	AdminListen = "unix//run/caddy-admin/admin.sock|0660"
 
+	// AccessLogger is the name of the access logger of the server and of its log writer.
+	AccessLogger = "access"
+
 	defaultMaxBody = 100 << 20 // 100 MiB (REQ-DOM-008)
 
 	letsEncryptCA = "https://acme-v02.api.letsencrypt.org/directory"
@@ -108,7 +111,11 @@ func BuildConfig(spec *agentv1.IngressSpec, opts Options) ([]byte, error) {
 		return mains[i].key < mains[j].key
 	})
 
-	routes := []any{}
+	// The first route is not terminal. It runs the rest of the routes and then adds the upstream to the access
+	// log line, so the value is known. Requests without a proxy get an empty upstream.
+	routes := []any{obj{"handle": []any{obj{
+		"handler": "log_append", "key": "upstream", "value": "{http.reverse_proxy.upstream.hostport}",
+	}}}}
 	// Plain HTTP for a host that has HTTPS goes to HTTPS (REQ-DOM-002). The server listens on
 	// both ports, so Caddy does not add this redirect by itself.
 	if len(httpsHosts) > 0 {
@@ -140,7 +147,8 @@ func BuildConfig(spec *agentv1.IngressSpec, opts Options) ([]byte, error) {
 	server := obj{
 		"listen": []string{":80", ":443"},
 		"routes": routes,
-		"logs":   obj{},
+		// Access logs go to the "access" logger. The agent reads them for the ingress metrics (12 section 7).
+		"logs": obj{"default_logger_name": AccessLogger},
 	}
 	var skip []string
 	for h := range plainHosts {
@@ -172,11 +180,21 @@ func BuildConfig(spec *agentv1.IngressSpec, opts Options) ([]byte, error) {
 	cfg := obj{
 		"admin":   obj{"listen": AdminListen},
 		"storage": obj{"module": "file_system", "root": "/data"},
-		"logging": obj{"logs": obj{"default": obj{
-			"writer":  obj{"output": "stdout"},
-			"encoder": obj{"format": "json"},
-			"level":   "INFO",
-		}}},
+		// Access lines are written once, by their own log, so they do not mix with the Caddy messages.
+		"logging": obj{"logs": obj{
+			"default": obj{
+				"writer":  obj{"output": "stdout"},
+				"encoder": obj{"format": "json"},
+				"level":   "INFO",
+				"exclude": []string{"http.log.access"},
+			},
+			AccessLogger: obj{
+				"writer":  obj{"output": "stdout"},
+				"encoder": obj{"format": "json"},
+				"level":   "INFO",
+				"include": []string{"http.log.access"},
+			},
+		}},
 		"apps": apps,
 	}
 	return json.Marshal(cfg) // map keys are sorted by encoding/json

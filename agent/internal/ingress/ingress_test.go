@@ -45,6 +45,9 @@ func routesOf(t *testing.T, cfg map[string]any) []any {
 		if m, ok := r.(map[string]any)["match"].([]any); ok && m[0].(map[string]any)["protocol"] == "http" {
 			continue // the HTTP to HTTPS redirect has its own test
 		}
+		if r.(map[string]any)["match"] == nil && handlerNames(r)[0] == "log_append" {
+			continue // the access log route has its own test
+		}
 		out = append(out, r)
 	}
 	return out
@@ -56,7 +59,7 @@ func TestBuildHTTPRedirect(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv := decode(t, b)["apps"].(map[string]any)["http"].(map[string]any)["servers"].(map[string]any)["polipan"].(map[string]any)
-	first := srv["routes"].([]any)[0].(map[string]any)
+	first := srv["routes"].([]any)[1].(map[string]any) // the route before it only adds the access log field
 	m := first["match"].([]any)[0].(map[string]any)
 	if m["protocol"] != "http" || m["host"].([]any)[0] != "app.example.com" {
 		t.Fatalf("first route must redirect http for the https host: %v", m)
@@ -415,5 +418,34 @@ func TestBuildStreamCloseDelay(t *testing.T) {
 	}
 	if !strings.Contains(string(b), `"stream_close_delay":"30s"`) {
 		t.Fatalf("no stream_close_delay in %s", b)
+	}
+}
+
+func TestBuildAccessLog(t *testing.T) {
+	b, err := BuildConfig(spec1(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := decode(t, b)
+	srv := cfg["apps"].(map[string]any)["http"].(map[string]any)["servers"].(map[string]any)["polipan"].(map[string]any)
+	if srv["logs"].(map[string]any)["default_logger_name"] != AccessLogger {
+		t.Fatalf("server logs %v", srv["logs"])
+	}
+	// The first route is not terminal and adds the upstream to the log line.
+	first := srv["routes"].([]any)[0].(map[string]any)
+	if first["terminal"] != nil || first["match"] != nil {
+		t.Fatalf("first route %v", first)
+	}
+	la := first["handle"].([]any)[0].(map[string]any)
+	if la["handler"] != "log_append" || la["key"] != "upstream" || la["value"] != "{http.reverse_proxy.upstream.hostport}" {
+		t.Fatalf("log_append %v", la)
+	}
+	logs := cfg["logging"].(map[string]any)["logs"].(map[string]any)
+	acc := logs[AccessLogger].(map[string]any)
+	if acc["include"].([]any)[0] != "http.log.access" || acc["encoder"].(map[string]any)["format"] != "json" {
+		t.Fatalf("access log %v", acc)
+	}
+	if logs["default"].(map[string]any)["exclude"].([]any)[0] != "http.log.access" {
+		t.Fatal("the default log must not repeat access lines")
 	}
 }
