@@ -284,7 +284,7 @@ func serviceConfig(m *serviceModel, base client.Obj) (client.Obj, error) {
 		}
 		put(cfg, "image", m.Image)
 		put(cfg, "restart_policy", m.RestartPolicy)
-		if m.Port.IsNull() {
+		if m.Port.IsNull() || m.Port.IsUnknown() {
 			delete(cfg, "port")
 		} else {
 			// The server made a tcp health check from the old port. It is made again for the new port.
@@ -309,6 +309,15 @@ func serviceConfig(m *serviceModel, base client.Obj) (client.Obj, error) {
 	return cfg, nil
 }
 
+// readPort takes the port from the server. The attribute is computed, so an imported service has it too.
+func readPort(dst *types.Int64, cfg client.Obj) {
+	if f, ok := cfg["port"].(float64); ok {
+		*dst = types.Int64Value(int64(f))
+		return
+	}
+	*dst = types.Int64Null()
+}
+
 func readService(m *serviceModel, o client.Obj) {
 	setStr(&m.EnvironmentID, o, "environment_id")
 	setStr(&m.Name, o, "name")
@@ -316,7 +325,7 @@ func readService(m *serviceModel, o client.Obj) {
 	cfg := client.Sub(o, "config")
 	setStr(&m.Image, cfg, "image")
 	setStr(&m.RestartPolicy, cfg, "restart_policy")
-	optInt(&m.Port, cfg, "port")
+	readPort(&m.Port, cfg)
 	optList(&m.Command, cfg, "command")
 	optStr(&m.DBEngine, o, "db_engine")
 	optStr(&m.DBVersion, o, "db_version")
@@ -334,7 +343,7 @@ var serviceSpec = spec[serviceModel]{
 			"type": schema.StringAttribute{Optional: true, Computed: true, Description: "`app` (default) or `database`. A change replaces the service.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown(), stringplanmodifier.RequiresReplaceIfConfigured()}},
 			"image":          schema.StringAttribute{Optional: true, Computed: true, Description: "Container image of an app, for example `nginx:1.27`. Needed for an app.", PlanModifiers: computedKeep},
-			"port":           schema.Int64Attribute{Optional: true, Description: "The port of the app in the container."},
+			"port":           schema.Int64Attribute{Optional: true, Computed: true, Description: "The port of the app in the container.", PlanModifiers: intKeep},
 			"command":        schema.ListAttribute{Optional: true, ElementType: types.StringType, Description: "Command that replaces the image command."},
 			"restart_policy": schema.StringAttribute{Optional: true, Computed: true, Description: "`always` (default), `on-failure`, `unless-stopped` or `no`.", PlanModifiers: computedKeep},
 			"db_engine": schema.StringAttribute{Optional: true, Description: "Database engine: `postgres`, `mysql`, `mariadb`, `mongo` or `redis`. Only for `type = \"database\"`. A change replaces the service.",
@@ -362,6 +371,7 @@ var serviceSpec = spec[serviceModel]{
 		stored := client.Sub(o, "config")
 		setStr(&m.Image, stored, "image")
 		setStr(&m.RestartPolicy, stored, "restart_policy")
+		readPort(&m.Port, stored)
 		return nil
 	},
 	read: func(ctx context.Context, c *client.Client, m *serviceModel) (bool, error) {
