@@ -79,7 +79,7 @@ func TestLocalAndForward(t *testing.T) {
 }
 
 // REQ-NODE-009: a name that has replicas on several nodes answers with all addresses.
-func TestSetMultiAnswersEveryAddress(t *testing.T) {
+func TestREQ_NODE_009_SetMultiAnswersEveryAddress(t *testing.T) {
 	s := &Server{Upstreams: []string{"127.0.0.1:1"}}
 	s.SetMulti(map[string][]string{"svc-api": {"10.210.2.10", "10.210.1.10"}})
 	pc, _ := net.ListenPacket("udp", "127.0.0.1:0")

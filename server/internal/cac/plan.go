@@ -513,7 +513,8 @@ func (b *builder) diffService(ds *DesiredService, le *LiveEnv, ls *LiveService) 
 		}
 	}
 	adminAuto := func() bool {
-		auto, _ := ds.Overlay["git"].(map[string]any)["auto_deploy"].(bool)
+		g, _ := ds.Overlay["git"].(map[string]any)
+		auto, _ := g["auto_deploy"].(bool)
 		return envProtected && auto
 	}
 	if ls == nil {

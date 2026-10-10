@@ -21,7 +21,7 @@ func peers() []*agentv1.WireguardPeer {
 }
 
 // REQ-AGENT-008: the config has every peer with its own subnet, the same input gives the same text.
-func TestBuildPlan(t *testing.T) {
+func TestREQ_AGENT_008_BuildPlan(t *testing.T) {
 	p := BuildPlan("PRIV", 0, peers())
 	if !strings.Contains(p.Config, "ListenPort = 51820") || !strings.Contains(p.Config, "PrivateKey = PRIV") {
 		t.Fatalf("interface section: %s", p.Config)
@@ -45,7 +45,7 @@ func TestBuildPlan(t *testing.T) {
 }
 
 // The key pair is made once and kept. The public key is derived with curve25519.
-func TestKeyPair(t *testing.T) {
+func TestREQ_AGENT_008_KeyPair(t *testing.T) {
 	dir := t.TempDir()
 	k1, err := LoadOrCreateKey(dir)
 	if err != nil {
@@ -94,7 +94,7 @@ func joined(calls []call) string {
 }
 
 // Peer sync: the interface is made, the config is loaded, the routes follow the peers. A peer that is gone loses its route.
-func TestApplySyncsPeersAndRoutes(t *testing.T) {
+func TestREQ_AGENT_008_ApplySyncsPeersAndRoutes(t *testing.T) {
 	var calls []call
 	m := &Manager{DataDir: t.TempDir(), MeshIP: "10.210.3.1", MeshCIDR: "10.210.0.0/16", Run: fake(&calls, map[string]bool{"ip link show": true, "iptables -t filter -C": true, "iptables -t nat -C": true})}
 	if err := m.Apply(context.Background(), peers(), ""); err != nil {

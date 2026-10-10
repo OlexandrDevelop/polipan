@@ -70,7 +70,7 @@ func (e *testEnv) addNode(t *testing.T, id, name, state string) {
 }
 
 // REQ-NODE-003, REQ-NODE-008: the node actions answer with the node, and the errors have the right code.
-func TestM7_NodeActions(t *testing.T) {
+func TestREQ_NODE_003_NodeActions(t *testing.T) {
 	e := newTestEnv(t, "http://localhost")
 	c := e.owner()
 	e.addNode(t, "nod_a", "a", "ready")
@@ -109,7 +109,7 @@ func TestM7_NodeActions(t *testing.T) {
 }
 
 // A developer cannot manage nodes (node:manage is for admin and owner).
-func TestM7_NodeActionsNeedPermission(t *testing.T) {
+func TestREQ_NODE_003_NodeActionsNeedPermission(t *testing.T) {
 	e := newTestEnv(t, "http://localhost")
 	e.owner()
 	e.addNode(t, "nod_a", "a", "ready")
@@ -131,7 +131,7 @@ func TestM7_NodeActionsNeedPermission(t *testing.T) {
 
 // REQ-NODE-004, REQ-NODE-006: the labels and the name of a node can change, the placement settings are checked, a
 // move needs a target and does not accept direct copy.
-func TestM7_UpdateNodeMoveAndPlacement(t *testing.T) {
+func TestREQ_NODE_006_UpdateNodeMoveAndPlacement(t *testing.T) {
 	e := newTestEnv(t, "http://localhost")
 	c := e.owner()
 	e.addNode(t, "nod_a", "a", "ready")
@@ -191,7 +191,7 @@ func TestM7_UpdateNodeMoveAndPlacement(t *testing.T) {
 }
 
 // The install command points to /install-agent.sh. The panel serves the script without a login.
-func TestM7_InstallAgentScript(t *testing.T) {
+func TestREQ_NODE_001_InstallAgentScript(t *testing.T) {
 	e := newTestEnv(t, "https://panel.example.com")
 	req := httptest.NewRequest("GET", "/install-agent.sh", nil)
 	rec := httptest.NewRecorder()

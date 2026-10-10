@@ -21,7 +21,7 @@ func nodes() []Node {
 }
 
 // REQ-NODE-101: the same input gives the same answer, a tie goes to the lower node name.
-func TestScheduleDeterministic(t *testing.T) {
+func TestREQ_NODE_101_ScheduleDeterministic(t *testing.T) {
 	first, err := Schedule(nodes(), Request{})
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestScheduleDeterministic(t *testing.T) {
 	}
 }
 
-func TestScheduleFilters(t *testing.T) {
+func TestREQ_NODE_101_ScheduleFilters(t *testing.T) {
 	r, err := Schedule(nodes(), Request{Labels: map[string]string{"zone": "b"}})
 	if err != nil || r.NodeIDs[0] != "nod_c" {
 		t.Fatalf("label filter: %v %v", r, err)
@@ -65,7 +65,7 @@ func TestScheduleFilters(t *testing.T) {
 	}
 }
 
-func TestScheduleCapacityAndReserve(t *testing.T) {
+func TestREQ_NODE_101_ScheduleCapacityAndReserve(t *testing.T) {
 	in := nodes()[:1]
 	// 90 % of 8 GiB is usable.
 	if _, err := Schedule(in, Request{MemoryBytes: 7 * gib}); err != nil {
@@ -86,7 +86,7 @@ func TestScheduleCapacityAndReserve(t *testing.T) {
 	}
 }
 
-func TestScheduleScoreAndSpread(t *testing.T) {
+func TestREQ_NODE_101_ScheduleScoreAndSpread(t *testing.T) {
 	in := nodes()[:3]
 	in[1].UsedMemoryBytes = 6 * gib // node a is nearly full
 	r, err := Schedule(in, Request{MemoryBytes: gib / 2})
@@ -106,7 +106,7 @@ func TestScheduleScoreAndSpread(t *testing.T) {
 }
 
 // F06 edge case: 3 replicas on 2 nodes with spread: 2+1 and a warning.
-func TestScheduleMoreReplicasThanNodes(t *testing.T) {
+func TestREQ_NODE_101_ScheduleMoreReplicasThanNodes(t *testing.T) {
 	r, err := Schedule(nodes()[:2], Request{Replicas: 3})
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +116,7 @@ func TestScheduleMoreReplicasThanNodes(t *testing.T) {
 	}
 }
 
-func TestScheduleVolumeNode(t *testing.T) {
+func TestREQ_NODE_101_ScheduleVolumeNode(t *testing.T) {
 	r, err := Schedule(nodes(), Request{VolumeNode: "nod_c", Replicas: 1})
 	if err != nil || r.NodeIDs[0] != "nod_c" {
 		t.Fatalf("volume node: %v %v", r, err)

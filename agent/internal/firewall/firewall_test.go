@@ -106,7 +106,7 @@ func isolationState() *agentv1.DesiredState {
 }
 
 // REQ-SEC-106: one set per environment, only same-environment pairs and Caddy are accepted, other mesh pairs are dropped.
-func TestRulesetIsolationGolden(t *testing.T) {
+func TestREQ_SEC_106_RulesetIsolationGolden(t *testing.T) {
 	ds := isolationState()
 	p := Params{MeshCIDR: ds.MeshCidr, Envs: EnvsFromDesired(ds), CaddyIPs: CaddyIPs("10.210.1.0/24", ds)}
 	if got := Ruleset(p); got != goldenIsolation {
@@ -114,7 +114,7 @@ func TestRulesetIsolationGolden(t *testing.T) {
 	}
 }
 
-func TestBridgeRuleset(t *testing.T) {
+func TestREQ_SEC_106_BridgeRuleset(t *testing.T) {
 	ds := isolationState()
 	got := BridgeRuleset(Params{MeshCIDR: ds.MeshCidr, Envs: EnvsFromDesired(ds), CaddyIPs: CaddyIPs("10.210.1.0/24", ds)})
 	for _, want := range []string{"table bridge polipan_iso {", "type filter hook forward priority -200; policy accept;",
@@ -129,7 +129,7 @@ func TestBridgeRuleset(t *testing.T) {
 }
 
 // Both rule sets go out on a change, and the bridge failing does not fail the apply.
-func TestApplyIsolation(t *testing.T) {
+func TestREQ_SEC_106_ApplyIsolation(t *testing.T) {
 	var scripts []string
 	f := &Firewall{Enabled: true, MeshSubnet: "10.210.1.0/24", Run: func(_ context.Context, s string) error {
 		scripts = append(scripts, s)
@@ -151,7 +151,7 @@ func TestApplyIsolation(t *testing.T) {
 }
 
 // A one-off container (pre_deploy) is let into its environment while it runs, and out again after.
-func TestRetainOneOff(t *testing.T) {
+func TestREQ_SEC_106_RetainOneOff(t *testing.T) {
 	var scripts []string
 	f := &Firewall{Enabled: true, MeshSubnet: "10.210.1.0/24", Run: func(_ context.Context, s string) error {
 		scripts = append(scripts, s)

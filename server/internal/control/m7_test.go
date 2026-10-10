@@ -220,7 +220,7 @@ func waitFor(t *testing.T, what string, ok func() bool) {
 
 // AC-NODE-01 (server side): a joined node has a mesh subnet of its own and a mesh address, and every node gets the
 // new peer in its desired state (REQ-AGENT-008).
-func TestM7_JoinMeshAndPeers(t *testing.T) {
+func TestAC_NODE_01_JoinMeshAndPeers(t *testing.T) {
 	m := setupM7(t)
 	a := m.addNode(t, "n-a")
 	b := m.addNode(t, "n-b")
@@ -246,7 +246,7 @@ func TestM7_JoinMeshAndPeers(t *testing.T) {
 
 // AC-NODE-03: a stateless service moves to another node with blue-green: the new container is live and acked on the
 // ingress before the old one is stopped, and the old one is removed.
-func TestM7_MoveStateless(t *testing.T) {
+func TestAC_NODE_03_MoveStateless(t *testing.T) {
 	m := setupM7(t)
 	a, b := m.addNode(t, "n-a"), m.addNode(t, "n-b")
 	dom := m.addDomain(t)
@@ -307,7 +307,7 @@ func TestM7_MoveStateless(t *testing.T) {
 }
 
 // REQ-NODE-004: the placement settings (names, labels, spread) and the replicas decide where the containers go.
-func TestM7_PlacementSettingsAndReplicas(t *testing.T) {
+func TestREQ_NODE_004_PlacementSettingsAndReplicas(t *testing.T) {
 	m := setupM7(t)
 	m.addNode(t, "n-a")
 	b, c := m.addNode(t, "n-b"), m.addNode(t, "n-c")
@@ -354,7 +354,7 @@ func TestM7_PlacementSettingsAndReplicas(t *testing.T) {
 }
 
 // AC-NODE-08: drain moves every placement away and the node ends in maintenance.
-func TestM7_DrainEndsInMaintenance(t *testing.T) {
+func TestAC_NODE_08_DrainEndsInMaintenance(t *testing.T) {
 	m := setupM7(t)
 	a, b := m.addNode(t, "n-a"), m.addNode(t, "n-b")
 	m.addDomain(t)
@@ -397,7 +397,7 @@ func TestM7_DrainEndsInMaintenance(t *testing.T) {
 }
 
 // REQ-NODE-003: cordon stops scheduling, existing workloads stay; uncordon undoes it. Wrong states are refused.
-func TestM7_CordonAndUncordon(t *testing.T) {
+func TestREQ_NODE_003_CordonAndUncordon(t *testing.T) {
 	m := setupM7(t)
 	a := m.addNode(t, "n-a")
 	m.addNode(t, "n-b")
@@ -427,7 +427,7 @@ func TestM7_CordonAndUncordon(t *testing.T) {
 
 // AC-NODE-04: a stateless service with failover auto runs on another node after its node went down, with an audit
 // event and an alert. The old placement is gone (split-brain guard).
-func TestM7_FailoverStateless(t *testing.T) {
+func TestAC_NODE_04_07_FailoverStateless(t *testing.T) {
 	m := setupM7(t)
 	a, b := m.addNode(t, "n-a"), m.addNode(t, "n-b")
 	dom := m.addDomain(t)
@@ -477,7 +477,7 @@ func TestM7_FailoverStateless(t *testing.T) {
 
 // AC-NODE-05 and REQ-NODE-007: a service with failover none, or with a local volume and no opt-in, is not moved,
 // and an alert says why.
-func TestM7_FailoverBlocked(t *testing.T) {
+func TestAC_NODE_05_FailoverBlocked(t *testing.T) {
 	m := setupM7(t)
 	a := m.addNode(t, "n-a")
 	m.addNode(t, "n-b")
@@ -514,7 +514,7 @@ func TestM7_FailoverBlocked(t *testing.T) {
 }
 
 // failover none: the service stays and the reason is shown.
-func TestM7_FailoverNoneStays(t *testing.T) {
+func TestREQ_NODE_007_FailoverNoneStays(t *testing.T) {
 	m := setupM7(t)
 	a := m.addNode(t, "n-a")
 	m.addNode(t, "n-b")
@@ -535,7 +535,7 @@ func TestM7_FailoverNoneStays(t *testing.T) {
 
 // AC-NODE-06: a service with a local volume, a successful backup and the opt-in starts on another node with the
 // restored snapshot, and the loss of data is recorded.
-func TestM7_FailoverVolumeRestore(t *testing.T) {
+func TestAC_NODE_06_FailoverVolumeRestore(t *testing.T) {
 	m := setupM7(t)
 	a, b := m.addNode(t, "n-a"), m.addNode(t, "n-b")
 	m.exec(t, `INSERT INTO volumes (id, service_id, name, kind, mount_path) VALUES ('vol_x', $1, 'data', 'volume', '/data')`, m.serviceID)
@@ -573,7 +573,7 @@ func TestM7_FailoverVolumeRestore(t *testing.T) {
 
 // Move of a service with a local volume: stopped, snapshot, restore on the target, start. The data copy is
 // visible (recreate, warning).
-func TestM7_MoveWithVolume(t *testing.T) {
+func TestREQ_NODE_006_MoveWithVolume(t *testing.T) {
 	m := setupM7(t)
 	a, b := m.addNode(t, "n-a"), m.addNode(t, "n-b")
 	m.exec(t, `INSERT INTO volumes (id, service_id, name, kind, mount_path) VALUES ('vol_x', $1, 'data', 'volume', '/data')`, m.serviceID)
@@ -610,7 +610,7 @@ func TestM7_MoveWithVolume(t *testing.T) {
 }
 
 // AC-NODE-10: when the server cannot reach any node (all look down), no failover starts. It waits.
-func TestM7_NoFailoverWhenNoNodeIsReachable(t *testing.T) {
+func TestAC_NODE_10_NoFailoverWhenNoNodeIsReachable(t *testing.T) {
 	m := setupM7(t)
 	a, b := m.addNode(t, "n-a"), m.addNode(t, "n-b")
 	m.exec(t, `UPDATE services SET failover = 'auto' WHERE id = $1`, m.serviceID)
@@ -642,7 +642,7 @@ func TestM7_NoFailoverWhenNoNodeIsReachable(t *testing.T) {
 }
 
 // REQ-SEC-100: node B gets nothing of node A: no workload, no secret value, no variable value.
-func TestM7_NodeGetsOnlyItsOwnSecrets(t *testing.T) {
+func TestREQ_SEC_100_NodeGetsOnlyItsOwnSecrets(t *testing.T) {
 	m := setupM7(t)
 	a, b := m.addNode(t, "n-a"), m.addNode(t, "n-b")
 	m.addDomain(t)
@@ -689,7 +689,7 @@ func TestM7_NodeGetsOnlyItsOwnSecrets(t *testing.T) {
 
 // REQ-NODE-009 and REQ-SEC-106 (server side): a node that runs a workload of an environment gets the names and mesh
 // addresses of the replicas of that environment on other nodes, and nothing of other environments.
-func TestM7_RemoteEndpointsSameEnvironmentOnly(t *testing.T) {
+func TestAC_NODE_09_RemoteEndpointsSameEnvironmentOnly(t *testing.T) {
 	m := setupM7(t)
 	a, b := m.addNode(t, "n-a"), m.addNode(t, "n-b")
 	m.exec(t, `UPDATE services SET config = config || '{"placement":{"nodes":["n-a"]}}' WHERE id = $1`, m.serviceID)
@@ -746,7 +746,7 @@ func TestM7_RemoteEndpointsSameEnvironmentOnly(t *testing.T) {
 
 // REQ-NODE-008: a force delete of a node with workloads: services with failover none stop with a reason, the node is
 // gone from the list of peers, and its certificate is revoked.
-func TestM7_DeleteNodeForce(t *testing.T) {
+func TestREQ_NODE_008_DeleteNodeForce(t *testing.T) {
 	m := setupM7(t)
 	a, b := m.addNode(t, "n-a"), m.addNode(t, "n-b")
 	m.deploy(t, orchestrator.DeployParams{})
