@@ -59,6 +59,7 @@ CREATE TABLE users (
   password_hash text,                        -- argon2id, null for SSO-only users
   totp_secret_enc bytea,                     -- encrypted with the server KEK
   totp_enabled boolean NOT NULL DEFAULT false,
+  totp_last_step bigint NOT NULL DEFAULT 0,  -- last used TOTP time step: a code works once
   recovery_codes_hash text[] NOT NULL DEFAULT '{}',
   disabled boolean NOT NULL DEFAULT false,
   last_login_at timestamptz,
@@ -617,6 +618,18 @@ CREATE TABLE audit_events (
 );
 CREATE INDEX audit_org_time ON audit_events (org_id, created_at DESC);
 CREATE INDEX audit_target ON audit_events (target_type, target_id);
+
+-- M5: the append-only rule is a trigger (UPDATE, DELETE and TRUNCATE need polipan.audit_archive = 'on', set only by the archive job).
+-- Rows older than audit_retention_days move to a signed segment. last_hash is the checkpoint: the first row that stays has it as prev_hash.
+CREATE TABLE audit_archives (
+  id text PRIMARY KEY,                       -- aar_
+  org_id text NOT NULL,
+  first_seq bigint NOT NULL, last_seq bigint NOT NULL, row_count integer NOT NULL,
+  prev_hash bytea NOT NULL, last_hash bytea NOT NULL,
+  data bytea NOT NULL,                       -- gzip JSON lines
+  signature bytea NOT NULL,                  -- HMAC-SHA256 of data, key derived from the KEK
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE git_connections (
   id text PRIMARY KEY,                       -- git_
