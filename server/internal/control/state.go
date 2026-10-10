@@ -17,7 +17,7 @@ import (
 	"github.com/polipan/polipan/server/internal/orchestrator"
 )
 
-type liveReplica struct{ placement, release, color, health string }
+type liveReplica struct{ placement, release, color, health, role string }
 
 // routable keeps the live replicas that get traffic. An unhealthy replica is removed from the
 // upstreams (REQ-HC-007). When all replicas are unhealthy, all stay: a bad answer is better than none (REQ-HC-008).
@@ -142,6 +142,7 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 type remoteLive struct {
 	liveReplica
 	node, ip string
+	canary   int // percent of traffic of the candidate replicas of a running canary (0: not a canary)
 }
 
 // servesIngress tells if a node in this state gets the routes of the domains (09 section 6: maintenance serves none).
@@ -201,10 +202,11 @@ func (c *Control) addIngressRoutes(ctx context.Context, q dbq, nodeID, nodeState
 		ids = append(ids, id)
 	}
 	lrows, err := q.Query(ctx,
-		`SELECT p.service_id, p.id, p.release_id, p.color, p.health, p.node_id, COALESCE(host(p.ip), '')
+		`SELECT p.service_id, p.id, p.release_id, p.color, p.health, p.node_id, COALESCE(host(p.ip), ''), p.role, COALESCE(d.canary_step, 0)
 		   FROM placements p JOIN nodes n ON n.id = p.node_id JOIN services s ON s.id = p.service_id
-		  WHERE p.service_id = ANY($1) AND p.role = 'live' AND s.desired_state = 'running'
-		    AND n.state NOT IN ('down','pending','maintenance')
+		   LEFT JOIN deployments d ON d.id = p.deployment_id AND d.state = 'shifting' AND d.canary_routing
+		  WHERE p.service_id = ANY($1) AND (p.role = 'live' OR (p.role = 'candidate' AND d.id IS NOT NULL))
+		    AND s.desired_state = 'running' AND n.state NOT IN ('down','pending','maintenance')
 		  ORDER BY p.replica_index, p.id`, ids)
 	if err != nil {
 		return err
@@ -213,7 +215,7 @@ func (c *Control) addIngressRoutes(ctx context.Context, q dbq, nodeID, nodeState
 	for lrows.Next() {
 		var sid string
 		var l remoteLive
-		if err := lrows.Scan(&sid, &l.placement, &l.release, &l.color, &l.health, &l.node, &l.ip); err != nil {
+		if err := lrows.Scan(&sid, &l.placement, &l.release, &l.color, &l.health, &l.node, &l.ip, &l.role, &l.canary); err != nil {
 			lrows.Close()
 			return err
 		}
@@ -230,14 +232,28 @@ func (c *Control) addIngressRoutes(ctx context.Context, q dbq, nodeID, nodeState
 			StreamCloseDelaySeconds: uint32(d.cfg.drainSeconds()),
 		}
 		all := liveBySvc[d.sid]
-		flat := make([]liveReplica, len(all))
-		for i, l := range all {
+		var blue, green []remoteLive // green: the candidate replicas of a canary that gets traffic now
+		for _, l := range all {
+			if l.role == "candidate" {
+				green = append(green, l)
+			} else {
+				blue = append(blue, l)
+			}
+		}
+		flat := make([]liveReplica, len(blue))
+		for i, l := range blue {
 			flat[i] = l.liveReplica
 		}
 		keep := map[string]bool{}
 		for _, l := range routable(flat) {
 			keep[l.placement] = true
 		}
+		for _, l := range green { // a green replica that is not healthy gets no traffic, and it is not a fallback
+			if l.health != "unhealthy" {
+				keep[l.placement] = true
+			}
+		}
+		weightBlue, weightGreen := canaryWeights(blue, green, keep)
 		for _, l := range all {
 			if !keep[l.placement] {
 				continue
@@ -249,7 +265,13 @@ func (c *Control) addIngressRoutes(ctx context.Context, q dbq, nodeID, nodeState
 				}
 				addr = fmt.Sprintf("%s:%d", l.ip, d.port)
 			}
-			route.Upstreams = append(route.Upstreams, &pb.Upstream{Address: addr, Weight: 100, ReleaseId: l.release, Color: l.color})
+			w := uint32(100)
+			if l.role == "candidate" {
+				w = weightGreen
+			} else if weightBlue > 0 {
+				w = weightBlue
+			}
+			route.Upstreams = append(route.Upstreams, &pb.Upstream{Address: addr, Weight: w, ReleaseId: l.release, Color: l.color})
 		}
 		ds.Ingress.Routes = append(ds.Ingress.Routes, route)
 	}
@@ -303,4 +325,36 @@ func (c *Control) telemetrySpec() *pb.TelemetrySpec {
 		MetricsWriteUrl: base + "/ingest/metrics", LogsUrl: base + "/ingest/logs",
 		VmagentImage: c.Config.VMAgentImage, ScrapeIntervalSeconds: 15, BufferMib: 100,
 	}
+}
+
+// canaryWeights gives the weight of one blue and of one green upstream, so that the green ones get the canary percent
+// of the traffic together. The weights are whole numbers with no common divisor. Without a canary, or when no green
+// replica is left in the route, blue is 0 and green is 100 (the caller then uses 100 for every upstream).
+func canaryWeights(blue, green []remoteLive, keep map[string]bool) (b, g uint32) {
+	nb, ng := 0, 0
+	pct := 0
+	for _, l := range blue {
+		if keep[l.placement] {
+			nb++
+		}
+	}
+	for _, l := range green {
+		if keep[l.placement] {
+			ng++
+			pct = l.canary
+		}
+	}
+	if nb == 0 || ng == 0 || pct <= 0 || pct >= 100 {
+		return 0, 100
+	}
+	gw, bw := pct*nb, (100-pct)*ng
+	d := gcd(gw, bw)
+	return uint32(bw / d), uint32(gw / d)
+}
+
+func gcd(a, b int) int {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
 }

@@ -29,6 +29,7 @@ const (
 	ReasonHealthFailed         = "health_failed"
 	ReasonPreDeployFailed      = "pre_deploy_failed"
 	ReasonGate5xx              = "gate_5xx"
+	ReasonGateLatency          = "gate_latency"
 	ReasonSwitchFailed         = "switch_failed"
 	ReasonNodeUnavailable      = "node_unavailable"
 	ReasonInvalidConfig        = "invalid_config"
@@ -54,13 +55,14 @@ func fail(reason, format string, a ...any) *deployErr {
 // activeStates are the states of a deployment that runs now (not queued, not terminal).
 const runningStates = `'building','image_ready','starting','health_checking','shifting','switching','draining'`
 
-// transitions is the state machine of 08 section 2. Canary states are not used in this version.
+// transitions is the state machine of 08 section 2.
 var transitions = map[string][]string{
 	"queued":          {"building", "image_ready", "superseded", "cancelled"},
 	"building":        {"image_ready", "failed", "cancelled"},
 	"image_ready":     {"starting", "failed", "cancelled"},
 	"starting":        {"health_checking", "failed", "cancelled"},
-	"health_checking": {"switching", "failed", "rolled_back", "cancelled"},
+	"health_checking": {"switching", "shifting", "failed", "rolled_back", "cancelled"},
+	"shifting":        {"switching", "rolled_back", "failed"},
 	"switching":       {"draining", "rolled_back"},
 	"draining":        {"live", "rolled_back"},
 }
@@ -71,6 +73,8 @@ var terminalStates = map[string]bool{"live": true, "failed": true, "rolled_back"
 type activeDep struct {
 	cancel context.CancelCauseFunc
 	locked bool // from switching on, a user cannot cancel
+	// cmds carries promote and abort of a canary to the run that owns it.
+	cmds chan string
 }
 
 var errUserCancel = errors.New("cancelled by the user")
@@ -238,7 +242,7 @@ func (c *Control) pump(serviceID string) {
 // startRun runs a claimed deployment in the background.
 func (c *Control) startRun(id string) {
 	rctx, cancel := context.WithCancelCause(c.runCtx)
-	ad := &activeDep{cancel: cancel}
+	ad := &activeDep{cancel: cancel, cmds: make(chan string, 8)}
 	c.mu.Lock()
 	c.active[id] = ad
 	c.mu.Unlock()
@@ -466,9 +470,15 @@ func (c *Control) endDeployment(ctx context.Context, depID string, e *deployErr)
 		c.Log.Error("end deployment", "deployment", depID, "err", err)
 		return
 	}
-	if _, err := tx.Exec(ctx, `UPDATE deployments SET failure_reason = $2, failure_detail = $3 WHERE id = $1`, depID, e.reason, e.detail); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE deployments SET failure_reason = $2, failure_detail = $3, canary_routing = false, canary_paused = false WHERE id = $1`, depID, e.reason, e.detail); err != nil {
 		c.Log.Error("end deployment", "deployment", depID, "err", err)
 		return
+	}
+	switch state {
+	case "failed":
+		c.deploymentAlert(ctx, tx, depID, "deployment_failed", "critical")
+	case "rolled_back":
+		c.deploymentAlert(ctx, tx, depID, "deployment_rolled_back", "warning")
 	}
 	if err := tx.Commit(ctx); err != nil {
 		c.Log.Error("end deployment", "deployment", depID, "err", err)

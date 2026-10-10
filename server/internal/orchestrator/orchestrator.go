@@ -27,6 +27,9 @@ var (
 	ErrStrategyUnavailable = errors.New("orchestrator: the strategy is not available")                         // 422
 	ErrNoLiveRelease       = errors.New("orchestrator: the service has no live container")                     // 409
 
+	// M8 errors.
+	ErrNotCanary = errors.New("orchestrator: the deployment is not a running canary") // 409 deployment_not_canary
+
 	// M7 errors.
 	ErrNodeState    = errors.New("orchestrator: the node state does not allow this") // 409 conflict
 	ErrNodeNotEmpty = errors.New("orchestrator: the node has workloads")             // 409 node_not_empty
@@ -51,6 +54,12 @@ type NodeManager interface {
 	SelfCheck(ctx context.Context, orgID, nodeID string) (SelfCheckResult, error)
 	// MoveService moves the replicas of a service to the target node and returns the deployment id.
 	MoveService(ctx context.Context, serviceID, targetNodeID, volumeCopy, actorID string) (string, []Warning, error)
+}
+
+// CanaryController is an optional part of the Orchestrator: the manual control of a canary (REQ-DEPLOY-006).
+// action is promote, abort, pause or resume. The Control implements it.
+type CanaryController interface {
+	CanaryAction(ctx context.Context, deploymentID, action, actorID string) error
 }
 
 // SelfCheckResult is the answer of the node self-check.
@@ -94,6 +103,12 @@ type DeployParams struct {
 	FailoverFrom []string
 	// Cause says why a move happens: manual (default) or drain. It goes into the audit event.
 	Cause string
+
+	// M8 canary options for this deployment. Nil or empty means the service setting, then the default.
+	CanarySteps               []int
+	CanaryStepIntervalSeconds *int
+	CanaryMax5xxRate          *float64
+	CanaryMaxP95Ratio         *float64
 }
 
 // Plan is what a deployment would do (REQ-DEPLOY-007).

@@ -61,6 +61,13 @@ type serviceConfig struct {
 		Labels map[string]string `json:"labels"`
 		Spread *bool             `json:"spread"`
 	} `json:"placement"`
+	// Canary is deploy.canary of polipan.yaml (07 section 8.3).
+	Canary struct {
+		Steps        []int    `json:"steps"`
+		StepInterval string   `json:"step_interval"`
+		Max5xxRate   *float64 `json:"max_5xx_rate"`
+		MaxP95Ratio  *float64 `json:"max_p95_ratio"`
+	} `json:"canary"`
 	StrategyOptions struct {
 		DrainSeconds               *int  `json:"drain_seconds"`
 		AllowDowntimeOnLowCapacity bool  `json:"allow_downtime_on_low_capacity"`

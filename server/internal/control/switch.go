@@ -107,6 +107,9 @@ func (r *run) commitSwitch(ctx context.Context) error {
 		if _, err := tx.Exec(ctx, `UPDATE placements SET role = 'live', updated_at = now() WHERE id = ANY($1)`, ids(r.green)); err != nil {
 			return nil, err
 		}
+		if _, err := tx.Exec(ctx, `UPDATE deployments SET canary_routing = false WHERE id = $1`, d.id); err != nil {
+			return nil, err
+		}
 		if d.strategy != "recreate" {
 			if _, err := tx.Exec(ctx, `UPDATE placements SET role = 'draining', updated_at = now() WHERE id = ANY($1)`, ids(r.blue)); err != nil {
 				return nil, err
@@ -194,7 +197,7 @@ func (r *run) afterCommit(ctx context.Context, skipAck bool) *deployErr {
 		}
 	}
 	start := time.Now()
-	if d.strategy == "blue_green" && c.PostSwitchCheck > 0 {
+	if d.strategy != "recreate" && c.PostSwitchCheck > 0 {
 		total, failed, err := r.probeRoutes(ctx, c.PostSwitchCheck)
 		if ctx.Err() != nil {
 			return r.stopped(ctx)
@@ -206,7 +209,7 @@ func (r *run) afterCommit(ctx context.Context, skipAck bool) *deployErr {
 			return r.revert(ctx, ReasonGate5xx, fmt.Sprintf("post-switch check: %d of %d requests failed", failed, total))
 		}
 	}
-	if d.strategy == "blue_green" && len(r.blue) > 0 {
+	if d.strategy != "recreate" && len(r.blue) > 0 {
 		if wait := time.Duration(d.opts.DrainSeconds)*time.Second - time.Since(start); wait > 0 {
 			select {
 			case <-ctx.Done():
@@ -315,6 +318,7 @@ func (r *run) finalize(ctx context.Context) *deployErr {
 	if e := r.step(ctx, "live", "deployment is live", map[string]any{"release_id": *d.releaseID}); e != nil {
 		return e
 	}
+	c.deploymentAlert(ctx, c.DB, d.id, "deployment_live", "info")
 	c.prune(ctx, r.svc, r.cfg)
 	r.recordMove(ctx)
 	if len(r.cfg.PostDeploy) > 0 && d.trigger != "move" && d.trigger != "failover" {

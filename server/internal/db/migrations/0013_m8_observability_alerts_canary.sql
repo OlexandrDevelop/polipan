@@ -75,3 +75,5 @@ ALTER TABLE deployments ADD COLUMN canary_gate jsonb;
 ALTER TABLE deployments ADD COLUMN canary_step_started_at timestamptz;
 ALTER TABLE deployments ADD COLUMN canary_extended boolean NOT NULL DEFAULT false;
 ALTER TABLE deployments ADD COLUMN canary_paused_at timestamptz;
+-- The green containers get traffic now (state shifting). The ingress of the nodes reads it, so an abort can take them out first.
+ALTER TABLE deployments ADD COLUMN canary_routing boolean NOT NULL DEFAULT false;

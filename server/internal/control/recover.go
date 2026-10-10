@@ -38,7 +38,7 @@ func (c *Control) recoverDeployments(ctx context.Context) error {
 
 func (c *Control) startResume(id string) {
 	rctx, cancel := context.WithCancelCause(c.runCtx)
-	ad := &activeDep{cancel: cancel, locked: true}
+	ad := &activeDep{cancel: cancel, locked: true, cmds: make(chan string, 8)}
 	c.mu.Lock()
 	c.active[id] = ad
 	c.mu.Unlock()
@@ -93,6 +93,9 @@ func (r *run) resume(ctx context.Context) *deployErr {
 		}
 	}
 	switch {
+	case d.state == "shifting":
+		// A canary goes on at the step it was at. The timer of the step starts from the saved time.
+		return r.resumeCanary(ctx)
 	case d.state == "draining" || (d.state == "switching" && committed):
 		// The old containers are in the database as draining (blue_green) or stopped (recreate).
 		r.committed = true

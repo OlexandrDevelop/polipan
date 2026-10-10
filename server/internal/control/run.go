@@ -109,8 +109,11 @@ func (r *run) execute(ctx context.Context) *deployErr {
 	if e := r.waitHealthy(ctx); e != nil {
 		return e
 	}
-	if r.d.strategy == "recreate" {
+	switch r.d.strategy {
+	case "recreate":
 		return r.switchRecreate(ctx)
+	case "canary":
+		return r.canary(ctx, 0, false)
 	}
 	return r.switchBlueGreen(ctx)
 }
@@ -359,7 +362,7 @@ func (r *run) pull(ctx context.Context, node, image string) (imageRef, digest st
 // checkCapacity checks that every node has room for blue and green at the same time (REQ-DEPLOY-010).
 func (r *run) checkCapacity(ctx context.Context) *deployErr {
 	c := r.c
-	if r.d.strategy != "blue_green" {
+	if r.d.strategy == "recreate" {
 		return nil
 	}
 	want := r.cfg.resourceSpec()

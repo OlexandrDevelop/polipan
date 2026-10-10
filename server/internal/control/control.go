@@ -66,6 +66,10 @@ type Deps struct {
 	Mover DataMover
 	// Max5xxRate is the failure rate of the post-switch check that triggers a rollback (default 0.02, canary_max_5xx_rate).
 	Max5xxRate float64
+	// Gates gives the ingress numbers of a canary step from the metrics store. Nil: a canary gate checks health only.
+	Gates GateSource
+	// CanaryPauseMax is how long a canary may stay paused before it is rolled back (default 24 h, canary_pause_max).
+	CanaryPauseMax time.Duration
 }
 
 // Control implements orchestrator.Orchestrator.
@@ -118,6 +122,9 @@ func New(d Deps) *Control {
 	}
 	if d.Max5xxRate == 0 {
 		d.Max5xxRate = 0.02
+	}
+	if d.CanaryPauseMax == 0 {
+		d.CanaryPauseMax = 24 * time.Hour
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Control{Deps: d, runCtx: ctx, stop: cancel, active: map[string]*activeDep{}}

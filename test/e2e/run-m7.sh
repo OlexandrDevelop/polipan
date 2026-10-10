@@ -92,9 +92,13 @@ for name in $n1 $n2 $n3; do
 done
 docker save polipan-server:m7 | docker exec -i "$n1" docker load >/dev/null
 for name in $n1 $n2 $n3; do
-  dx "$name" sh -c 'docker pull -q caddy:2.10.2 >/dev/null && docker pull -q alpine:3.20 >/dev/null'
+  # The test services use nginx. Load it from the host, so a slow pull cannot make a deploy slow.
+  for img in caddy:2.10.2 nginx:alpine alpine:3.20; do
+    docker image inspect "$img" >/dev/null 2>&1 || docker pull -q "$img" >/dev/null
+    docker save "$img" | docker exec -i "$name" docker load >/dev/null
+  done
 done
-dx $n1 docker pull -q postgres:16-alpine >/dev/null
+docker save postgres:16-alpine | docker exec -i "$n1" docker load >/dev/null
 
 step "Control plane on node 1"
 dx $n1 sh -c 'mkdir -p /etc/polipan /var/lib/polipan-agent && head -c 32 /dev/urandom | base64 > /etc/polipan/master.key && chown 65532:65532 /etc/polipan/master.key && chmod 0400 /etc/polipan/master.key'
