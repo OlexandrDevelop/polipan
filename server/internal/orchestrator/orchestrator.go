@@ -42,8 +42,8 @@ type DeployParams struct {
 	Trigger string
 	// Strategy is recreate or blue_green. Empty means the service setting, then the default.
 	Strategy string
-	// DrainSeconds and AllowDowntimeOnLowCapacity override the service config for this deployment. Zero or nil = no override.
-	DrainSeconds               int
+	// DrainSeconds, AllowDowntimeOnLowCapacity and AllowOverlap override the service config for this deployment. Nil = no override.
+	DrainSeconds               *int
 	AllowDowntimeOnLowCapacity *bool
 	AllowOverlap               *bool
 	// RollbackReleaseID is the older release to go back to. No build runs.

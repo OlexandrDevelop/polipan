@@ -391,7 +391,7 @@ func TestAC_DOM_02_03_Domains(t *testing.T) {
 	// Service config: defaults, validation, unique name.
 	svc := c.ok(200, "GET", "/api/v1/services/"+a, nil)
 	cfg := svc["config"].(map[string]any)
-	if cfg["image"] != "nginx:1.27" || cfg["strategy"] != "recreate" || cfg["restart_policy"] != "always" || cfg["health"].(map[string]any)["type"] != "tcp" {
+	if cfg["image"] != "nginx:1.27" || cfg["strategy"] != nil || cfg["restart_policy"] != "always" || cfg["health"].(map[string]any)["type"] != "tcp" {
 		t.Fatalf("config: %v", cfg)
 	}
 	if str(svc, "status") != "no_release" || str(svc, "source_type") != "image" {

@@ -55,8 +55,8 @@ type deployOptions struct {
 
 func resolveOptions(cfg serviceConfig, p orchestrator.DeployParams) deployOptions {
 	o := deployOptions{DrainSeconds: cfg.drainSeconds(), AllowDowntimeOnLowCapacity: cfg.StrategyOptions.AllowDowntimeOnLowCapacity, AllowOverlap: cfg.allowOverlap()}
-	if p.DrainSeconds > 0 {
-		o.DrainSeconds = p.DrainSeconds
+	if p.DrainSeconds != nil && *p.DrainSeconds >= 0 {
+		o.DrainSeconds = *p.DrainSeconds
 	}
 	if p.AllowDowntimeOnLowCapacity != nil {
 		o.AllowDowntimeOnLowCapacity = *p.AllowDowntimeOnLowCapacity

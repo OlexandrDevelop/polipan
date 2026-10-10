@@ -74,7 +74,7 @@ func newM2Env(t *testing.T) *m2Env {
 // deploy starts a deployment through the API and waits for its end. It returns the deployment row fields.
 func (e *m2Env) deploy(c *client, serviceID string) (depID, state, reason string) {
 	e.t.Helper()
-	dep := c.ok(202, "POST", "/api/v1/services/"+serviceID+"/deploy", nil)
+	dep := c.ok(202, "POST", "/api/v1/services/"+serviceID+"/deploy", map[string]any{"strategy_options": map[string]any{"drain_seconds": 0}})
 	depID = str(dep, "id")
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -82,7 +82,7 @@ func (e *m2Env) deploy(c *client, serviceID string) (depID, state, reason string
 		if err := e.pool.QueryRow(context.Background(), `SELECT state, failure_reason FROM deployments WHERE id = $1`, depID).Scan(&state, &r); err != nil {
 			e.t.Fatal(err)
 		}
-		if state == "live" || state == "failed" {
+		if state == "live" || state == "failed" || state == "rolled_back" || state == "cancelled" {
 			if r != nil {
 				reason = *r
 			}
@@ -103,7 +103,7 @@ func (e *m2Env) workload(serviceID string) *pb.WorkloadSpec {
 		e.t.Fatal(err)
 	}
 	for _, w := range ds.Workloads {
-		if w.ServiceId == serviceID {
+		if w.ServiceId == serviceID && w.Role == "live" { // older releases stay as stopped workloads (retain_stopped)
 			return w
 		}
 	}

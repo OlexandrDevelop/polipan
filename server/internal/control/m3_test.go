@@ -589,6 +589,12 @@ func TestChaosKillServerInSwitching(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.waitState(t, id, "switching")
+	for deadline := time.Now().Add(10 * time.Second); m.q(t, `SELECT live_release_id FROM services WHERE id = $1`, m.serviceID) != m.q(t, `SELECT release_id FROM deployments WHERE id = $1`, id); {
+		if time.Now().After(deadline) {
+			t.Fatal("the switch was not saved")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	m.ctl.Close() // the server dies: the run stops, the state stays switching
 	if st := m.q(t, `SELECT state FROM deployments WHERE id = $1`, id); st != "switching" {
 		t.Fatalf("after the kill: %s", st)

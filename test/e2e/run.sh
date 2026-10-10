@@ -1,6 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
-# End-to-end test of milestones M1 and M2 (T-E2E-01, T-E2E-02 without rollback, T-E2E-13, AC-AUTH-03, AC-DOM-01..05, AC-APP-03, AC-APP-05, AC-NODE-02).
+# End-to-end test of milestones M1, M2 and M3 (T-E2E-01, T-E2E-02, T-E2E-03, T-E2E-13, AC-AUTH-03, AC-DOM-01..05,
+# AC-APP-03, AC-APP-05, AC-NODE-02, AC-DEPLOY-01, 02, 09, AC-REL-01, 02, 07, AC-HC-01, 03, 04, 05, REQ-DEPLOY-107).
 # It needs Docker on the host. Everything runs in a throw-away Docker host (docker:dind), so the
 # real Docker of the machine is not touched. Certificates come from a local ACME CA (Pebble).
 #
@@ -65,6 +66,47 @@ until dx docker run --rm --network gitnet python:3.12-slim python3 -c 'import ur
   sleep 2
 done
 driver gitflow
+
+step "T-E2E-02 rollback: one click back to v2 in under 10 s, no build, no pull"
+driver rollback
+
+step "T-E2E-03: 20 requests/s through 5 blue-green deploys, failing health, stream drain, unhealthy live container"
+driver zerodowntime
+
+pg() { dx docker compose -f /opt/polipan/docker-compose.yml exec -T postgres psql -tA -U polipan -d polipan -c "$1"; }
+restart_server() {
+  dx docker compose -f /opt/polipan/docker-compose.yml kill server
+  dx docker compose -f /opt/polipan/docker-compose.yml start server
+  i=0
+  until dx docker compose -f /opt/polipan/docker-compose.yml exec -T server /polipan-server healthcheck >/dev/null 2>&1; do
+    i=$((i + 1)); [ "$i" -lt 60 ] || { echo "the server did not come back"; exit 1; }
+    sleep 2
+  done
+}
+
+step "REQ-DEPLOY-107 chaos: kill the server in switching (Caddy is paused, so the switch cannot be acked), restart it"
+driver chaos-start switching
+dx docker pause polipan-caddy >/dev/null
+i=0
+until [ "$(pg "SELECT state FROM deployments ORDER BY created_at DESC LIMIT 1")" = "switching" ]; do
+  i=$((i + 1)); [ "$i" -lt 150 ] || { echo "the deployment did not reach switching"; dx docker unpause polipan-caddy; exit 1; }
+  sleep 0.2
+done
+echo "deployment is in switching: kill the server"
+dx docker compose -f /opt/polipan/docker-compose.yml kill server
+dx docker unpause polipan-caddy >/dev/null
+dx docker compose -f /opt/polipan/docker-compose.yml start server
+i=0
+until dx docker compose -f /opt/polipan/docker-compose.yml exec -T server /polipan-server healthcheck >/dev/null 2>&1; do
+  i=$((i + 1)); [ "$i" -lt 60 ] || { echo "the server did not come back"; exit 1; }
+  sleep 2
+done
+driver chaos-end switching live
+
+step "REQ-DEPLOY-107 chaos: kill the server in health_checking, restart it"
+driver chaos-start health
+restart_server
+driver chaos-end health failed
 
 step "AC-NODE-02: a used join token is refused"
 if dx docker run --rm --net host -v /var/run/docker.sock:/var/run/docker.sock -v /e2e:/e2e \

@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
-"""End-to-end driver (T-E2E-01, T-E2E-02 without rollback, T-E2E-13, AC-AUTH-03, AC-DOM-01..05, AC-APP-03, AC-APP-05).
+"""End-to-end driver (T-E2E-01, T-E2E-02, T-E2E-03, T-E2E-13, AC-AUTH-03, AC-DOM-01..05, AC-APP-03, AC-APP-05,
+AC-DEPLOY-01, 02, 09, AC-REL-01, 02, 07, AC-HC-01, 03, 04, 05 and the chaos kill of REQ-DEPLOY-107).
 
 It runs inside the test Docker host with host networking. The panel is reached through the
 Caddy of the node (Host: panel.test), so the panel route is tested too.
-Usage: driver.py flow | gitflow | serving | after
+Usage: driver.py flow | gitflow | rollback | zerodowntime | chaos-start | chaos-end | serving | after
 """
 import http.client
 import json
@@ -329,5 +330,375 @@ def gitflow():
     print("GITFLOW PASSED")
 
 
+def rollback():
+    """T-E2E-02, rollback part: after 3 pushes, one click goes back to v2. The kept stopped containers
+    of v2 are started, so no image is pulled and no build runs, and traffic switches in under 10 s (AC-REL-01, 02, 04, 07)."""
+    p = Panel()
+    p.login()
+    _, projects = p.call("GET", "/projects", expect=200)
+    _, envs = p.call("GET", f"/projects/{projects['items'][0]['id']}/environments", expect=200)
+    env = next(e for e in envs if e["kind"] == "staging")
+    _, svcs = p.call("GET", f"/environments/{env['id']}/services", expect=200)
+    svc = next(s for s in svcs if s["name"] == "gitapp")
+    _, rels = p.call("GET", f"/services/{svc['id']}/releases", expect=200)
+    items = rels["items"]  # newest first
+    if len(items) != 3 or items[0]["status"] != "live":
+        fail(f"releases: {[(r['number'], r['status']) for r in items]}")
+    v3, v2, v1 = items
+    if v2["status"] != "previous" or not v2["fast_rollback_possible"]:
+        fail(f"v2 must have kept containers: {v2['status']} {v2['fast_rollback_possible']}")
+    if v1["fast_rollback_possible"]:
+        fail("v1 must not have kept containers (retain_stopped is 1)")
+    s, err = p.call("POST", f"/services/{svc['id']}/rollback", {"release_id": v3["id"]})
+    if s != 409 or err["code"] != "already_live":
+        fail(f"AC-REL-07: {s} {err}")
+    ok("AC-REL-07: rollback to the live release gives 409 already_live")
+    t0 = time.time()
+    _, dep = p.call("POST", f"/services/{svc['id']}/rollback", {"release_id": v2["id"]}, expect=202)
+    wait("traffic on v2", lambda: "version 2" in http_get(GIT_APP)[2], timeout=60, every=0.2)
+    took = time.time() - t0
+    if took >= 10:
+        fail(f"fast rollback took {took:.1f} s")
+    ok(f"AC-REL-02: fast rollback switched traffic to v2 in {took:.1f} s")
+    d = wait("rollback live", lambda: (lambda x: x if x["state"] == "live" else None)(p.call("GET", f"/deployments/{dep['id']}", expect=200)[1]), timeout=120)
+    if d["trigger"] != "rollback" or d["release_id"] != v2["id"]:
+        fail(f"rollback deployment: {d}")
+    _, logs = p.call("GET", f"/deployments/{dep['id']}/logs", expect=200)
+    if any(l["stream"] == "build" for l in logs):
+        fail("AC-REL-04: a build ran in the rollback")
+    steps = [x["message"] for x in d["steps"]]
+    if any("pull" in m.lower() for m in steps):
+        fail(f"a pull ran in the fast rollback: {steps}")
+    _, sv = p.call("GET", f"/services/{svc['id']}", expect=200)
+    if sv["live_release_id"] != v2["id"]:
+        fail("live release is not v2")
+    ok("AC-REL-01, AC-REL-04: rollback deployment is live on v2 with no build")
+    print("ROLLBACK PASSED")
+
+
+ZD = "zd.test"
+ZD_SCRIPT = r"""
+import os, time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+V = os.environ.get("VERSION", "0")
+START = time.time()
+DELAY = float(os.environ.get("READY_AFTER", "0"))
+FAIL = os.environ.get("FAIL") == "1"
+broken = [False]
+class H(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    def log_message(self, *a): pass
+    def reply(self, code, body):
+        b = body.encode()
+        self.send_response(code); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+    def do_GET(self):
+        p = self.path.split("?")[0]
+        if p == "/ready":
+            if broken[0]: self.reply(500, "broken")
+            elif FAIL or time.time() - START < DELAY: self.reply(503, "not ready yet")
+            else: self.reply(200, "ready")
+        elif p == "/_break":
+            broken[0] = True; self.reply(200, "broken")
+        elif p == "/ws":
+            self.send_response(101); self.send_header("Upgrade", "websocket"); self.send_header("Connection", "Upgrade"); self.end_headers()
+            try:
+                while True:
+                    self.wfile.write(("v" + V + "\n").encode()); self.wfile.flush(); time.sleep(0.2)
+            except Exception:
+                pass
+            self.close_connection = True
+        else:
+            self.reply(200, "version " + V)
+ThreadingHTTPServer(("0.0.0.0", 8000), H).serve_forever()
+"""
+
+
+class Load:
+    """Sends `rate` requests per second to the app through Caddy. Every request has its own connection."""
+
+    def __init__(self, host, rate=20):
+        import threading
+        self.host, self.rate, self.log, self.lock = host, rate, [], threading.Lock()
+        self.stop_flag = threading.Event()
+        self.thread = threading.Thread(target=self.run, daemon=True)
+
+    def one(self):
+        t0 = time.time()
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", 80, timeout=10)
+            conn.request("GET", "/", headers={"Host": self.host, "Connection": "close"})
+            r = conn.getresponse()
+            rec = (t0, r.status, r.read().decode("latin1"))
+            conn.close()
+        except Exception as e:  # a failed request is a result, not a crash
+            rec = (t0, 0, repr(e))
+        with self.lock:
+            self.log.append(rec)
+
+    def run(self):
+        import threading
+        nxt = time.time()
+        while not self.stop_flag.is_set():
+            threading.Thread(target=self.one, daemon=True).start()
+            nxt += 1.0 / self.rate
+            time.sleep(max(0, nxt - time.time()))
+
+    def start(self):
+        self.thread.start()
+        return self
+
+    def stop(self):
+        self.stop_flag.set()
+        self.thread.join()
+        time.sleep(1.5)  # let the last requests end
+        return list(self.log)
+
+    def first_seen(self, version):
+        with self.lock:
+            for t, status, body in self.log:
+                if status == 200 and body == f"version {version}":
+                    return t
+        return None
+
+
+def check_load(log, what):
+    bad = [r for r in log if r[1] != 200]
+    if bad:
+        fail(f"{what}: {len(bad)} of {len(log)} requests failed, first: {bad[0]}")
+    ok(f"{what}: {len(log)} requests, none failed")
+
+
+def check_cutover(log, old, new):
+    """The answer changes from old to new at one moment: after the first request that got `new`, no later request gets `old`."""
+    firsts = [t for t, s, b in log if b == f"version {new}"]
+    if not firsts:
+        fail(f"version {new} never answered")
+    first = min(firsts)
+    late = [r for r in log if r[2] == f"version {old}" and r[0] > first + 0.3]
+    if late:
+        fail(f"version {old} answered after {new} started: {late[0]}")
+
+
+def deploy_wait(p, svc_id, state="live", timeout=300, body=None):
+    _, dep = p.call("POST", f"/services/{svc_id}/deploy", body or {}, expect=202)
+
+    def done():
+        _, d = p.call("GET", f"/deployments/{dep['id']}", expect=200)
+        return d if d["state"] in ("live", "failed", "rolled_back", "cancelled") else None
+    d = wait(f"deployment {dep['id']} ends", done, timeout=timeout, every=1)
+    if d["state"] != state:
+        fail(f"deployment {d['state']} ({d.get('failure_reason')}: {d.get('failure_detail')}), want {state}")
+    return d
+
+
+def step_time(d, state):
+    for st in d["steps"]:
+        if st["state"] == state:
+            return time.mktime(time.strptime(st["time"][:19], "%Y-%m-%dT%H:%M:%S"))
+    return None
+
+
+def zd_service(p):
+    _, projects = p.call("GET", "/projects", expect=200)
+    proj = projects["items"][0]
+    _, envs = p.call("GET", f"/projects/{proj['id']}/environments", expect=200)
+    env = next(e for e in envs if e["kind"] == "production")
+    _, svcs = p.call("GET", f"/environments/{env['id']}/services", expect=200)
+    return proj, next(s for s in svcs if s["name"] == "zd")
+
+
+def set_vars(p, proj, svc_id, values):
+    _, existing = p.call("GET", f"/projects/{proj['id']}/variables?service_id={svc_id}", expect=200)
+    by_name = {v["name"]: v for v in existing}
+    for name, value in values.items():
+        if name in by_name:
+            p.call("PATCH", f"/variables/{by_name[name]['id']}", {"name": name, "value": value, "service_id": svc_id}, expect=200)
+        else:
+            p.call("POST", f"/projects/{proj['id']}/variables", {"name": name, "value": value, "service_id": svc_id}, expect=201)
+
+
+def events_reader(p, topics):
+    """Reads the SSE stream of platform events in a thread. Returns (list of events, stop function)."""
+    import threading
+    out, stop = [], threading.Event()
+
+    def run():
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", 80, timeout=5)
+            conn.request("GET", "/api/v1/events?topics=" + topics, headers={"Host": PANEL, "Cookie": p.cookie})
+            r = conn.getresponse()
+            while not stop.is_set():
+                try:
+                    line = r.fp.readline()
+                except OSError:
+                    continue
+                if not line:
+                    break
+                if line.startswith(b"data: "):
+                    out.append(json.loads(line[6:]))
+        except OSError:
+            pass
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    return out, stop.set
+
+
+def zerodowntime():
+    """T-E2E-03: 20 requests per second while blue-green deploys 5 times. No failed request. A failing
+    health check keeps blue serving. Also AC-HC-01, AC-HC-05, AC-DEPLOY-09, AC-HC-03, AC-HC-04."""
+    p = Panel()
+    p.login()
+    _, projects = p.call("GET", "/projects", expect=200)
+    proj = projects["items"][0]
+    _, envs = p.call("GET", f"/projects/{proj['id']}/environments", expect=200)
+    env = next(e for e in envs if e["kind"] == "production")
+    config = {"image": "python:3.12-slim", "port": 8000, "command": ["python", "-u", "-c", ZD_SCRIPT],
+              "health": {"type": "http", "path": "/ready", "interval": 1, "timeout": 2, "healthy_threshold": 3, "unhealthy_threshold": 3,
+                         "start_period": 5, "deploy_timeout": 25},
+              "strategy_options": {"drain_seconds": 10}}
+    _, svc = p.call("POST", f"/environments/{env['id']}/services", {"name": "zd", "type": "app", "source": {"image": config["image"]}, "config": config}, expect=201)
+    p.call("POST", f"/services/{svc['id']}/domains", {"host": ZD, "container_port": 8000, "https": False}, expect=201)
+    set_vars(p, proj, svc["id"], {"VERSION": "1", "READY_AFTER": "0", "FAIL": "0"})
+    d = deploy_wait(p, svc["id"])
+    if d["strategy"] != "blue_green":
+        fail(f"strategy {d['strategy']}")
+    wait("v1 serves", lambda: http_get(ZD)[2] == "version 1", timeout=30)
+    ok("zd service: first deploy live on version 1 (blue_green)")
+
+    load = Load(ZD).start()
+    for v in range(2, 7):
+        set_vars(p, proj, svc["id"], {"VERSION": str(v)})
+        d = deploy_wait(p, svc["id"])
+        if d["strategy"] != "blue_green":
+            fail(f"strategy {d['strategy']}")
+        wait(f"version {v}", lambda: load.first_seen(v), timeout=30, every=0.2)
+    log = load.stop()
+    check_load(log, "AC-DEPLOY-01: 5 blue-green deploys under 20 requests/s")
+    for v in range(2, 7):
+        check_cutover(log, v - 1, v)
+    ok("AC-DEPLOY-01: the answer changed from old to new at one moment, 5 times")
+
+    # AC-HC-01: /ready is 503 for 8 s after the start. The switch comes only after three 200s.
+    set_vars(p, proj, svc["id"], {"VERSION": "7", "READY_AFTER": "8"})
+    d = deploy_wait(p, svc["id"])
+    gap = step_time(d, "switching") - step_time(d, "starting")
+    if gap < 9:
+        fail(f"AC-HC-01: switched {gap} s after the start of green, /ready was 503 for 8 s")
+    ok(f"AC-HC-01: switch {gap:.0f} s after green started (503 for 8 s, then three 200s)")
+    set_vars(p, proj, svc["id"], {"READY_AFTER": "0"})
+
+    # AC-DEPLOY-02 and AC-HC-05: green never gets healthy. Blue keeps serving. The error shows status and body.
+    load = Load(ZD).start()
+    set_vars(p, proj, svc["id"], {"VERSION": "8", "FAIL": "1"})
+    d = deploy_wait(p, svc["id"], state="failed")
+    if d["failure_reason"] != "health_timeout" or "503" not in d["failure_detail"] or "not ready yet" not in d["failure_detail"]:
+        fail(f"AC-HC-05: {d['failure_reason']}: {d['failure_detail']}")
+    log = load.stop()
+    check_load(log, "AC-DEPLOY-02: failed deploy, blue kept serving")
+    if any(b == "version 8" for _, _, b in log):
+        fail("the failed version answered")
+    ok("AC-DEPLOY-02, AC-HC-05: health_timeout with the last status and body: " + d["failure_detail"][:90])
+    set_vars(p, proj, svc["id"], {"FAIL": "0"})
+
+    # AC-DEPLOY-09: a stream stays open for drain_seconds after the switch.
+    import socket
+    import threading
+    closed = []
+    opened = time.time()
+    sock = socket.create_connection(("127.0.0.1", 80), timeout=60)
+    sock.sendall(f"GET /ws HTTP/1.1\r\nHost: {ZD}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n".encode())
+
+    def read_ws():
+        try:
+            while sock.recv(4096):
+                pass
+        except OSError:
+            pass
+        closed.append(time.time())
+    threading.Thread(target=read_ws, daemon=True).start()
+    time.sleep(1)
+    load = Load(ZD).start()
+    set_vars(p, proj, svc["id"], {"VERSION": "9"})
+    deploy_wait(p, svc["id"])
+    log = load.stop()
+    switched = load.first_seen(9)
+    if not closed:
+        wait("stream closes", lambda: bool(closed), timeout=60)
+    if closed[0] - switched < 9:
+        fail(f"AC-DEPLOY-09: the stream closed {closed[0] - switched:.1f} s after the switch (drain_seconds is 10)")
+    ok(f"AC-DEPLOY-09: the open stream closed {closed[0] - switched:.1f} s after the switch (drain_seconds 10)")
+    check_load(log, "deploy with an open stream")
+
+    # AC-HC-03 and AC-HC-04: the live container turns unhealthy. With one replica all are unhealthy:
+    # Caddy keeps routing, the alert is critical, the agent restarts the container and it rejoins.
+    events, stop_events = events_reader(p, "alert")
+    time.sleep(1)
+    http_get(ZD, "/_break")
+    def unhealthy():
+        _, sv = p.call("GET", f"/services/{svc['id']}", expect=200)
+        return any(pl["role"] == "live" and pl["health"] == "unhealthy" for pl in sv["placements"])
+    wait("live placement unhealthy", unhealthy, timeout=40, every=1)
+    code, _, body = http_get(ZD)
+    if code != 200:
+        fail(f"AC-HC-04: routing stopped: {code}")
+    wait("critical alert", lambda: any(e["payload"].get("severity") == "critical" and e["payload"].get("state") == "firing" for e in events), timeout=20, every=1)
+    ok("AC-HC-03, AC-HC-04: unhealthy live container: still routed (200), critical alert fired")
+    def healthy_again():
+        _, sv = p.call("GET", f"/services/{svc['id']}", expect=200)
+        return any(pl["role"] == "live" and pl["health"] == "healthy" for pl in sv["placements"])
+    wait("restarted and healthy again", healthy_again, timeout=90, every=2)
+    wait("alert resolved", lambda: any(e["payload"].get("state") == "resolved" for e in events), timeout=20, every=1)
+    stop_events()
+    ok("REQ-HC-007: the agent restarted the container, it is healthy again, the alert resolved")
+    json.dump({"service_id": svc["id"], "project_id": proj["id"]}, open("/e2e/zd.json", "w"))
+    print("ZERODOWNTIME PASSED")
+
+
+def chaos_start():
+    """Starts a deployment of zd and waits for health_checking (the shell pauses Caddy then, so the switch hangs)."""
+    mode = sys.argv[2]
+    p = Panel()
+    p.login()
+    proj, svc = zd_service(p)
+    set_vars(p, proj, svc["id"], {"VERSION": "10" if mode == "switching" else "11", "READY_AFTER": "0" if mode == "switching" else "300"})
+    _, dep = p.call("POST", f"/services/{svc['id']}/deploy", {}, expect=202)
+    json.dump({"deployment_id": dep["id"], "service_id": svc["id"]}, open("/e2e/chaos.json", "w"))
+    if mode == "switching":
+        def hc():
+            _, d = p.call("GET", f"/deployments/{dep['id']}", expect=200)
+            return d["state"] == "health_checking"
+        wait("health_checking", hc, timeout=120, every=0.3)
+    else:
+        def hc():
+            _, d = p.call("GET", f"/deployments/{dep['id']}", expect=200)
+            return d["state"] == "health_checking"
+        wait("health_checking", hc, timeout=120, every=0.5)
+    ok(f"chaos {mode}: deployment {dep['id']} is in health_checking")
+
+
+def chaos_end():
+    """After the server restart: the deployment is in a terminal state (REQ-DEPLOY-107) and the service answers."""
+    mode, want = sys.argv[2], sys.argv[3]
+    st = json.load(open("/e2e/chaos.json"))
+    p = Panel()
+    wait("login after restart", lambda: (p.login() or True), timeout=120, every=3)
+
+    def done():
+        _, d = p.call("GET", f"/deployments/{st['deployment_id']}", expect=200)
+        return d if d["state"] in ("live", "failed", "rolled_back", "cancelled") else None
+    d = wait("deployment ends after the restart", done, timeout=180, every=2)
+    if d["state"] != want:
+        fail(f"chaos {mode}: deployment is {d['state']} ({d.get('failure_reason')}), want {want}")
+    version = "10"  # the killed deploy of the health round never became live
+    wait(f"app serves version {version}", lambda: http_get(ZD)[2] == f"version {version}", timeout=60)
+    _, sv = p.call("GET", f"/services/{st['service_id']}", expect=200)
+    live = [pl for pl in sv["placements"] if pl["role"] == "live"]
+    if len(live) != 1 or any(pl["role"] in ("candidate", "draining") for pl in sv["placements"]) and mode != "switching":
+        fail(f"placements after the restart: {[(pl['role'], pl['color']) for pl in sv['placements']]}")
+    ok(f"REQ-DEPLOY-107: after the server kill in {mode} the deployment ended {d['state']} and version {version} serves")
+    print("CHAOS PASSED")
+
+
 if __name__ == "__main__":
-    {"flow": flow, "serving": serving, "after": after, "gitflow": gitflow}[sys.argv[1]]()
+    {"flow": flow, "serving": serving, "after": after, "gitflow": gitflow, "rollback": rollback, "zerodowntime": zerodowntime,
+     "chaos-start": chaos_start, "chaos-end": chaos_end}[sys.argv[1]]()

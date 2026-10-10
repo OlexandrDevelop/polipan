@@ -80,9 +80,7 @@ func paramsFromRequest(serviceID, actorID string, body gen.DeployRequest) orches
 		p.Strategy = string(*body.Strategy)
 	}
 	if o := body.StrategyOptions; o != nil {
-		if o.DrainSeconds != nil {
-			p.DrainSeconds = *o.DrainSeconds
-		}
+		p.DrainSeconds = o.DrainSeconds
 		p.AllowDowntimeOnLowCapacity = o.AllowDowntimeOnLowCapacity
 		p.AllowOverlap = o.AllowOverlap
 	}
