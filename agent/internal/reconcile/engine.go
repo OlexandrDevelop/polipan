@@ -88,6 +88,8 @@ type Engine struct {
 	Quota Quota
 	// Now is the clock of the usage report (REQ-CORE-031). Nil = time.Now.
 	Now func() time.Time
+	// OnDesired is called with every new desired state, after it is saved. Optional (M8 telemetry).
+	OnDesired func(ds *agentv1.DesiredState)
 
 	mu         sync.Mutex
 	execs      map[string]*execSession // open terminals by command id
@@ -191,6 +193,9 @@ func (e *Engine) SetDesired(ds *agentv1.DesiredState) {
 	}
 	e.hold = false
 	e.mu.Unlock()
+	if newer && e.OnDesired != nil {
+		e.OnDesired(ds)
+	}
 	e.kick()
 }
 

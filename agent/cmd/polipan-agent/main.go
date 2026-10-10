@@ -31,10 +31,13 @@ import (
 	"github.com/polipan/polipan/agent/internal/ingress"
 	"github.com/polipan/polipan/agent/internal/join"
 	"github.com/polipan/polipan/agent/internal/logging"
+	"github.com/polipan/polipan/agent/internal/logship"
 	"github.com/polipan/polipan/agent/internal/mesh"
+	"github.com/polipan/polipan/agent/internal/metrics"
 	"github.com/polipan/polipan/agent/internal/reconcile"
 	"github.com/polipan/polipan/agent/internal/state"
 	"github.com/polipan/polipan/agent/internal/stream"
+	"github.com/polipan/polipan/agent/internal/telemetry"
 	"github.com/polipan/polipan/agent/internal/version"
 	"github.com/polipan/polipan/proto/agentv1"
 )
@@ -209,6 +212,7 @@ func runAgent(cfg config.Config) error {
 			return join.NodeInfo(ctx, dv, ing.Version(dctx), cfg.DataDir, nil)
 		}}
 	eng.Sink = sc
+	startTelemetry(ctx, cfg, d, eng, log)
 	log.Info("agent started", "version", version.Version)
 	go eng.Run(ctx)
 	sc.Run(ctx)
@@ -223,4 +227,25 @@ func serverPort(addr string) int {
 	}
 	n, _ := strconv.Atoi(p)
 	return n
+}
+
+// startTelemetry runs the metric and log senders of the node (M8). The desired state tells them where to send.
+func startTelemetry(ctx context.Context, cfg config.Config, d *docker.HTTPClient, eng *reconcile.Engine, log *slog.Logger) {
+	nodeID := ""
+	if id, err := join.Load(cfg.DataDir); err == nil {
+		nodeID = id.Node.NodeID
+	}
+	access := &metrics.Access{NodeID: nodeID, Log: log}
+	col := &metrics.Collector{Docker: d, NodeID: nodeID, Health: eng.HealthSamples, Volumes: eng.VolumeSamples,
+		DesiredVersion: eng.Version, Access: access, Log: log}
+	ship := &logship.Shipper{Dir: filepath.Join(cfg.DataDir, "logship"), Source: d, Log: log,
+		Sender: &logship.HTTPSender{DataDir: cfg.DataDir}}
+	tm := &telemetry.Manager{Docker: d, DataDir: cfg.DataDir, NodeID: nodeID, Log: log, Collector: col, Access: access,
+		Shipper: ship, Secrets: eng.SecretValues}
+	eng.OnDesired = tm.Update
+	// The saved desired state starts the senders after a restart, before the server answers.
+	if ds := eng.Desired(); ds != nil {
+		tm.Update(ds)
+	}
+	go tm.Run(ctx)
 }
