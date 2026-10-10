@@ -18,7 +18,6 @@ type releaseRow struct {
 	id, imageRef, digest string
 	number               int
 	cfg                  serviceConfig
-	pruned               bool
 }
 
 // checkRollback checks a rollback before anything is queued or started (08 section 9, REQ-REL-008, REQ-REL-012).

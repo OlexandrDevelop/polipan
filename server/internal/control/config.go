@@ -135,9 +135,6 @@ func (c serviceConfig) allowOverlap() bool {
 }
 func (c serviceConfig) stopGraceSeconds() int { return orIntPtr(c.StopGracePeriod, defaultStopGrace) }
 func (c serviceConfig) retainStopped() int    { return orIntPtr(c.RetainStopped, defaultRetainStopped) }
-func (c serviceConfig) checkable() bool {
-	return c.Port != 0 || (c.Health != nil && c.Health.Type == "command")
-}
 func (c serviceConfig) resourceSpec() *pb.Resources {
 	if c.Resources == nil || (c.Resources.CPUMillis == 0 && c.Resources.MemoryBytes == 0) {
 		return nil

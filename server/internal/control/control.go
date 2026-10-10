@@ -133,6 +133,7 @@ func (c *Control) Run(ctx context.Context) error {
 			if err := c.CheckNodes(ctx); err != nil && ctx.Err() == nil {
 				c.Log.Error("node monitor", "err", err)
 			}
+			c.sweepExpired(ctx)
 		}
 	}
 }

@@ -278,9 +278,10 @@ func (g *Gateway) handle(ctx context.Context, s *session, m *pb.AgentMessage) {
 	case *pb.AgentMessage_Chunk:
 		g.onChunk(nodeID, b.Chunk)
 	case *pb.AgentMessage_Health:
-		_, err = g.DB.Exec(ctx, `UPDATE placements SET health = $3, updated_at = now()
-			WHERE id = $1 AND node_id = $2 AND $3 IN ('unknown','starting','healthy','unhealthy')`,
-			b.Health.GetPlacementId(), nodeID, b.Health.GetHealth())
+		h := b.Health
+		info, _ := json.Marshal(map[string]any{"consecutive_passes": h.GetConsecutivePasses(), "consecutive_fails": h.GetConsecutiveFails(),
+			"last_error": h.GetLastError(), "last_status": h.GetLastStatus(), "last_body": h.GetLastBody(), "checked_unix_ms": h.GetCheckedUnixMs()})
+		err = g.setHealth(ctx, nodeID, h.GetPlacementId(), h.GetHealth(), info)
 	case *pb.AgentMessage_ContainerEvent:
 		ev := b.ContainerEvent
 		payload, _ := json.Marshal(map[string]any{"kind": ev.GetKind(), "placement_id": ev.GetPlacementId(), "exit_code": ev.GetExitCode()})
@@ -364,7 +365,34 @@ func (g *Gateway) onActualState(ctx context.Context, nodeID string, a *pb.Actual
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	if g.Health != nil {
+		for _, c := range changes {
+			g.Health.HealthChanged(ctx, nodeID, c.placement, c.from, c.to)
+		}
+	}
+	return nil
+}
+
+// setHealth stores a health report of a placement and tells the hook when the health changed.
+func (g *Gateway) setHealth(ctx context.Context, nodeID, placementID, health string, info []byte) error {
+	var from, to string
+	err := g.DB.QueryRow(ctx, `WITH old AS (SELECT health FROM placements WHERE id = $1 AND node_id = $2)
+		UPDATE placements SET health = $3, health_info = $4, updated_at = now()
+		 WHERE id = $1 AND node_id = $2 AND $3 IN ('unknown','starting','healthy','unhealthy')
+		 RETURNING (SELECT health FROM old), health`, placementID, nodeID, health, info).Scan(&from, &to)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if from != to && g.Health != nil {
+		g.Health.HealthChanged(ctx, nodeID, placementID, from, to)
+	}
+	return nil
 }
 
 // onCertRenew signs a new certificate. It always answers: the agent also asks early,

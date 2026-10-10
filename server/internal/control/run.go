@@ -37,7 +37,6 @@ type run struct {
 	blueStopped bool // recreate: the old containers were stopped, so a failure must start them again
 	committed   bool // the switch is in the database
 	reverted    bool // the switch was undone
-	unlocked    bool
 }
 
 func ids(l []plc) []string {
