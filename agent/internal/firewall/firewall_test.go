@@ -149,3 +149,22 @@ func TestApplyIsolation(t *testing.T) {
 		t.Fatal("an unchanged state must not run again")
 	}
 }
+
+// A one-off container (pre_deploy) is let into its environment while it runs, and out again after.
+func TestRetainOneOff(t *testing.T) {
+	var scripts []string
+	f := &Firewall{Enabled: true, MeshSubnet: "10.210.1.0/24", Run: func(_ context.Context, s string) error {
+		scripts = append(scripts, s)
+		return nil
+	}}
+	_ = f.Apply(context.Background(), isolationState())
+	n := len(scripts)
+	release := f.Retain(context.Background(), "env_a", "10.210.1.200")
+	if len(scripts) != n+2 || !strings.Contains(scripts[len(scripts)-2], "10.210.1.200") {
+		t.Fatalf("the address must be in the sets of env_a: %v", scripts[n:])
+	}
+	release()
+	if len(scripts) != n+4 || strings.Contains(scripts[len(scripts)-2], "10.210.1.200") {
+		t.Fatal("the address must be taken out again")
+	}
+}

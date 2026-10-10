@@ -182,7 +182,14 @@ func (r *run) sameNodes(ctx context.Context, req sched.Request) ([]string, bool)
 	return out, true
 }
 
-// allocIP gives a placement a fixed address in the mesh subnet of its node: the first free one from .10 up to .250.
+// firstIP and lastIP are the range of the fixed addresses of placements. .2 is Caddy, the upper half of the subnet
+// belongs to Docker (the panel container, containers of one-off commands), see the agent.
+const (
+	firstIP = 10
+	lastIP  = 127
+)
+
+// allocIP gives a placement a fixed address in the mesh subnet of its node: the first free one from .10 up to .127.
 // The caller holds the lock of the node row, so two placements never get the same address.
 func allocIP(ctx context.Context, q dbq, nodeID string) (string, error) {
 	var subnet string
@@ -210,7 +217,7 @@ func allocIP(ctx context.Context, q dbq, nodeID string) (string, error) {
 	if _, err := fmt.Sscanf(subnet, "%d.%d.%d.%d", &a, &b, &cc, &dd); err != nil {
 		return "", fmt.Errorf("mesh subnet %q: %w", subnet, err)
 	}
-	for last := 10; last <= 250; last++ {
+	for last := firstIP; last <= lastIP; last++ {
 		ip := fmt.Sprintf("%d.%d.%d.%d", a, b, cc, last)
 		if !used[ip] {
 			return ip, nil

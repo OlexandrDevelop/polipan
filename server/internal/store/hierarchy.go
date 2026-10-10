@@ -18,14 +18,16 @@ type Project struct {
 	Slug            string
 	Settings        json.RawMessage
 	ConfigSyncState string
-	CreatedAt       time.Time
+	// ConfigSource is {connection_id, repo, branch, path}, or empty when the project is not synced from Git.
+	ConfigSource json.RawMessage
+	CreatedAt    time.Time
 }
 
-const projectCols = `p.id, p.org_id, p.name, p.slug, p.settings, p.config_sync_state, p.created_at`
+const projectCols = `p.id, p.org_id, p.name, p.slug, p.settings, p.config_sync_state, COALESCE(p.config_source, 'null'::jsonb), p.created_at`
 
 func scanProject(row pgx.Row) (*Project, error) {
 	var p Project
-	if err := row.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &p.Settings, &p.ConfigSyncState, &p.CreatedAt); err != nil {
+	if err := row.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &p.Settings, &p.ConfigSyncState, &p.ConfigSource, &p.CreatedAt); err != nil {
 		return nil, notFound(err)
 	}
 	return &p, nil
@@ -48,7 +50,7 @@ func (s *Store) ListProjects(ctx context.Context, orgID string, limit int, after
 	out := []Project{}
 	for rows.Next() {
 		var p Project
-		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &p.Settings, &p.ConfigSyncState, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &p.Settings, &p.ConfigSyncState, &p.ConfigSource, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -550,4 +552,17 @@ func (s *Store) GetDeployment(ctx context.Context, orgID, id string) (*Deploymen
 		d.Steps = append(d.Steps, st)
 	}
 	return d, rows.Err()
+}
+
+// SetConfigSource sets (or with null clears) the Git source of the config file of a project (REQ-CAC-003).
+func (s *Store) SetConfigSource(ctx context.Context, orgID, projectID string, source json.RawMessage) error {
+	tag, err := s.Pool.Exec(ctx, `UPDATE projects SET config_source = $3::jsonb, updated_at = now() WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
+		projectID, orgID, nullJSON(source))
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

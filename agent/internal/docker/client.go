@@ -146,6 +146,25 @@ func gatewayOf(n networkInspect) string {
 	return ""
 }
 
+// NetworkIPs returns the addresses that containers use on a network.
+func (c *HTTPClient) NetworkIPs(ctx context.Context, name string) (map[string]bool, error) {
+	var n struct {
+		Containers map[string]struct {
+			IPv4Address string `json:"IPv4Address"`
+		} `json:"Containers"`
+	}
+	if err := c.getJSON(ctx, "/networks/"+url.PathEscape(name), nil, &n); err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, ct := range n.Containers {
+		if ip, _, err := net.ParseCIDR(ct.IPv4Address); err == nil {
+			out[ip.String()] = true
+		}
+	}
+	return out, nil
+}
+
 // NetworkSubnet returns the first subnet of a network, or "" when it has none.
 func (c *HTTPClient) NetworkSubnet(ctx context.Context, name string) (string, error) {
 	var n networkInspect
@@ -172,7 +191,15 @@ func (c *HTTPClient) EnsureNetwork(ctx context.Context, name, subnet string) (st
 	}
 	body := map[string]any{"Name": name, "Driver": "bridge", "CheckDuplicate": true}
 	if subnet != "" {
-		body["IPAM"] = map[string]any{"Config": []map[string]string{{"Subnet": subnet}}}
+		cfg := map[string]string{"Subnet": subnet}
+		// The lower half of a /24 is for the fixed addresses of the server (.2 Caddy, .10 up for workloads).
+		// Docker gives its own addresses from the upper half only, so they never meet.
+		if _, ipn, err := net.ParseCIDR(subnet); err == nil && ipn.IP.To4() != nil {
+			if ones, bits := ipn.Mask.Size(); ones == 24 && bits == 32 {
+				cfg["IPRange"] = fmt.Sprintf("%d.%d.%d.128/25", ipn.IP[0], ipn.IP[1], ipn.IP[2])
+			}
+		}
+		body["IPAM"] = map[string]any{"Config": []map[string]string{cfg}}
 	}
 	if err := c.post(ctx, "/networks/create", nil, body); err != nil {
 		return "", err

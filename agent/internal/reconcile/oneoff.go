@@ -86,6 +86,15 @@ func (e *Engine) runOneOff(ctx context.Context, ro *agentv1.RunOneOff) ([]byte, 
 	sp.Ports = nil
 	sp.Aliases = nil
 	sp.Labels = map[string]string{"polipan.oneoff": "true"}
+	// The container gets a fixed address of its own and the firewall lets it reach its environment while it runs.
+	if ip := e.oneOffIP(rctx); ip != "" {
+		sp.IP = ip
+		if r, ok := e.Firewall.(interface {
+			Retain(ctx context.Context, env, ip string) func()
+		}); ok {
+			defer r.Retain(rctx, w.EnvironmentId, ip)()
+		}
+	}
 	// A repeated command (same id) starts from a clean name.
 	if old, err := e.Docker.Inspect(rctx, sp.Name); err == nil {
 		_ = e.Docker.Remove(rctx, old.ID, true)
@@ -180,4 +189,30 @@ func isTLSError(err error) bool {
 	}
 	s := err.Error()
 	return strings.Contains(s, "tls:") || strings.Contains(s, "x509:") || strings.Contains(s, "remote error")
+}
+
+// oneOffIP picks a free address from .200 to .249 of the network of the node, or "" when there is none or the
+// network is not a /24 that the agent knows. The server uses .10 to .127 for workloads, Docker the upper half.
+func (e *Engine) oneOffIP(ctx context.Context) string {
+	l, ok := e.Docker.(interface {
+		NetworkIPs(ctx context.Context, name string) (map[string]bool, error)
+	})
+	if !ok || e.NetSubnet == nil || e.Network == "" || e.Network == "host" {
+		return ""
+	}
+	base := e.NetSubnet.IP.To4()
+	if ones, bits := e.NetSubnet.Mask.Size(); base == nil || ones != 24 || bits != 32 {
+		return ""
+	}
+	used, err := l.NetworkIPs(ctx, e.Network)
+	if err != nil {
+		return ""
+	}
+	for last := 200; last <= 249; last++ {
+		ip := net.IPv4(base[0], base[1], base[2], byte(last)).String()
+		if !used[ip] {
+			return ip
+		}
+	}
+	return ""
 }

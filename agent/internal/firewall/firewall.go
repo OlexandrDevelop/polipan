@@ -213,6 +213,8 @@ type Firewall struct {
 	mu       sync.Mutex
 	lastHash [32]byte
 	warned   bool
+	lastDS   *agentv1.DesiredState
+	temp     map[string]string // address -> environment of the one-off containers that run now
 }
 
 func runNft(ctx context.Context, script string) error {
@@ -244,15 +246,25 @@ func (f *Firewall) Apply(ctx context.Context, ds *agentv1.DesiredState) error {
 		}
 		run = runNft
 	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastDS = ds
+	return f.apply(ctx, run)
+}
+
+// apply writes the rules of lastDS and the one-off containers. The caller holds the lock.
+func (f *Firewall) apply(ctx context.Context, run func(ctx context.Context, script string) error) error {
+	ds := f.lastDS
 	tcp, udp := PortsFromDesired(ds)
 	p := Params{DNSAddr: f.DNSAddr, AgentPort: f.AgentPort, TCPPorts: tcp, UDPPorts: udp}
 	if ds != nil && ds.MeshCidr != "" && f.MeshSubnet != "" {
 		p.MeshCIDR, p.Envs, p.CaddyIPs = ds.MeshCidr, EnvsFromDesired(ds), CaddyIPs(f.MeshSubnet, ds)
+		for ip, env := range f.temp {
+			p.Envs[env] = append(p.Envs[env], ip)
+		}
 	}
 	script, bridge := Ruleset(p), BridgeRuleset(p)
 	h := sha256.Sum256([]byte(script + "\x00" + bridge))
-	f.mu.Lock()
-	defer f.mu.Unlock()
 	if h == f.lastHash {
 		return nil
 	}
@@ -265,6 +277,34 @@ func (f *Firewall) Apply(ctx context.Context, ds *agentv1.DesiredState) error {
 		}
 	}
 	return err
+}
+
+// Retain lets a one-off container (pre_deploy, post_deploy) reach the containers of its environment while it runs.
+// The address is added to the sets of the environment at once. The returned function takes it out again.
+func (f *Firewall) Retain(ctx context.Context, env, ip string) func() {
+	if f == nil || !f.Enabled || env == "" || ip == "" {
+		return func() {}
+	}
+	run := f.Run
+	if run == nil {
+		if _, err := exec.LookPath("nft"); err != nil {
+			return func() {}
+		}
+		run = runNft
+	}
+	f.mu.Lock()
+	if f.temp == nil {
+		f.temp = map[string]string{}
+	}
+	f.temp[ip] = env
+	_ = f.apply(ctx, run)
+	f.mu.Unlock()
+	return func() {
+		f.mu.Lock()
+		delete(f.temp, ip)
+		_ = f.apply(context.Background(), run)
+		f.mu.Unlock()
+	}
 }
 
 // EnvsFromDesired maps every environment to the addresses of its workloads: the ones on this node and the ones the
