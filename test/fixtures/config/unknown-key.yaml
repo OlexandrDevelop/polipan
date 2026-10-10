@@ -1,0 +1,9 @@
+# A valid file plus one key that the schema does not know. Validation must fail.
+version: 1
+project: blog
+services:
+  web:
+    source:
+      image: {name: "nginx:1.27"}
+    ports: [80]
+    not_a_real_key: true

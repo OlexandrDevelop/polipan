@@ -47,6 +47,7 @@ paths:
       x-permission: public
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Health'}}}}
+        '503': {description: Degraded (the database is down), content: {application/json: {schema: {$ref: '#/components/schemas/Health'}}}}
   /version:
     get:
       operationId: getVersion

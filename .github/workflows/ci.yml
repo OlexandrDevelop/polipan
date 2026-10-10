@@ -1,0 +1,162 @@
+# SPDX-License-Identifier: Apache-2.0
+# CI gates of docs/spec/13-testing-and-quality.md, section 3. All of them must pass to merge.
+# Every job calls a make target, so you can run the same check on your machine.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  POLIPAN_TEST_DATABASE_URL: postgres://postgres:pw@localhost:5432/postgres?sslmode=disable
+
+jobs:
+  # Gate 1: go vet, staticcheck, golangci-lint, eslint, tsc, gofmt, prettier.
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: make lint
+
+  # Unit, component and contract tests (gate 2 tests; coverage thresholds start with the first features).
+  # This job also runs gate 4 (x-permission and route check), gate 5 (schemas) and gate 7 (migrations).
+  test:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: pw
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make test
+      - name: Gate 4 - x-permission check
+        run: make gate4
+      - name: Gate 5 - schema checks
+        run: make gate5
+      - name: Gate 7 - migration check
+        run: make gate7
+
+  # Gate 3: OpenAPI lint and breaking-change diff.
+  openapi:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: make gate3
+
+  # Gate 6: agent.proto compiles, generated code is up to date, buf breaking.
+  proto:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: cd web && npm ci --no-audit --no-fund
+      - run: make gate6
+
+  # Gate 8: license check and SPDX headers.
+  license:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: cd web && npm ci --no-audit --no-fund
+      - run: make gate8
+
+  # Pull requests: Conventional Commits and DCO sign-off (REQ-OSS-003, REQ-OSS-009).
+  commits:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: sh test/ci/check-commits.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+
+  # Done criterion 1 of M0: server, agent and cli binaries for linux amd64 and arm64, and the web app.
+  binaries:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: make web
+      - run: make build-go GOOS=linux GOARCH=${{ matrix.goarch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-linux-${{ matrix.goarch }}
+          path: bin/linux-${{ matrix.goarch }}/
+      - uses: actions/upload-artifact@v4
+        if: matrix.goarch == 'amd64'
+        with:
+          name: web-dist
+          path: |
+            server/internal/web/dist
+            !server/internal/web/dist/.gitkeep
+
+  # Gate 11 and done criterion 1: images for server, agent and cli. Smoke test: /healthz answers ok.
+  images:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: make images
+      - run: make smoke

@@ -1,0 +1,14 @@
+# Build output
+/bin/
+/dist/
+/coverage.out
+
+# Web
+node_modules/
+/server/internal/web/dist/*
+!/server/internal/web/dist/.gitkeep
+
+# Editor and OS
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+version: "2"
+linters:
+  default: standard
+  enable:
+    - errorlint
+    - bodyclose
+    - misspell
+    - unconvert
+  exclusions:
+    generated: lax
+formatters:
+  enable:
+    - gofmt

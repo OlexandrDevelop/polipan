@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Polipan agent protocol, version 1.
 // Source of truth for server <-> agent messages. See docs/spec/09-multi-server.md.
 // This is a schema only. Generated code lives in /proto.

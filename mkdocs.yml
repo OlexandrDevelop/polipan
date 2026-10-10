@@ -1,0 +1,9 @@
+site_name: Polipan
+site_description: Self-hosted server panel. Open source, Apache-2.0.
+repo_url: https://github.com/polipan/polipan
+docs_dir: docs
+theme:
+  name: material
+nav:
+  - Home: index.md
+  - Specification: spec/README.md

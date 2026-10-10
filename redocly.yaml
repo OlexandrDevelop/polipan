@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+extends:
+  - recommended
+rules:
+  # The spec is written for agents: short descriptions and no license url are fine.
+  info-license-url: off
+  no-server-example.com: off
+  operation-4xx-response: off
+  # Redirects (302) and WebSocket upgrades (101) are valid answers.
+  operation-2xx-response: off
+  tag-description: off
+  operation-summary: error
+  operation-operationId: error
+  no-unused-components: warn

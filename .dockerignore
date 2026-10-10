@@ -1,0 +1,7 @@
+.git
+bin
+dist
+**/node_modules
+server/internal/web/dist/*
+!server/internal/web/dist/.gitkeep
+docs
