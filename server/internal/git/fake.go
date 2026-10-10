@@ -39,7 +39,10 @@ type FakeCloner struct {
 	Files  map[string]string // path -> content
 	Commit string            // returned when the request has no commit
 	Err    error
-	Calls  []CloneRequest
+	// HostKey is the SSH host key of the fake server. A clone with another pinned key fails;
+	// a clone without one reports this key with OnHostKey.
+	HostKey string
+	Calls   []CloneRequest
 }
 
 // Clone implements Cloner.
@@ -49,6 +52,12 @@ func (f *FakeCloner) Clone(_ context.Context, req CloneRequest) (string, error) 
 	f.Calls = append(f.Calls, req)
 	if f.Err != nil {
 		return "", f.Err
+	}
+	if f.HostKey != "" && req.HostKey != "" && req.HostKey != f.HostKey {
+		return "", &CloneError{"host key verification failed"}
+	}
+	if f.HostKey != "" && req.HostKey == "" && req.OnHostKey != nil {
+		defer req.OnHostKey(f.HostKey)
 	}
 	for name, content := range f.Files {
 		p := filepath.Join(req.Dir, filepath.FromSlash(name))

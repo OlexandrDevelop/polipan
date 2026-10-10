@@ -189,6 +189,10 @@ func (r *run) prepare(ctx context.Context) *deployErr {
 	}
 	if built != "" {
 		r.cfg.Image = built
+	} else if c.Build != nil && c.Build.Registry.IsOwnImage(r.cfg.Image) {
+		// The node pull credential of the built-in registry is not limited to one repository.
+		// Only a build of this service may use it: an image service must not pull built images of others.
+		return fail(ReasonInvalidConfig, "an image service cannot use an image of the built-in registry")
 	}
 	node, err := r.pickNodeFor(ctx)
 	if err != nil {

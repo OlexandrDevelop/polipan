@@ -144,6 +144,16 @@ func (c *Control) buildIfGit(ctx context.Context, depID, serviceID string) (stri
 			return fail(ReasonBuildFailed, "deploy key: %v", err)
 		}
 	}
+	if h, _, err := ssrf.HostPort(clone.URL); err == nil && clone.SSHKey != "" {
+		// Trust on first use: keep the SSH host key of this service, later clones must show the same key.
+		_ = c.DB.QueryRow(ctx, `SELECT host_key FROM git_host_keys WHERE service_id = $1 AND host = $2`, serviceID, h).Scan(&clone.HostKey)
+		clone.OnHostKey = func(key string) {
+			if _, err := c.DB.Exec(ctx, `INSERT INTO git_host_keys (service_id, host, host_key) VALUES ($1,$2,$3)
+				ON CONFLICT (service_id) DO UPDATE SET host = $2, host_key = $3, created_at = now()`, serviceID, h, key); err != nil {
+				c.Log.Warn("build: save ssh host key", "service", serviceID, "err", err)
+			}
+		}
+	}
 	if clone.Password != "" {
 		maskValues = append(maskValues, clone.Password)
 	}
