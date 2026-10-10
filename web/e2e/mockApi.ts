@@ -30,6 +30,16 @@ export interface MockState {
   applyCalls: { config?: string; plan_hash?: string; prune?: boolean; prune_data?: boolean }[]
   // The code of a 409 answer of the apply call.
   applyConflict?: string
+  // M8: alerts, live log lines, canary controls and backup policies.
+  alertInstances: Schemas['AlertInstance'][]
+  alertRules: Schemas['AlertRule'][]
+  alertChannels: Schemas['AlertChannel'][]
+  muteCalls: { rule_id: string; until?: string; reason?: string }[]
+  logLines: Schemas['LogLine'][]
+  canaryCalls: string[]
+  backupPolicies: Schemas['BackupPolicy'][]
+  // true: the metrics store is down (503 monitoring_unavailable).
+  metricsDown: boolean
 }
 
 export const LEAKED_SECRET = 'sk_live_must_never_show'
@@ -72,6 +82,14 @@ export function defaultState(role: Schemas['Role'] = 'owner'): MockState {
       },
     ],
     deployments: {},
+    alertInstances: [],
+    alertRules: [],
+    alertChannels: [],
+    muteCalls: [],
+    logLines: [],
+    canaryCalls: [],
+    backupPolicies: [],
+    metricsDown: false,
     deployCalls: [],
     rollbackCalls: [],
     eventsDown: false,
@@ -246,10 +264,68 @@ export async function mockApi(page: Page, state: MockState) {
       state.deployments.d2 = newDeployment('d2', body.release_id ?? '', 'rollback')
       return json(route, state.deployments.d2, 202)
     }
+    if (method === 'GET' && path === '/services/s1/logs/stream') {
+      const events = state.logLines
+        .map((l) => `event: log\ndata: ${JSON.stringify(l)}\n\n`)
+        .join('')
+      return stream(route, events)
+    }
+    if (method === 'GET' && path === '/services/s1/metrics') {
+      if (state.metricsDown) {
+        return json(
+          route,
+          { code: 'monitoring_unavailable', message: 'down', request_id: 'mock' },
+          503,
+        )
+      }
+      const to = Math.floor(Date.now() / 1000)
+      const points = [0, 1, 2, 3].map((i) => [to - 900 + i * 300, 10 + i * 20])
+      return json(route, {
+        step_seconds: 300,
+        series: url.searchParams
+          .getAll('metrics')
+          .map((metric) => ({ metric, labels: {}, points })),
+      })
+    }
+    if (method === 'GET' && path === '/alert-instances') {
+      return json(route, { items: state.alertInstances, next_cursor: null })
+    }
+    if (method === 'GET' && path === '/alert-rules') return json(route, state.alertRules)
+    if (method === 'GET' && path === '/alert-channels') return json(route, state.alertChannels)
+    const mute = path.match(/^\/alert-rules\/(\w+)\/mute$/)
+    if (method === 'POST' && mute) {
+      state.muteCalls.push({ rule_id: mute[1], ...(request.postDataJSON() as object) })
+      return json(route, state.alertRules.find((r) => r.id === mute[1]) ?? {})
+    }
+    if (method === 'GET' && path === '/backup-policies') return json(route, state.backupPolicies)
+    const canary = path.match(/^\/deployments\/(\w+)\/(promote|pause|resume|abort)$/)
+    if (method === 'POST' && canary) {
+      state.canaryCalls.push(canary[2])
+      const deployment = state.deployments[canary[1]]
+      if (canary[2] === 'pause') deployment.canary_paused = true
+      if (canary[2] === 'resume') deployment.canary_paused = false
+      return json(route, deployment)
+    }
     const deploymentPath = path.match(/^\/deployments\/(\w+)(\/logs|\/events)?$/)
     if (method === 'GET' && deploymentPath) {
       const deployment = state.deployments[deploymentPath[1]]
       if (deploymentPath[2] === '/logs') return json(route, [])
+      if (deploymentPath[2] === '/events' && deployment.strategy === 'canary') {
+        // A canary stays in shifting. The stream brings one gate result.
+        const gate = {
+          step: 10,
+          passed: true,
+          health_ok: true,
+          green_requests: 120,
+          green_5xx_rate: 0.004,
+          green_p95_seconds: 0.21,
+          blue_p95_seconds: 0.18,
+        }
+        return stream(
+          route,
+          `event: canary_gate\ndata: ${JSON.stringify({ type: 'canary_gate', data: gate, time: new Date().toISOString() })}\n\n`,
+        )
+      }
       if (deploymentPath[2] === '/events') {
         // The first event brings the deployment to live, like the engine would.
         const time = new Date().toISOString()
