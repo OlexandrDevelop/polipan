@@ -91,9 +91,9 @@ func (c *Control) pruneReleases(ctx context.Context, s *svcInfo, keep int) error
 	if len(old) == 0 {
 		return nil
 	}
-	var refs, relIDs []string
+	var relIDs []string
 	for _, r := range old {
-		refs, relIDs = append(refs, r.ref), append(relIDs, r.id)
+		relIDs = append(relIDs, r.id)
 	}
 	stopped, err := c.placementList(ctx, `SELECT id, node_id FROM placements WHERE release_id = ANY($1) AND role = 'stopped'`, relIDs)
 	if err != nil {
@@ -106,7 +106,7 @@ func (c *Control) pruneReleases(ctx context.Context, s *svcInfo, keep int) error
 		return err
 	}
 	// Image GC only for images that no kept release uses: the same digest is in many releases (same commit deployed again).
-	refs, err = queryStrings(ctx, c.DB, `SELECT DISTINCT image_ref FROM releases WHERE id = ANY($1)
+	refs, err := queryStrings(ctx, c.DB, `SELECT DISTINCT image_ref FROM releases WHERE id = ANY($1)
 		AND image_ref NOT IN (SELECT image_ref FROM releases WHERE pruned_at IS NULL)`, relIDs)
 	if err != nil {
 		return err

@@ -79,6 +79,10 @@ func (r *run) prepareRollback(ctx context.Context) *deployErr {
 		return fail(ReasonInvalidConfig, "release config: %v", err)
 	}
 	r.releaseID = *d.releaseID
+	// Same rule as a normal deploy: an image service never pulls images of the built-in registry.
+	if r.svc.sourceType == "image" && c.Build != nil && c.Build.Registry.IsOwnImage(r.imageRef) {
+		return fail(ReasonInvalidConfig, "an image service cannot use an image of the built-in registry")
+	}
 	kept, err := c.placementList(ctx, `SELECT p.id, p.node_id FROM placements p JOIN nodes n ON n.id = p.node_id
 		WHERE p.service_id = $1 AND p.release_id = $2 AND p.role = 'stopped' AND p.expires_at IS NULL AND p.container_id IS NOT NULL
 		  AND n.state = 'ready' ORDER BY p.replica_index, p.id`, d.serviceID, r.releaseID)

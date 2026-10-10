@@ -165,7 +165,7 @@ func (c *Control) buildIfGit(ctx context.Context, depID, serviceID string) (stri
 	if err != nil {
 		return fail(ReasonBuildFailed, "work folder: %v", err)
 	}
-	defer os.RemoveAll(work)
+	defer func() { _ = os.RemoveAll(work) }()
 	srcDir := filepath.Join(work, "src")
 	if err := os.MkdirAll(srcDir, 0o700); err != nil {
 		return fail(ReasonBuildFailed, "work folder: %v", err)

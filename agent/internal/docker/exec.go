@@ -51,7 +51,7 @@ func (c *HTTPClient) Exec(ctx context.Context, idOrName string, o ExecOptions) (
 		return nil, err
 	}
 	br := bufio.NewReader(conn)
-	sr, err := http.ReadResponse(br, req)
+	sr, err := http.ReadResponse(br, req) //nolint:bodyclose // the connection stays open for the exec stream
 	if err != nil {
 		_ = conn.Close()
 		return nil, err

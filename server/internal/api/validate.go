@@ -221,6 +221,9 @@ func checkDeployConfig(cfg map[string]any) error {
 		if !ok {
 			return errors.New("config.host_port must be a number from 1 to 65535")
 		}
+		if err := checkHostPort(p); err != nil {
+			return err
+		}
 		cfg["host_port"] = p
 	}
 	for _, k := range []string{"pre_deploy", "post_deploy"} {
@@ -359,6 +362,40 @@ func checkHealth(h map[string]any, servicePort int) error {
 	case "command":
 		if _, ok := h["command"]; !ok {
 			return errors.New("config.health.command is required for a command check")
+		}
+	}
+	return nil
+}
+
+// Host ports are from this range (C02 REQ-DB-005). Ports of the system and of the panel are never allowed.
+const (
+	HostPortMin = 30000
+	HostPortMax = 39999
+)
+
+var reservedHostPorts = map[int]bool{22: true, 53: true, 80: true, 443: true, 9443: true}
+
+func checkHostPort(p int) error {
+	if reservedHostPorts[p] {
+		return fmt.Errorf("config.host_port %d is reserved for the system", p)
+	}
+	if p < HostPortMin || p > HostPortMax {
+		return fmt.Errorf("config.host_port must be from %d to %d", HostPortMin, HostPortMax)
+	}
+	return nil
+}
+
+// panelPortClash tells if a stored config publishes a port that the panel or the agent gateway uses.
+func (s Settings) panelPortClash(raw json.RawMessage) error {
+	var c struct {
+		HostPort int `json:"host_port"`
+	}
+	if json.Unmarshal(raw, &c) != nil || c.HostPort == 0 {
+		return nil
+	}
+	for _, addr := range []string{s.AgentListen, s.ExternalURL} {
+		if i := strings.LastIndex(addr, ":"); i >= 0 && addr[i+1:] == fmt.Sprint(c.HostPort) {
+			return fmt.Errorf("config.host_port %d is used by the panel", c.HostPort)
 		}
 	}
 	return nil

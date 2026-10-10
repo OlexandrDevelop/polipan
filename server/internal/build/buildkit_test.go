@@ -4,6 +4,7 @@ package build_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -73,7 +74,8 @@ func TestAC_APP_04_RailpackPrepare(t *testing.T) {
 		return nil
 	}}
 	err := bk.Build(context.Background(), build.Request{ContextDir: dir, Builder: build.Railpack, Output: filepath.Join(dir, "o.tar")})
-	de, ok := err.(*build.DetectError)
+	var de *build.DetectError
+	ok := errors.As(err, &de)
 	if !ok || !strings.Contains(de.Msg, "No start command") || len(names) != 1 {
 		t.Fatalf("err %v names %v", err, names)
 	}

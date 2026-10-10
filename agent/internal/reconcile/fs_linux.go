@@ -39,7 +39,7 @@ func (xfsQuota) Apply(dir string, limit uint64) (bool, error) {
 		return false, err
 	}
 	mnt, opts := mountOf(dir)
-	if mnt == "" || !(strings.Contains(opts, "prjquota") || strings.Contains(opts, "pquota")) {
+	if mnt == "" || (!strings.Contains(opts, "prjquota") && !strings.Contains(opts, "pquota")) {
 		return false, nil
 	}
 	bin, err := exec.LookPath("xfs_quota")

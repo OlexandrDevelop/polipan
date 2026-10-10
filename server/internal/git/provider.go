@@ -133,7 +133,7 @@ func doJSON(client *http.Client, req *http.Request, hdr http.Header, dst any) er
 	if err != nil {
 		return fmt.Errorf("git: %s: %w", req.URL.Host, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return err

@@ -258,7 +258,7 @@ func sortedKeys(m map[string]string) []string {
 func secretsHash(secrets map[string]string) string {
 	h := sha256.New()
 	for _, k := range sortedKeys(secrets) {
-		fmt.Fprintf(h, "%s=%s\n", k, secrets[k])
+		_, _ = fmt.Fprintf(h, "%s=%s\n", k, secrets[k])
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }

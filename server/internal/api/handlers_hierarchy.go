@@ -398,6 +398,10 @@ func (h *Handlers) CreateService(w http.ResponseWriter, r *http.Request, environ
 		invalid(w, r, "config", err.Error())
 		return
 	}
+	if err := h.Settings.panelPortClash(raw); err != nil {
+		invalid(w, r, "config", err.Error())
+		return
+	}
 	s, err := h.Store.CreateService(r.Context(), h.orgID(r), store.NewService{
 		EnvironmentID: environmentID, Name: body.Name, Type: "app", SourceType: sourceType, Config: raw})
 	if unique, _ := store.IsUnique(err); unique {
@@ -447,6 +451,10 @@ func (h *Handlers) UpdateService(w http.ResponseWriter, r *http.Request, service
 			invalid(w, r, "config", err.Error())
 			return
 		}
+	}
+	if err := h.Settings.panelPortClash(cfg); err != nil {
+		invalid(w, r, "config", err.Error())
+		return
 	}
 	var failover *string
 	if body.Failover != nil {

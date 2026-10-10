@@ -45,7 +45,7 @@ func (r *Registry) Push(ctx context.Context, ociTar, repo, tag string) (string, 
 	if err != nil {
 		return "", "", err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	if err := untar(ociTar, dir); err != nil {
 		return "", "", err
 	}
@@ -135,7 +135,7 @@ func (r *Registry) pushBlob(ctx context.Context, repo, digest, path string) erro
 		return fmt.Errorf("registry: start upload: %w", err)
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusAccepted {
 		return fmt.Errorf("registry: start upload: status %d", resp.StatusCode)
 	}
@@ -150,7 +150,7 @@ func (r *Registry) pushBlob(ctx context.Context, repo, digest, path string) erro
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	st, err := f.Stat()
 	if err != nil {
 		return err
@@ -173,7 +173,7 @@ func (r *Registry) do(req *http.Request, want int) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	msg, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 	if resp.StatusCode != want {
 		return fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
@@ -187,7 +187,7 @@ func untar(path, dir string) error {
 	if err != nil {
 		return fmt.Errorf("registry: open build output: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	tr := tar.NewReader(f)
 	for {
 		h, err := tr.Next()
@@ -214,7 +214,7 @@ func untar(path, dir string) error {
 			}
 			sum := sha256.New()
 			_, err = io.Copy(io.MultiWriter(out, sum), tr)
-			out.Close()
+			_ = out.Close()
 			if err != nil {
 				return err
 			}

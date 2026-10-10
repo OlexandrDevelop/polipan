@@ -99,7 +99,10 @@ func TestREQ_SEC_104_ClientAndRedirect(t *testing.T) {
 	defer srv.Close()
 	p := policy(t, false)
 	c := p.Client(5 * time.Second)
-	if _, err := c.Get(srv.URL); err == nil || !errors.Is(err, ssrf.ErrDenied) {
+	if resp, err := c.Get(srv.URL); err == nil || !errors.Is(err, ssrf.ErrDenied) {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
 		t.Fatalf("connect to loopback: %v", err)
 	}
 	req, _ := http.NewRequest(http.MethodGet, "http://meta.example/latest", nil)

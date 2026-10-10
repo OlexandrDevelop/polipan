@@ -368,7 +368,7 @@ func ParseJSON(data []byte) ([]KV, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber() // keep 3000 as "3000", not "3e+03"
 	if err := dec.Decode(&m); err != nil || m == nil {
-		return nil, fmt.Errorf("not a JSON object: %v", err)
+		return nil, fmt.Errorf("not a JSON object: %w", err)
 	}
 	out := make([]KV, 0, len(m))
 	for k, v := range m {

@@ -89,7 +89,7 @@ func (c CLI) Clone(ctx context.Context, req CloneRequest) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 
 	cfg := map[string]string{
 		"protocol.allow":          "never",
