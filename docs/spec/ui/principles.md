@@ -12,7 +12,7 @@
 
 1. **Show the real state, live.** State comes from the server through SSE. The user never presses refresh ([REQ-UI-002](../11-ui.md#4-rules-and-requirements)). If live updates stop, the screen says so.
 2. **Plan before action.** Deploy, rollback, promote, move and restore first show what will happen (the dry run) and then ask for confirmation.
-3. **Production is always visible.** A protected or production environment has a red border and a "Production" chip on every page that belongs to it.
+3. **Production is always visible.** An environment of kind production has a red top border and a "Production" chip on every page that belongs to it. A protected environment of any kind has a red top border, a lock and a "Protected" chip.
 4. **Safe by default, fast for experts.** Defaults are safe. The command palette and keyboard shortcuts remove clicks for people who know the panel.
 5. **Never color alone.** Every state has an icon and a word ([REQ-UI-013](../11-ui.md#4-rules-and-requirements)).
 6. **The phone is for watching and rescue.** Deploy, rollback, restart, logs and alerts work on a phone. Heavy editing is for larger screens ([responsive](responsive.md#5-what-a-phone-may-not-do)).
