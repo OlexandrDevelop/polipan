@@ -40,6 +40,7 @@ type fakeOrch struct {
 	joinCalls   int
 	logsTail    int
 	deployError error
+	canary      []string
 }
 
 func (f *fakeOrch) Deploy(ctx context.Context, serviceID, actorID, trigger string) (string, error) {
