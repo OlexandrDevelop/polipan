@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Button } from '@/components/ui'
+import { Button, TextField } from '@/components/ui'
 import { t } from '@/i18n'
 
 interface ModalProps {
@@ -50,6 +50,59 @@ interface ConfirmDialogProps {
   error?: ReactNode
   onConfirm: () => void
   onClose: () => void
+}
+
+interface TypedConfirmDialogProps extends ConfirmDialogProps {
+  // The exact text the user must type, for example the name of the object.
+  typed: string
+}
+
+// A destructive action that needs the exact name typed first (components: ConfirmDialog, typed name).
+export function TypedConfirmDialog({
+  title,
+  text,
+  confirmLabel,
+  busy,
+  error,
+  typed,
+  onConfirm,
+  onClose,
+}: TypedConfirmDialogProps) {
+  const [value, setValue] = useState('')
+  const match = value === typed
+  return (
+    <Modal title={title} onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (match) onConfirm()
+        }}
+      >
+        <p>{text}</p>
+        <TextField
+          label={t('common.type_to_confirm', { name: typed })}
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        {error}
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button onClick={onClose}>{t('common.cancel')}</Button>
+          <Button
+            type="submit"
+            variant="destructive"
+            loading={busy}
+            reason={match ? undefined : t('common.type_first')}
+          >
+            {confirmLabel}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  )
 }
 
 // A destructive action names the object and the effect. Cancel comes first, so it has the focus.

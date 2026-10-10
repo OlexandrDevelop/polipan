@@ -3,8 +3,12 @@
 package reconcile
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -19,9 +23,18 @@ type fakeDocker struct {
 	cs    map[string]*docker.Container // by name
 	calls []string
 	n     int
+
+	specs     map[string]docker.ContainerSpec // last create spec by name
+	vols      map[string]*docker.Volume
+	volRoot   string // folder of the volume data
+	auths     []string
+	createErr error
+	execs     []*fakeExec
 }
 
-func newFake() *fakeDocker { return &fakeDocker{cs: map[string]*docker.Container{}} }
+func newFake() *fakeDocker {
+	return &fakeDocker{cs: map[string]*docker.Container{}, specs: map[string]docker.ContainerSpec{}, vols: map[string]*docker.Volume{}}
+}
 
 func (f *fakeDocker) rec(s string) { f.calls = append(f.calls, s) }
 
@@ -29,17 +42,22 @@ func (f *fakeDocker) Ping(context.Context) (string, error) { return "27", nil }
 func (f *fakeDocker) EnsureNetwork(context.Context, string, string) (string, error) {
 	return "172.30.0.1", nil
 }
-func (f *fakeDocker) PullImage(_ context.Context, ref, _ string) (string, error) {
+func (f *fakeDocker) PullImage(_ context.Context, ref, auth string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.rec("pull " + ref)
+	f.auths = append(f.auths, auth)
 	return ref, nil
 }
 func (f *fakeDocker) CreateAndStart(_ context.Context, s docker.ContainerSpec) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.createErr != nil {
+		return "", f.createErr
+	}
 	f.n++
 	f.rec("create " + s.Name)
+	f.specs[s.Name] = s
 	id := fmt.Sprintf("id%d", f.n)
 	f.cs[s.Name] = &docker.Container{ID: id, Name: s.Name, Image: s.Image, State: "running", Labels: s.Labels, IP: "172.30.0.9"}
 	return id, nil
@@ -109,6 +127,121 @@ func (f *fakeDocker) Logs(context.Context, string, int) (string, error) { return
 func (f *fakeDocker) Events(context.Context) (<-chan docker.Event, error) {
 	return make(chan docker.Event), nil
 }
+func (f *fakeDocker) VolumeCreate(_ context.Context, name string, labels map[string]string) (*docker.Volume, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rec("volume create " + name)
+	if v, ok := f.vols[name]; ok {
+		cp := *v
+		return &cp, nil
+	}
+	mp := filepath.Join(f.volRoot, name)
+	if err := os.MkdirAll(mp, 0o755); err != nil {
+		return nil, err
+	}
+	f.vols[name] = &docker.Volume{Name: name, Mountpoint: mp, Labels: labels}
+	cp := *f.vols[name]
+	return &cp, nil
+}
+func (f *fakeDocker) VolumeInspect(_ context.Context, name string) (*docker.Volume, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if v, ok := f.vols[name]; ok {
+		cp := *v
+		return &cp, nil
+	}
+	return nil, docker.ErrNotFound
+}
+func (f *fakeDocker) VolumeList(_ context.Context, labels map[string]string) ([]docker.Volume, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []docker.Volume
+	for _, v := range f.vols {
+		ok := true
+		for k, val := range labels {
+			if v.Labels[k] != val {
+				ok = false
+			}
+		}
+		if ok {
+			out = append(out, *v)
+		}
+	}
+	return out, nil
+}
+func (f *fakeDocker) VolumeRemove(_ context.Context, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rec("volume rm " + name)
+	v, ok := f.vols[name]
+	if !ok {
+		return docker.ErrNotFound
+	}
+	delete(f.vols, name)
+	return os.RemoveAll(v.Mountpoint)
+}
+func (f *fakeDocker) Exec(_ context.Context, id string, o docker.ExecOptions) (docker.ExecConn, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rec("exec " + id + " " + strings.Join(o.Cmd, " "))
+	r, w := io.Pipe()
+	x := &fakeExec{out: r, outW: w, opts: o}
+	f.execs = append(f.execs, x)
+	return x, nil
+}
+func (f *fakeDocker) lastExec() *fakeExec {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.execs) == 0 {
+		return nil
+	}
+	return f.execs[len(f.execs)-1]
+}
+
+// fakeExec is a terminal: the test writes the output into outW, and the input is recorded.
+type fakeExec struct {
+	out  *io.PipeReader
+	outW *io.PipeWriter
+	opts docker.ExecOptions
+
+	mu          sync.Mutex
+	input       bytes.Buffer
+	sizes       []string
+	closedWrite bool
+	closed      bool
+}
+
+func (x *fakeExec) Read(p []byte) (int, error) { return x.out.Read(p) }
+func (x *fakeExec) Write(p []byte) (int, error) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	return x.input.Write(p)
+}
+func (x *fakeExec) CloseWrite() error {
+	x.mu.Lock()
+	x.closedWrite = true
+	x.mu.Unlock()
+	return x.outW.Close() // the shell ends at the end of input
+}
+func (x *fakeExec) Resize(_ context.Context, rows, cols uint32) error {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	x.sizes = append(x.sizes, fmt.Sprintf("%dx%d", rows, cols))
+	return nil
+}
+func (x *fakeExec) Wait(context.Context) (int, error) { return 0, nil }
+func (x *fakeExec) Close() error {
+	x.mu.Lock()
+	x.closed = true
+	x.mu.Unlock()
+	return x.outW.Close()
+}
+func (x *fakeExec) state() (input string, sizes []string, closedWrite, closed bool) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	return x.input.String(), append([]string(nil), x.sizes...), x.closedWrite, x.closed
+}
+
 func (f *fakeDocker) has(prefix string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -131,6 +264,31 @@ func (s *sink) Send(m *agentv1.AgentMessage) bool {
 	s.msgs = append(s.msgs, m)
 	return true
 }
+
+// find returns the first message that matches.
+func (s *sink) find(match func(*agentv1.AgentMessage) bool) *agentv1.AgentMessage {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, m := range s.msgs {
+		if match(m) {
+			return m
+		}
+	}
+	return nil
+}
+
+// last returns the last actual state.
+func (s *sink) last() *agentv1.ActualState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := len(s.msgs) - 1; i >= 0; i-- {
+		if a := s.msgs[i].GetActualState(); a != nil {
+			return a
+		}
+	}
+	return nil
+}
+
 func (s *sink) acks() (n int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -20,6 +20,7 @@ import (
 	"github.com/polipan/polipan/server/internal/gateway"
 	"github.com/polipan/polipan/server/internal/pki"
 	"github.com/polipan/polipan/server/internal/queue"
+	"github.com/polipan/polipan/server/internal/secrets"
 	"github.com/polipan/polipan/server/internal/shared/clock"
 	"github.com/polipan/polipan/server/internal/web"
 )
@@ -54,12 +55,19 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("server: %w", err)
 	}
-	ctl := control.New(control.Deps{DB: pool, Clock: clk, Log: log, Config: cfg, CA: ca, Sender: gw})
+	sec, err := secrets.NewManager(pool, kek)
+	if err != nil {
+		return err
+	}
+	builds := control.SetupBuilds(ctx, pool, ca, kek, os.Getenv, log) // git builds and registry (S-B)
+	ctl := control.New(control.Deps{DB: pool, Clock: clk, Log: log, Config: cfg, CA: ca, Sender: gw, Secrets: sec, Build: builds})
 	gw.State = ctl
 
 	handler, err := api.NewRouter(api.Deps{
 		Log: log, DB: pool, Pool: pool, Clock: clk, RateLimit: cfg.APIRateLimit, Web: web.Handler(),
 		Orchestrator: ctl, ExternalURL: cfg.ExternalURL, TrustedProxies: cfg.TrustedProxies, AgentListen: cfg.AgentListen,
+		Secrets: sec, Exec: gw,
+		Git:        &api.GitDeps{Keys: builds.Keys, Policy: ctl.SSRFPolicy},
 		SetupToken: pki.SetupToken(kek), SessionTTL: cfg.SessionTTL, SessionAbsoluteTTL: cfg.SessionAbsoluteTTL,
 	})
 	if err != nil {

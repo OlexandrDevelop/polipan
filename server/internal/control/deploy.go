@@ -16,6 +16,7 @@ import (
 	pb "github.com/polipan/polipan/proto/agentv1"
 	"github.com/polipan/polipan/server/internal/gateway"
 	"github.com/polipan/polipan/server/internal/orchestrator"
+	"github.com/polipan/polipan/server/internal/vars"
 )
 
 // Failure reasons of a deployment (08-deploy-engine).
@@ -46,7 +47,7 @@ func (c *Control) Deploy(ctx context.Context, serviceID, actorID, trigger string
 	if err != nil {
 		return "", err
 	}
-	if _, err := c.pickNode(ctx); err != nil {
+	if _, err := c.pickNodeForService(ctx, serviceID); err != nil {
 		return "", orchestrator.ErrNoNode
 	}
 
@@ -82,6 +83,9 @@ func (c *Control) Deploy(ctx context.Context, serviceID, actorID, trigger string
 	_, err = tx.Exec(ctx,
 		`INSERT INTO deployments (id, service_id, environment_id, trigger, strategy, state, actor_id)
 		 VALUES ($1,$2,$3,$4,'recreate','queued',$5)`, id, serviceID, envID, trigger, actor)
+	if err == nil {
+		err = saveBuildRequest(ctx, tx, id) // commit and no_cache of a git deploy (build.go)
+	}
 	if err == nil {
 		err = c.addStep(ctx, tx, id, "queued", "deployment created", nil)
 	}
@@ -181,21 +185,36 @@ func (c *Control) execute(ctx context.Context, depID, serviceID, actorID string)
 	if err := c.DB.QueryRow(ctx, `SELECT config, live_release_id FROM services WHERE id = $1`, serviceID).Scan(&raw, &oldRelease); err != nil {
 		return fail(ReasonInvalidConfig, "service not found: %v", err)
 	}
+	// A git service is built first (build.go). The result is the image ref by digest in the built-in registry.
+	built, berr := c.buildIfGit(ctx, depID, serviceID)
+	if berr != nil {
+		return berr
+	}
 	var cfg serviceConfig
-	if err := json.Unmarshal(raw, &cfg); err != nil || cfg.Image == "" {
+	if err := json.Unmarshal(raw, &cfg); err != nil || (cfg.Image == "" && built == "") {
 		return fail(ReasonInvalidConfig, "the service config needs an image")
 	}
-	node, err := c.pickNode(ctx)
+	if built != "" {
+		cfg.Image = built
+	}
+	node, err := c.pickNodeForService(ctx, serviceID)
 	if err != nil {
-		return fail(ReasonNodeUnavailable, "no ready node")
+		return fail(ReasonNodeUnavailable, "no ready node (or the node of the volumes is not ready)")
 	}
 	if c.Sender == nil || !c.Sender.Connected(node.id) {
 		return fail(ReasonNodeUnavailable, "node %s is not connected", node.id)
 	}
+	// Variables, secret versions and volumes of the release (M2). A missing reference fails here, before the pull.
+	snap, derr := c.resolveRelease(ctx, serviceID, node.id)
+	if derr != nil {
+		return derr
+	}
+	// Redeploy without rebuild (REQ-ENV-003): an image service pulls the same tag and gets the
+	// digest below. A git service reuses the digest of its live release (build step of S-B).
 
 	// 1. pull
 	pullCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-	ack, err := c.Sender.Send(pullCtx, node.id, &pb.Command{Body: &pb.Command_PullImage{PullImage: &pb.PullImage{ImageRef: cfg.Image}}})
+	ack, err := c.Sender.Send(pullCtx, node.id, &pb.Command{Body: &pb.Command_PullImage{PullImage: &pb.PullImage{ImageRef: cfg.Image, RegistryAuthRef: c.registryAuthRef(cfg.Image)}}})
 	cancel()
 	if err != nil {
 		return fail(ReasonNodeUnavailable, "pull command: %v", err)
@@ -235,7 +254,7 @@ func (c *Control) execute(ctx context.Context, depID, serviceID, actorID string)
 
 	// 2. release
 	releaseID := gateway.NewID("rel")
-	if err := c.createRelease(ctx, depID, serviceID, releaseID, actorID, imageRef, digest, raw, oldRelease); err != nil {
+	if err := c.createRelease(ctx, depID, serviceID, releaseID, actorID, imageRef, digest, snap, oldRelease); err != nil {
 		return fail(ReasonInvalidConfig, "create release: %v", err)
 	}
 	if e := step("image_ready", "image pulled", map[string]any{"release_id": releaseID, "image_ref": imageRef}); e != nil {
@@ -343,7 +362,7 @@ func (c *Control) placementsOf(ctx context.Context, serviceID string) ([][2]stri
 	return out, rows.Err()
 }
 
-func (c *Control) createRelease(ctx context.Context, depID, serviceID, releaseID, actorID, imageRef, digest string, cfg []byte, previous *string) error {
+func (c *Control) createRelease(ctx context.Context, depID, serviceID, releaseID, actorID, imageRef, digest string, snap *vars.Snapshot, previous *string) error {
 	tx, err := c.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -356,12 +375,16 @@ func (c *Control) createRelease(ctx context.Context, depID, serviceID, releaseID
 	if actorID != "" {
 		actor = &actorID
 	}
-	source, _ := json.Marshal(map[string]any{"type": "image", "actor_id": actorID})
+	source, _ := json.Marshal(c.releaseSource(ctx, depID, actorID))
+	variables, versions := releaseColumns(snap)
 	_, err = tx.Exec(ctx,
 		`INSERT INTO releases (id, service_id, number, image_ref, image_digest, config_snapshot, variable_snapshot, secret_versions, source, created_by)
-		 VALUES ($1, $2, (SELECT COALESCE(MAX(number),0)+1 FROM releases WHERE service_id = $2), $3, $4, $5, '{}', '{}', $6, $7)`,
-		releaseID, serviceID, imageRef, digest, cfg, source, actor)
+		 VALUES ($1, $2, (SELECT COALESCE(MAX(number),0)+1 FROM releases WHERE service_id = $2), $3, $4, $5, $8, $9, $6, $7)`,
+		releaseID, serviceID, imageRef, digest, []byte(snap.Config), source, actor, variables, versions)
 	if err != nil {
+		return err
+	}
+	if err := auditSecretUse(ctx, tx, snap, releaseID, actorID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE deployments SET release_id = $2, previous_release_id = $3, updated_at = now() WHERE id = $1`,
@@ -411,6 +434,7 @@ func (c *Control) addStep(ctx context.Context, tx pgx.Tx, depID, state, msg stri
 	if data != nil {
 		d, _ = json.Marshal(data)
 	}
+	msg = c.maskStep(ctx, depID, msg) // stored log lines never hold a secret value
 	if _, err := tx.Exec(ctx, `INSERT INTO deployment_steps (deployment_id, state, message, data) VALUES ($1,$2,$3,$4)`, depID, state, msg, d); err != nil {
 		return err
 	}
@@ -436,6 +460,7 @@ func (c *Control) markFailed(ctx context.Context, depID string, e *deployErr) {
 		defer cancel()
 	}
 	now := c.Clock.Now()
+	e = &deployErr{e.reason, c.maskStep(ctx, depID, e.detail)} // the detail goes to the database and the log
 	tx, err := c.DB.Begin(ctx)
 	if err != nil {
 		c.Log.Error("mark failed", "deployment", depID, "err", err)

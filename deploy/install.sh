@@ -107,10 +107,35 @@ chmod 0600 "$dir/.env"
 script_dir=$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)
 if [ -n "$script_dir" ] && [ -f "$script_dir/compose/docker-compose.yml" ]; then
   cp "$script_dir/compose/docker-compose.yml" "$dir/docker-compose.yml"
+  cp "$script_dir/nftables/polipan-build.sh" /usr/local/sbin/polipan-build-firewall
 else
   say "Downloading the compose file"
   curl -fsSL "$base_url/compose/docker-compose.yml" -o "$dir/docker-compose.yml"
+  curl -fsSL "$base_url/nftables/polipan-build.sh" -o /usr/local/sbin/polipan-build-firewall
 fi
+chmod 0755 /usr/local/sbin/polipan-build-firewall
+
+# ---- Build network isolation (REQ-SEC-108): nftables rules for the build network, also at boot ----
+cat > /etc/systemd/system/polipan-build-firewall.service <<'UNIT'
+[Unit]
+Description=Polipan build network isolation (nftables)
+After=docker.service nftables.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/polipan/build-firewall.env
+ExecStart=/bin/sh /usr/local/sbin/polipan-build-firewall
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+[ -f /etc/polipan/build-firewall.env ] || printf 'MESH_CIDR=10.210.0.0/16\nALLOW_PRIVATE=0\n' > /etc/polipan/build-firewall.env
+systemctl daemon-reload
+systemctl enable polipan-build-firewall >/dev/null 2>&1 || true
+say "Loading the build network firewall"
+systemctl restart polipan-build-firewall || fail "could not load the build network firewall (nftables)"
 
 # ---- Control plane ----
 if ! docker network inspect polipan >/dev/null 2>&1; then
@@ -146,6 +171,10 @@ if [ ! -f /var/lib/polipan-agent/node.json ]; then
   /usr/local/bin/polipan-agent join --server 127.0.0.1:9443 --token "$token" \
     --ca-fingerprint "$fingerprint" --data-dir /var/lib/polipan-agent
 fi
+
+# Docker of this host pulls built images from the registry over TLS with the server CA.
+mkdir -p /etc/docker/certs.d/172.31.251.10:5000
+cp /var/lib/polipan-agent/ca.crt /etc/docker/certs.d/172.31.251.10:5000/ca.crt
 
 cat > /etc/polipan/agent.env <<ENV
 POLIPAN_AGENT_SERVER=127.0.0.1:9443

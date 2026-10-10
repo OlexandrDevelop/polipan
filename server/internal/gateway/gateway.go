@@ -52,6 +52,7 @@ type Gateway struct {
 	mu       sync.Mutex
 	sessions map[string]*session
 	pending  map[string]map[string]*pending // node id -> command id -> pending
+	execs    map[string]*ExecStream         // open terminals by command id
 
 	certMu sync.Mutex
 	cert   *tls.Certificate
@@ -227,6 +228,9 @@ func (g *Gateway) send(ctx context.Context, nodeID string, cmd *pb.Command, coll
 
 // onAck routes an ack to the waiting command.
 func (g *Gateway) onAck(nodeID string, ack *pb.CommandAck) {
+	if g.execAck(nodeID, ack) {
+		return
+	}
 	g.mu.Lock()
 	p := g.pending[nodeID][ack.CommandId]
 	if p != nil {
@@ -240,6 +244,9 @@ func (g *Gateway) onAck(nodeID string, ack *pb.CommandAck) {
 
 // onChunk adds data to a collecting command. The eof chunk ends it.
 func (g *Gateway) onChunk(nodeID string, ch *pb.StreamChunk) {
+	if g.execChunk(nodeID, ch) {
+		return
+	}
 	g.mu.Lock()
 	p := g.pending[nodeID][ch.CommandId]
 	if p != nil && p.collect {

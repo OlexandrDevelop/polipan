@@ -96,6 +96,7 @@ func validPathPrefix(p string) bool {
 var imageConfigKeys = map[string]bool{
 	"image": true, "port": true, "command": true, "entrypoint": true,
 	"restart_policy": true, "health": true, "strategy": true,
+	"files": true, "secret_files": true, // M2: file mounts and secret files
 }
 
 // buildImageConfig checks the config of an image service and fills the defaults.
@@ -157,6 +158,9 @@ func checkImageConfig(cfg map[string]any) (json.RawMessage, error) {
 				}
 			}
 		}
+	}
+	if err := checkMountConfig(cfg); err != nil {
+		return nil, err
 	}
 	if v, ok := cfg["restart_policy"]; ok {
 		s, _ := v.(string)

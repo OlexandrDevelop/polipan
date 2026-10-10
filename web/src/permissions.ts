@@ -5,7 +5,7 @@ import { useMe } from '@/auth'
 
 export type Role = components['schemas']['Role']
 
-// The permissions of the M1 screens. Rules follow the matrix in docs/spec/10-security.md.
+// The permissions of the M1 and M2 screens. Rules follow the matrix in docs/spec/10-security.md.
 //   dev:   owner, admin, developer
 //   admin: owner, admin
 //   p:     owner, admin; developer only on a non-protected environment
@@ -16,8 +16,15 @@ export type Permission =
   | 'service:update'
   | 'service:deploy'
   | 'service:restart'
+  | 'service:exec'
   | 'domain:manage'
   | 'node:manage'
+  | 'variable:write'
+  | 'secret:list'
+  | 'secret:write'
+  | 'secret:destroy'
+  | 'volume:manage'
+  | 'git:manage'
 
 const rules: Record<Permission, 'dev' | 'admin' | 'p'> = {
   'project:create': 'dev',
@@ -26,8 +33,15 @@ const rules: Record<Permission, 'dev' | 'admin' | 'p'> = {
   'service:update': 'p',
   'service:deploy': 'p',
   'service:restart': 'dev',
+  'service:exec': 'p',
   'domain:manage': 'p',
   'node:manage': 'admin',
+  'variable:write': 'p',
+  'secret:list': 'dev',
+  'secret:write': 'p',
+  'secret:destroy': 'admin',
+  'volume:manage': 'p',
+  'git:manage': 'admin',
 }
 
 // hidden: the role can never do it. blocked: shown but disabled. allow: enabled.

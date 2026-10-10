@@ -870,11 +870,14 @@ type FieldChange struct {
 
 // GitConnection defines model for GitConnection.
 type GitConnection struct {
-	BaseUrl    *string                `json:"base_url,omitempty"`
-	Id         *string                `json:"id,omitempty"`
-	Name       *string                `json:"name,omitempty"`
-	Provider   *GitConnectionProvider `json:"provider,omitempty"`
-	WebhookUrl *string                `json:"webhook_url,omitempty"`
+	BaseUrl  *string                `json:"base_url,omitempty"`
+	Id       *string                `json:"id,omitempty"`
+	Name     *string                `json:"name,omitempty"`
+	Provider *GitConnectionProvider `json:"provider,omitempty"`
+
+	// WebhookSecret Only in the create answer. Set it as the webhook secret at the provider.
+	WebhookSecret *string `json:"webhook_secret,omitempty"`
+	WebhookUrl    *string `json:"webhook_url,omitempty"`
 }
 
 // GitConnectionProvider defines model for GitConnection.Provider.
@@ -889,6 +892,9 @@ type GitConnectionWrite struct {
 	PrivateKey     *string                    `json:"private_key,omitempty"`
 	Provider       GitConnectionWriteProvider `json:"provider"`
 	Token          *string                    `json:"token,omitempty"`
+
+	// WebhookSecret Optional. Empty means Polipan makes one.
+	WebhookSecret *string `json:"webhook_secret,omitempty"`
 }
 
 // GitConnectionWriteProvider defines model for GitConnectionWrite.Provider.
@@ -16629,7 +16635,9 @@ type CreateDeployKeyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON201      *struct {
-		PublicKey *string `json:"public_key,omitempty"`
+		PublicKey     *string `json:"public_key,omitempty"`
+		WebhookSecret *string `json:"webhook_secret,omitempty"`
+		WebhookUrl    *string `json:"webhook_url,omitempty"`
 	}
 }
 
@@ -22785,7 +22793,9 @@ func ParseCreateDeployKeyResponse(rsp *http.Response) (*CreateDeployKeyResponse,
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest struct {
-			PublicKey *string `json:"public_key,omitempty"`
+			PublicKey     *string `json:"public_key,omitempty"`
+			WebhookSecret *string `json:"webhook_secret,omitempty"`
+			WebhookUrl    *string `json:"webhook_url,omitempty"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
@@ -24216,7 +24226,7 @@ type ServerInterface interface {
 	// Start a deployment. With dry_run=true returns only the plan.
 	// (POST /services/{service_id}/deploy)
 	DeployService(w http.ResponseWriter, r *http.Request, serviceId ServiceId, params DeployServiceParams)
-	// Generate an SSH deploy key for a Git service (public key returned)
+	// Generate an SSH deploy key and the service webhook for a Git service (public key, webhook URL and secret returned once)
 	// (POST /services/{service_id}/deploy-key)
 	CreateDeployKey(w http.ResponseWriter, r *http.Request, serviceId ServiceId)
 	// List deployments of a service
@@ -25092,7 +25102,7 @@ func (_ Unimplemented) DeployService(w http.ResponseWriter, r *http.Request, ser
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Generate an SSH deploy key for a Git service (public key returned)
+// Generate an SSH deploy key and the service webhook for a Git service (public key, webhook URL and secret returned once)
 // (POST /services/{service_id}/deploy-key)
 func (_ Unimplemented) CreateDeployKey(w http.ResponseWriter, r *http.Request, serviceId ServiceId) {
 	w.WriteHeader(http.StatusNotImplemented)

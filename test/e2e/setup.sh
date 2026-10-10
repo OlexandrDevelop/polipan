@@ -51,5 +51,8 @@ agent_run() {
 }
 docker run --rm --net host -v /var/run/docker.sock:/var/run/docker.sock -v /var/lib/polipan-agent:/var/lib/polipan-agent polipan-agent:dev \
   join --server 127.0.0.1:9443 --token "$token" --ca-fingerprint "$fp" --data-dir /var/lib/polipan-agent
+# Docker pulls built images from the built-in registry over TLS with the server CA (like install.sh).
+mkdir -p /etc/docker/certs.d/172.31.251.10:5000
+cp /var/lib/polipan-agent/ca.crt /etc/docker/certs.d/172.31.251.10:5000/ca.crt
 agent_run -d --name agent --restart always >/dev/null
 echo "setup done"

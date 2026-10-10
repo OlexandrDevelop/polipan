@@ -1,7 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
-# Control plane of Polipan: PostgreSQL and the server (with the web app inside).
-# The installer (deploy/install.sh) writes the .env file next to this file and starts it.
-# The agent and Caddy run on the host and are not part of this file.
+# Control plane of Polipan: PostgreSQL, the server (with the web app inside), the built-in
+# registry and BuildKit. The installer (deploy/install.sh) writes the .env file next to this file
+# and starts it. The agent and Caddy run on the host and are not part of this file.
+#
+# Networks (REQ-SEC-108):
+#   default (pp-internal0, 172.31.251.0/24): the internal control-plane network. PostgreSQL and the
+#     registry bind only here. No host ports for them.
+#   polipan-build (pp-build0, 172.31.250.0/24): only buildkitd and the server (the build client).
+#     deploy/nftables/polipan-build.sh drops every new connection from this network to loopback,
+#     the bridge gateway, the control-plane network, mesh_cidr, link-local and RFC 1918, so build
+#     steps get public internet egress only.
+#   polipan (external): the app network of the node, for the Caddy -> panel route.
 
 name: polipan
 
@@ -15,11 +24,25 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      default:
+        ipv4_address: 172.31.251.5
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U polipan -d polipan"]
       interval: 5s
       timeout: 5s
       retries: 20
+
+  # Gives the shared volumes to the server user (uid 65532), once per start.
+  volumes-init:
+    image: registry:3
+    restart: "no"
+    entrypoint: ["sh", "-c", "chown 65532:65532 /registry-files /buildkit-certs /build-work && chmod 0755 /registry-files /buildkit-certs"]
+    volumes:
+      - registry-files:/registry-files
+      - buildkit-certs:/buildkit-certs
+      - build-work:/build-work
+    network_mode: none
 
   server:
     image: ${POLIPAN_SERVER_IMAGE:?set in .env}
@@ -27,6 +50,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      volumes-init:
+        condition: service_completed_successfully
     environment:
       POLIPAN_DATABASE_URL: postgres://polipan:${POSTGRES_PASSWORD}@postgres:5432/polipan?sslmode=disable
       POLIPAN_LISTEN: ":8080"
@@ -34,21 +59,105 @@ services:
       POLIPAN_AGENT_HOSTS: ${POLIPAN_AGENT_HOSTS:-localhost}
       POLIPAN_ACME_EMAIL: ${POLIPAN_ACME_EMAIL:-}
       POLIPAN_MASTER_KEY_FILE: /etc/polipan/master.key
+      # Built-in registry: the server pushes, nodes pull by digest with their own credential.
+      POLIPAN_REGISTRY_URL: https://registry:5000
+      POLIPAN_REGISTRY_PULL_HOST: 172.31.251.10:5000
+      POLIPAN_REGISTRY_DIR: /var/lib/polipan/registry
+      # BuildKit over mTLS on the build network.
+      POLIPAN_BUILDKIT_ADDR: tcp://172.31.250.2:1234
+      POLIPAN_BUILDKIT_HOST: 172.31.250.2
+      POLIPAN_BUILDKIT_CERTS: /var/lib/polipan/buildkit-certs
+      POLIPAN_BUILD_DIR: /var/lib/polipan/build
     volumes:
       - /etc/polipan/master.key:/etc/polipan/master.key:ro
+      - registry-files:/var/lib/polipan/registry
+      - buildkit-certs:/var/lib/polipan/buildkit-certs
+      - build-work:/var/lib/polipan/build
     ports:
-      # Only the agent on this host uses the gateway in M1.
+      # Only the agent on this host uses the gateway in M1 and M2.
       - "127.0.0.1:9443:9443"
     networks:
-      default: {}
+      default:
+        ipv4_address: 172.31.251.3
+      build:
+        ipv4_address: 172.31.250.3
       polipan:
         # The Caddy of the node reaches the panel with this name.
         aliases: [polipan-server]
 
+  # CNCF distribution. htpasswd auth (the server writes the file and reloads nothing: the registry
+  # reads it again when it changes) and TLS with a certificate of the server CA. No host port.
+  registry:
+    image: registry:3
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: polipan
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+      REGISTRY_HTTP_ADDR: 0.0.0.0:5000
+      REGISTRY_HTTP_TLS_CERTIFICATE: /auth/tls.crt
+      REGISTRY_HTTP_TLS_KEY: /auth/tls.key
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    volumes:
+      - registry-files:/auth:ro
+      - registry-data:/var/lib/registry
+    networks:
+      default:
+        ipv4_address: 172.31.251.10
+
+  # Rootless BuildKit on its own network, without the Docker socket (REQ-SEC-102). Build steps
+  # share its network namespace, so they see only the build network. CPU, memory and process limits.
+  buildkitd:
+    image: moby/buildkit:v0.34.0-rootless
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    command:
+      - --addr=tcp://0.0.0.0:1234
+      - --tlscacert=/certs/ca.crt
+      - --tlscert=/certs/tls.crt
+      - --tlskey=/certs/tls.key
+    security_opt:
+      # Needed by rootless BuildKit in a container (docs/rootless.md). It is not privileged.
+      - seccomp=unconfined
+      - apparmor=unconfined
+      - systempaths=unconfined
+    cpus: ${POLIPAN_BUILD_CPUS:-2}
+    mem_limit: ${POLIPAN_BUILD_MEMORY:-2g}
+    pids_limit: 4096
+    volumes:
+      - buildkit-certs:/certs:ro
+      - buildkit-state:/home/user/.local/share/buildkit
+    networks:
+      build:
+        ipv4_address: 172.31.250.2
+
 volumes:
   pgdata: {}
+  registry-data: {}
+  registry-files: {}
+  buildkit-certs: {}
+  buildkit-state: {}
+  build-work: {}
 
 networks:
+  default:
+    driver_opts:
+      com.docker.network.bridge.name: pp-internal0
+    ipam:
+      config:
+        - subnet: 172.31.251.0/24
+  build:
+    name: polipan-build
+    driver_opts:
+      com.docker.network.bridge.name: pp-build0
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24
   # Created by the installer. The agent puts Caddy and the apps on the same network.
   polipan:
     external: true

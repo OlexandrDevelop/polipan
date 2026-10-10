@@ -25,11 +25,24 @@ import { useMe } from '@/auth'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { ServiceDomains } from '@/routes/ServiceDomains'
 import { ServiceLogs } from '@/routes/ServiceLogs'
+import { ServiceSettings } from '@/routes/ServiceSettings'
+import { ServiceStorage } from '@/routes/ServiceStorage'
+import { ServiceTerminal } from '@/routes/ServiceTerminal'
+import { ServiceVariables } from '@/routes/ServiceVariables'
 import { useNodes, useScope } from '@/scope'
 import type { Service } from '@/scope'
 import { deploymentTone, isDeploymentActive, serviceTone } from '@/status'
 
-const tabs = ['overview', 'deployments', 'domains', 'logs'] as const
+const tabs = [
+  'overview',
+  'deployments',
+  'domains',
+  'env',
+  'volumes',
+  'logs',
+  'terminal',
+  'settings',
+] as const
 type Tab = (typeof tabs)[number]
 
 function useDeployments(serviceId: string) {
@@ -45,6 +58,15 @@ function useDeployments(serviceId: string) {
     refetchInterval: (query) =>
       query.state.data?.items?.some((d) => isDeploymentActive(d.state)) ? 3_000 : 15_000,
   })
+}
+
+function sourceText(service: Service): string {
+  const config = (service.config ?? {}) as Record<string, unknown>
+  const source = (config.source ?? {}) as Record<string, unknown>
+  if (service.source_type === 'git' && typeof source.repo === 'string') {
+    return `${source.repo} @ ${typeof source.branch === 'string' ? source.branch : 'main'}`
+  }
+  return typeof config.image === 'string' ? config.image : '-'
 }
 
 function Overview({ service, serviceId }: { service: Service; serviceId: string }) {
@@ -72,8 +94,10 @@ function Overview({ service, serviceId }: { service: Service; serviceId: string 
       )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card className="space-y-1">
-          <h2 className="font-semibold">{t('service.source')}</h2>
-          <p className="break-all font-mono text-sm">{String(config.image ?? '-')}</p>
+          <h2 className="font-semibold">
+            {service.source_type === 'git' ? t('service.source_git') : t('service.source')}
+          </h2>
+          <p className="break-all font-mono text-sm">{sourceText(service)}</p>
           <p className="text-sm text-muted">
             {t('service.port')}: {config.port ? String(config.port) : '-'}
           </p>
@@ -123,7 +147,13 @@ function Overview({ service, serviceId }: { service: Service; serviceId: string 
   )
 }
 
-function Deployments({ serviceId }: { serviceId: string }) {
+function Deployments({
+  serviceId,
+  base,
+}: {
+  serviceId: string
+  base: { org: string; project: string; env: string; service: string }
+}) {
   const deployments = useDeployments(serviceId)
   if (deployments.isPending) return <Skeleton />
   if (deployments.isError) {
@@ -141,7 +171,15 @@ function Deployments({ serviceId }: { serviceId: string }) {
       columns={[
         {
           header: t('deployment.started'),
-          cell: (d) => <Time value={d.started_at} />,
+          cell: (d) => (
+            <Link
+              to="/o/$org/p/$project/e/$env/s/$service/deployments/$deployment"
+              params={{ ...base, deployment: d.id ?? '' }}
+              className="text-primary underline"
+            >
+              <Time value={d.started_at} />
+            </Link>
+          ),
           primary: true,
         },
         {
@@ -195,6 +233,8 @@ export function ServicePage() {
   const me = useMe()
   const serviceId = scope.service?.id ?? ''
   const [notice, setNotice] = useState<ReactNode>(null)
+  // A change made on this page shows the banner at once, before the server reports it.
+  const [localPending, setLocalPending] = useState(false)
 
   const live = useQuery({
     queryKey: ['service', serviceId],
@@ -223,6 +263,7 @@ export function ServicePage() {
       ),
     onSuccess: async () => {
       setNotice(t('service.deploy_started'))
+      setLocalPending(false)
       await refresh()
     },
   })
@@ -306,6 +347,9 @@ export function ServicePage() {
   )
 
   const base = { org, project: projectSlug, env: envSlug, service: name }
+  const execAccess = accessFor(role, 'service:exec', environment.protected)
+  const visibleTabs = tabs.filter((id) => id !== 'terminal' || execAccess !== 'hidden')
+  const changed = () => setLocalPending(true)
   return (
     <section
       className={
@@ -341,6 +385,28 @@ export function ServicePage() {
         {environment.protected && (
           <Banner variant="warning">{t('service.protected_banner')}</Banner>
         )}
+        {(service.pending_changes || localPending) && (
+          <Banner
+            variant="warning"
+            title={t('service.pending_title')}
+            action={
+              deployAccess === 'allow' ? (
+                <Button
+                  loading={deploy.isPending}
+                  reason={busy ? busyReason : undefined}
+                  onClick={() => {
+                    setNotice(null)
+                    deploy.mutate()
+                  }}
+                >
+                  {t('service.redeploy')}
+                </Button>
+              ) : undefined
+            }
+          >
+            {t('service.pending_text')}
+          </Banner>
+        )}
         {notice && <Banner>{notice}</Banner>}
         {mutationError && (
           <ErrorBanner
@@ -352,7 +418,7 @@ export function ServicePage() {
       </div>
       <nav aria-label={t('service.tabs')} className="mb-4">
         <ul className="flex gap-1 overflow-x-auto border-b border-border">
-          {tabs.map((id) => (
+          {visibleTabs.map((id) => (
             <li key={id}>
               <Link
                 to="/o/$org/p/$project/e/$env/s/$service/$tab"
@@ -367,11 +433,33 @@ export function ServicePage() {
         </ul>
       </nav>
       {tab === 'overview' && <Overview service={service} serviceId={serviceId} />}
-      {tab === 'deployments' && <Deployments serviceId={serviceId} />}
+      {tab === 'deployments' && <Deployments serviceId={serviceId} base={base} />}
       {tab === 'domains' && (
         <ServiceDomains service={service} environmentProtected={environment.protected} />
       )}
+      {tab === 'env' && scope.project && (
+        <ServiceVariables
+          project={scope.project}
+          environment={environment}
+          service={service}
+          onChanged={changed}
+        />
+      )}
+      {tab === 'volumes' && (
+        <ServiceStorage service={service} environmentProtected={environment.protected} />
+      )}
       {tab === 'logs' && <ServiceLogs serviceId={serviceId} />}
+      {tab === 'terminal' && (
+        <ServiceTerminal service={service} environmentProtected={environment.protected} />
+      )}
+      {tab === 'settings' && (
+        <ServiceSettings
+          key={service.id}
+          service={service}
+          environmentProtected={environment.protected}
+          onChanged={changed}
+        />
+      )}
     </section>
   )
 }

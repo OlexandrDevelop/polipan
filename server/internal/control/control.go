@@ -27,6 +27,7 @@ import (
 	"github.com/polipan/polipan/server/internal/gateway"
 	"github.com/polipan/polipan/server/internal/orchestrator"
 	"github.com/polipan/polipan/server/internal/pki"
+	"github.com/polipan/polipan/server/internal/secrets"
 	"github.com/polipan/polipan/server/internal/shared/clock"
 )
 
@@ -49,6 +50,10 @@ type Deps struct {
 	// PanelUpstream is the address of the panel inside the docker network of the node.
 	// Default "polipan-server:8080". The panel route uses the host of Config.ExternalURL.
 	PanelUpstream string
+	// Secrets is the secrets store (M2). Nil means no secrets can be resolved or masked.
+	Secrets *secrets.Manager
+	// Build runs the builds of git services (build.go). Nil means git services cannot deploy.
+	Build *BuildDeps
 	// MonitorInterval is how often Run checks the node states (default 1 s).
 	MonitorInterval time.Duration
 }

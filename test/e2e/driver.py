@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-"""End-to-end driver (T-E2E-01, T-E2E-13, AC-AUTH-03, AC-DOM-01..05, AC-APP-05).
+"""End-to-end driver (T-E2E-01, T-E2E-02 without rollback, T-E2E-13, AC-AUTH-03, AC-DOM-01..05, AC-APP-03, AC-APP-05).
 
 It runs inside the test Docker host with host networking. The panel is reached through the
 Caddy of the node (Host: panel.test), so the panel route is tested too.
-Usage: driver.py flow | serving | after
+Usage: driver.py flow | gitflow | serving | after
 """
 import http.client
 import json
@@ -249,5 +249,85 @@ def after():
     ok("server is back: login works, node is ready")
 
 
+GIT_SERVER = "http://192.168.77.10:8000"
+GIT_APP = "gitapp.test"
+
+
+def push_hook(url, secret, sha, delivery):
+    """Sends a GitHub style push webhook (X-Hub-Signature-256) to the panel through Caddy."""
+    import hashlib
+    import hmac
+    body = json.dumps({"ref": "refs/heads/main", "after": sha, "repository": {"full_name": "app"},
+                       "pusher": {"name": "ann"}}).encode()
+    sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    path = url.split(PANEL, 1)[1]
+    conn = http.client.HTTPConnection("127.0.0.1", 80, timeout=30)
+    conn.request("POST", path, body, {"Host": PANEL, "Content-Type": "application/json", "X-GitHub-Event": "push",
+                                      "X-GitHub-Delivery": delivery, "X-Hub-Signature-256": sig})
+    r = conn.getresponse()
+    return r.status, json.loads(r.read() or b"{}")
+
+
+def gitflow():
+    """T-E2E-02 (without the rollback part, M3): a Git app deploys on every push from a fake Git
+    server; 3 pushes give 3 releases with different digests; a bad signature is refused (AC-APP-03)."""
+    p = Panel()
+    p.login()
+    _, projects = p.call("GET", "/projects", expect=200)
+    proj = projects["items"][0]
+    _, envs = p.call("GET", f"/projects/{proj['id']}/environments", expect=200)
+    env = next(e for e in envs if e["kind"] == "staging")
+    _, svc = p.call("POST", f"/environments/{env['id']}/services", {
+        "name": "gitapp", "type": "app",
+        "source": {"type": "git", "repo": GIT_SERVER + "/app.git", "branch": "main", "builder": "dockerfile", "provider": "github"},
+        "config": {"port": 80}}, expect=201)
+    _, key = p.call("POST", f"/services/{svc['id']}/deploy-key", expect=201)
+    p.call("POST", f"/services/{svc['id']}/domains", {"host": GIT_APP, "container_port": 80, "https": False}, expect=201)
+    ok("git service with webhook " + key["webhook_url"])
+
+    status, _ = push_hook(key["webhook_url"], "wrong-secret", "0" * 39 + "1", "bad-1")
+    if status != 401:
+        fail(f"bad signature gave {status}")
+    _, deps = p.call("GET", f"/services/{svc['id']}/deployments", expect=200)
+    if deps["items"]:
+        fail("a bad signature queued a deployment")
+    ok("AC-APP-03: bad signature 401, nothing queued")
+
+    digests = []
+    for version in (1, 2, 3):
+        sha = urllib.request.urlopen(urllib.request.Request(f"{GIT_SERVER}/commit?version={version}", b"", method="POST"), timeout=30).read().decode()
+        status, out = push_hook(key["webhook_url"], key["webhook_secret"], sha, f"push-{version}")
+        if status != 202 or len(out.get("deployments", [])) != 1:
+            fail(f"push {version}: {status} {out}")
+        dep_id = out["deployments"][0]
+
+        def live():
+            _, d = p.call("GET", f"/deployments/{dep_id}", expect=200)
+            if d["state"] in ("failed", "cancelled"):
+                _, logs = p.call("GET", f"/deployments/{dep_id}/logs", expect=200)
+                print("\n".join(l["line"] for l in logs[-30:]))
+                fail(f"deployment {d['state']}: {d.get('failure_reason')} {d.get('failure_detail')}")
+            return d if d["state"] == "live" else None
+        d = wait(f"git deployment {version} live", live, timeout=600, every=3)
+        if d["trigger"] != "git_push":
+            fail(f"trigger {d['trigger']}")
+        wait(f"app serves version {version}", lambda: f"version {version}" in http_get(GIT_APP)[2], timeout=90)
+        _, svc_now = p.call("GET", f"/services/{svc['id']}", expect=200)
+        digests.append(svc_now["live_release_id"])
+        ok(f"push {version}: built, released and serving (commit {sha[:8]})")
+        if version == 1:
+            status, _ = push_hook(key["webhook_url"], key["webhook_secret"], sha, "push-1")
+            if status != 409:
+                fail(f"replayed delivery gave {status}")
+            ok("replayed delivery refused")
+    if len(set(digests)) != 3:
+        fail(f"want 3 releases, got {digests}")
+    _, deps = p.call("GET", f"/services/{svc['id']}/deployments", expect=200)
+    if len([d for d in deps["items"] if d["state"] == "live"]) != 3:
+        fail("want 3 live deployments")
+    ok("T-E2E-02: 3 pushes gave 3 releases (rollback part is M3)")
+    print("GITFLOW PASSED")
+
+
 if __name__ == "__main__":
-    {"flow": flow, "serving": serving, "after": after}[sys.argv[1]]()
+    {"flow": flow, "serving": serving, "after": after, "gitflow": gitflow}[sys.argv[1]]()

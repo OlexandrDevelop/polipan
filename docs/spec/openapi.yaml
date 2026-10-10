@@ -1337,12 +1337,12 @@ paths:
   /services/{service_id}/deploy-key:
     post:
       operationId: createDeployKey
-      summary: Generate an SSH deploy key for a Git service (public key returned)
+      summary: Generate an SSH deploy key and the service webhook for a Git service (public key, webhook URL and secret returned once)
       tags: [git]
       x-permission: service:update
       parameters: [{$ref: '#/components/parameters/ServiceId'}]
       responses:
-        '201': {description: Created, content: {application/json: {schema: {type: object, properties: {public_key: {type: string}}}}}}
+        '201': {description: Created, content: {application/json: {schema: {type: object, properties: {public_key: {type: string}, webhook_url: {type: string}, webhook_secret: {type: string}}}}}}
   /webhooks/git/{webhook_id}:
     post:
       operationId: receiveGitWebhook
@@ -1930,11 +1930,11 @@ components:
       properties: {slug: {type: string}, version: {type: string}, name: {type: string}, description: {type: string}, icon: {type: string}, builtin: {type: boolean}, inputs: {type: array, items: {type: object, additionalProperties: true}}, services: {type: array, items: {type: object, additionalProperties: true}}}
     GitConnection:
       type: object
-      properties: {id: {type: string}, provider: {type: string, enum: [github, gitlab, gitea, generic]}, name: {type: string}, base_url: {type: string}, webhook_url: {type: string}}
+      properties: {id: {type: string}, provider: {type: string, enum: [github, gitlab, gitea, generic]}, name: {type: string}, base_url: {type: string}, webhook_url: {type: string}, webhook_secret: {type: string, description: "Only in the create answer. Set it as the webhook secret at the provider."}}
     GitConnectionWrite:
       type: object
       required: [provider, name]
-      properties: {provider: {type: string, enum: [github, gitlab, gitea, generic]}, name: {type: string}, base_url: {type: string}, app_id: {type: string}, installation_id: {type: string}, token: {type: string, writeOnly: true}, private_key: {type: string, writeOnly: true}}
+      properties: {provider: {type: string, enum: [github, gitlab, gitea, generic]}, name: {type: string}, base_url: {type: string}, app_id: {type: string}, installation_id: {type: string}, token: {type: string, writeOnly: true}, private_key: {type: string, writeOnly: true}, webhook_secret: {type: string, writeOnly: true, description: "Optional. Empty means Polipan makes one."}}
     BackupTarget:
       type: object
       properties: {id: {type: string}, name: {type: string}, kind: {type: string, enum: [s3, b2, sftp, local, azure, gcs]}, config: {type: object, additionalProperties: true}, last_test_at: {type: string, format: date-time}, last_test_ok: {type: boolean}}

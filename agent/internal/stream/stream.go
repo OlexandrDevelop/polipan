@@ -212,6 +212,11 @@ func (c *Client) session(ctx context.Context) (reached bool, err error) {
 		case *agentv1.ServerMessage_DesiredState:
 			c.Handler.SetDesired(b.DesiredState)
 		case *agentv1.ServerMessage_Command:
+			if b.Command.GetExecInput() != nil {
+				// Terminal input must keep its order. The handler only queues it, so it does not block.
+				c.Handler.HandleCommand(sctx, b.Command)
+				continue
+			}
 			go c.Handler.HandleCommand(sctx, b.Command)
 		case *agentv1.ServerMessage_CertRenewed:
 			if err := join.SaveCert(c.DataDir, b.CertRenewed.ClientCertPem); err != nil {

@@ -10,6 +10,8 @@
 //	polipan-server [-config file] join-token --name <node> [--label k=v]...  make a node join token
 //	polipan-server [-config file] ca-fingerprint  print the CA fingerprint
 //	polipan-server [-config file] setup-url   print the one-time setup URL for the first user
+//	polipan-server [-config file] admin rotate-kek            make a new master key and re-wrap all data keys
+//	polipan-server [-config file] admin rotate-dek --project <id or slug>  re-encrypt the secrets of a project
 //	polipan-server version                    print the version
 package main
 
@@ -30,6 +32,7 @@ import (
 	"github.com/polipan/polipan/server/internal/db"
 	"github.com/polipan/polipan/server/internal/logging"
 	"github.com/polipan/polipan/server/internal/pki"
+	"github.com/polipan/polipan/server/internal/secrets"
 	"github.com/polipan/polipan/server/internal/server"
 	"github.com/polipan/polipan/server/internal/version"
 )
@@ -84,6 +87,14 @@ func run() error {
 		return nil
 	case "ca-fingerprint":
 		return control.CAFingerprintCommand(ctx, cfg, os.Stdout)
+	case "admin":
+		switch flag.Arg(1) {
+		case "rotate-kek":
+			return secrets.RotateKEKCommand(ctx, cfg, os.Getenv, os.Stdout)
+		case "rotate-dek":
+			return secrets.RotateDEKCommand(ctx, cfg, flag.Args()[2:], os.Getenv, os.Stdout)
+		}
+		return fmt.Errorf("unknown admin command %q (rotate-kek, rotate-dek)", flag.Arg(1))
 	case "healthcheck":
 		return healthcheck(ctx, cfg.Listen)
 	default:

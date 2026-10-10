@@ -94,7 +94,7 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 		name := ContainerName(pid)
 		w := &pb.WorkloadSpec{
 			PlacementId: pid, ServiceId: sid, EnvironmentId: eid, ReleaseId: rid, Color: color, Role: role,
-			ContainerName: name, ImageRef: imageRef,
+			ContainerName: name, ImageRef: imageRef, RegistryAuthRef: c.registryAuthRef(imageRef),
 			Command: cfg.Command, Entrypoint: cfg.Entrypoint,
 			Health:           cfg.healthSpec(),
 			StopGraceSeconds: 10,
@@ -119,6 +119,14 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	// Env, secrets and mounts of each release (M2). This runs after rows is closed: one query at a time.
+	for _, w := range ds.Workloads {
+		if err := c.fillWorkload(ctx, q, nodeID, w); err != nil {
+			return nil, err
+		}
+	}
+
+	c.addRegistryAuth(ctx, nodeID, ds) // pull credential of the built-in registry (build.go)
 
 	// The panel itself goes through Caddy of the node.
 	if u, err := url.Parse(c.Config.ExternalURL); err == nil && u.Hostname() != "" {

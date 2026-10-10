@@ -18,6 +18,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -145,6 +146,7 @@ func runAgent(cfg config.Config) error {
 
 	eng := reconcile.New(d, store, cfg.Network, log)
 	eng.Ingress, eng.DNS, eng.Firewall = ing, dnsSrv, fw
+	eng.FilesDir = filepath.Join(cfg.DataDir, "files")
 	dnsStarted := false
 	eng.Infra = func(ctx context.Context) error {
 		gw, err := d.EnsureNetwork(ctx, cfg.Network, cfg.Subnet)

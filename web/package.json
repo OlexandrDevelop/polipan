@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "generate:api": "openapi-typescript ../api/openapi.yaml -o ../api/gen/schema.d.ts"
+    "generate:api": "openapi-typescript ../api/openapi.yaml -o ../api/gen/schema.d.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@tanstack/react-query": "5.104.1",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
+    "@playwright/test": "1.64.0",
     "@types/node": "20.19.39",
     "@types/react": "18.3.18",
     "@types/react-dom": "18.3.5",

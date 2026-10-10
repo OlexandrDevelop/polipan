@@ -22,7 +22,8 @@ const apiPrefix = "http://docker/v1.41"
 
 // HTTPClient is the real Docker client. It speaks the Engine API over a unix socket.
 type HTTPClient struct {
-	hc *http.Client
+	hc     *http.Client
+	socket string
 	// IPNetwork is the network whose address is returned in Container.IP.
 	IPNetwork string
 }
@@ -37,7 +38,7 @@ func New(socket string) *HTTPClient {
 			return d.DialContext(ctx, "unix", socket)
 		},
 	}
-	return &HTTPClient{hc: &http.Client{Transport: tr}, IPNetwork: "polipan"}
+	return &HTTPClient{hc: &http.Client{Transport: tr}, socket: socket, IPNetwork: "polipan"}
 }
 
 // do sends a request. A status of 400 or more becomes an error.
@@ -183,7 +184,8 @@ func repoOf(ref string) string {
 	return ref
 }
 
-// PullImage pulls ref and returns repo@sha256:digest.
+// PullImage pulls ref and returns repo@sha256:digest. registryAuth is the X-Registry-Auth
+// value (see RegistryAuth), empty for a public image.
 func (c *HTTPClient) PullImage(ctx context.Context, ref, registryAuth string) (string, error) {
 	hdr := map[string]string{}
 	if registryAuth != "" {
@@ -279,6 +281,20 @@ func createBody(spec ContainerSpec) map[string]any {
 	}
 	if spec.RestartPolicy != "" {
 		host["RestartPolicy"] = map[string]any{"Name": spec.RestartPolicy}
+	}
+	if len(spec.Mounts) > 0 {
+		var ms []map[string]any
+		for _, m := range spec.Mounts {
+			e := map[string]any{"Type": m.Type, "Target": m.Target, "ReadOnly": m.ReadOnly}
+			if m.Source != "" {
+				e["Source"] = m.Source
+			}
+			if m.Type == "tmpfs" && m.TmpfsSize > 0 {
+				e["TmpfsOptions"] = map[string]any{"SizeBytes": m.TmpfsSize}
+			}
+			ms = append(ms, e)
+		}
+		host["Mounts"] = ms
 	}
 	if spec.Network != "" {
 		host["NetworkMode"] = spec.Network

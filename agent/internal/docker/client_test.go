@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -83,6 +84,50 @@ func TestLogsDemux(t *testing.T) {
 	out, err := c.Logs(context.Background(), "x", 200)
 	if err != nil || out != "hello\noops\n" {
 		t.Fatalf("out=%q err=%v", out, err)
+	}
+}
+
+// AC-APP-07 (REQ-APP-010): exec creates, hijacks the start call, demuxes output and sends input.
+func TestAC_APP_07_ExecAttach(t *testing.T) {
+	got := make(chan string, 1)
+	c := testServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/containers/c1/exec"):
+			_, _ = w.Write([]byte(`{"Id":"ex1"}`))
+		case strings.HasSuffix(r.URL.Path, "/exec/ex1/start"):
+			if r.Header.Get("Upgrade") != "tcp" {
+				t.Errorf("no upgrade header")
+			}
+			_, _ = io.ReadAll(r.Body)
+			conn, buf, _ := w.(http.Hijacker).Hijack()
+			_, _ = buf.WriteString("HTTP/1.1 101 UPGRADED\r\nConnection: Upgrade\r\nUpgrade: tcp\r\n\r\n")
+			_, _ = buf.Write(frame(1, "out "))
+			_, _ = buf.Write(frame(2, "err"))
+			_ = buf.Flush()
+			line := make([]byte, 3)
+			_, _ = buf.Read(line)
+			got <- string(line)
+			_ = conn.Close()
+		case strings.HasSuffix(r.URL.Path, "/exec/ex1/json"):
+			_, _ = w.Write([]byte(`{"Running":false,"ExitCode":3}`))
+		}
+	}))
+	x, err := c.Exec(context.Background(), "c1", ExecOptions{Cmd: []string{"sh"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.Write([]byte("ls\n")); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := io.ReadAll(x)
+	if string(out) != "out err" || <-got != "ls\n" {
+		t.Fatalf("out %q", out)
+	}
+	if code, err := x.Wait(context.Background()); code != 3 || err != nil {
+		t.Fatalf("exit %d %v", code, err)
+	}
+	if body := createBody(ContainerSpec{Mounts: []Mount{{Type: "tmpfs", Target: "/t", TmpfsSize: 5}}}); body["HostConfig"].(map[string]any)["Mounts"] == nil {
+		t.Fatal("mounts missing in the create body")
 	}
 }
 

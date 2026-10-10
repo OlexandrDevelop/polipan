@@ -39,9 +39,13 @@ type Store struct {
 	cmdAcks  map[string]*agentv1.CommandAck
 }
 
-// New opens the store in dir. The folder is created with mode 0700.
+// New opens the store in dir. The folder is created with mode 0700, and an existing
+// folder is set to 0700, because the files hold secrets.
 func New(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
 		return nil, err
 	}
 	return &Store{dir: dir, cmdAcks: map[string]*agentv1.CommandAck{}}, nil
@@ -107,7 +111,8 @@ func (s *Store) open(sealed string) (string, error) {
 	return string(plain), err
 }
 
-// mapSecrets applies f to every env value listed in secret_env_keys, on a copy.
+// mapSecrets applies f to every secret of the state, on a copy: env values listed in
+// secret_env_keys, the content of secret file mounts and the registry passwords.
 func mapSecrets(ds *agentv1.DesiredState, f func(string) (string, error)) (*agentv1.DesiredState, error) {
 	out := proto.Clone(ds).(*agentv1.DesiredState)
 	for _, w := range out.Workloads {
@@ -120,6 +125,25 @@ func mapSecrets(ds *agentv1.DesiredState, f func(string) (string, error)) (*agen
 				w.Env[k] = nv
 			}
 		}
+		for _, m := range w.Mounts {
+			if m.Kind == "file" && m.Secret && len(m.Content) > 0 {
+				nv, err := f(string(m.Content))
+				if err != nil {
+					return nil, err
+				}
+				m.Content = []byte(nv)
+			}
+		}
+	}
+	for _, a := range out.RegistryAuths {
+		if a.Password == "" {
+			continue
+		}
+		nv, err := f(a.Password)
+		if err != nil {
+			return nil, err
+		}
+		a.Password = nv
 	}
 	return out, nil
 }
@@ -141,6 +165,11 @@ func (s *Store) loadLocked() (*agentv1.DesiredState, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+	if fi, err := os.Stat(s.desiredPath()); err == nil && fi.Mode().Perm() != 0o600 {
+		if err := os.Chmod(s.desiredPath(), 0o600); err != nil {
+			return nil, err
+		}
 	}
 	ds := &agentv1.DesiredState{}
 	if err := protojson.Unmarshal(b, ds); err != nil {
@@ -181,9 +210,15 @@ func (s *Store) SaveDesired(ds *agentv1.DesiredState) (bool, error) {
 	return true, nil
 }
 
+// writeAtomic writes a new file and renames it over path. The mode is set even when an old
+// temp file exists, so the state file is always 0600.
 func writeAtomic(path string, b []byte, mode os.FileMode) error {
 	tmp := path + ".tmp"
+	_ = os.Remove(tmp)
 	if err := os.WriteFile(tmp, b, mode); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, mode); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)

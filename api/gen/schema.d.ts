@@ -1783,7 +1783,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Generate an SSH deploy key for a Git service (public key returned) */
+        /** Generate an SSH deploy key and the service webhook for a Git service (public key, webhook URL and secret returned once) */
         post: operations["createDeployKey"];
         delete?: never;
         options?: never;
@@ -2736,6 +2736,8 @@ export interface components {
             name?: string;
             base_url?: string;
             webhook_url?: string;
+            /** @description Only in the create answer. Set it as the webhook secret at the provider. */
+            webhook_secret?: string;
         };
         GitConnectionWrite: {
             /** @enum {string} */
@@ -2746,6 +2748,8 @@ export interface components {
             installation_id?: string;
             token?: string;
             private_key?: string;
+            /** @description Optional. Empty means Polipan makes one. */
+            webhook_secret?: string;
         };
         BackupTarget: {
             id?: string;
@@ -6457,6 +6461,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         public_key?: string;
+                        webhook_url?: string;
+                        webhook_secret?: string;
                     };
                 };
             };

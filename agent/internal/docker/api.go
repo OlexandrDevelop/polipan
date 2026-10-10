@@ -6,6 +6,7 @@ package docker
 
 import (
 	"context"
+	"io"
 	"time"
 )
 
@@ -28,6 +29,7 @@ type ContainerSpec struct {
 	Network       string   // user-defined network name, or "host"
 	Aliases       []string // network aliases on Network
 	Binds         []string // host:container[:ro]
+	Mounts        []Mount  // volume, bind and tmpfs mounts (HostConfig.Mounts)
 	Ports         []PortBinding
 	RestartPolicy string // always | on-failure | no | unless-stopped
 	NanoCPUs      int64
@@ -35,6 +37,44 @@ type ContainerSpec struct {
 	StopTimeout   int // seconds
 	CapAdd        []string
 	DNS           []string // DNS servers for the container
+}
+
+// Mount is one entry of HostConfig.Mounts.
+type Mount struct {
+	Type      string // volume | bind | tmpfs
+	Source    string // volume name or host path, empty for tmpfs
+	Target    string // path in the container
+	ReadOnly  bool
+	TmpfsSize int64 // tmpfs only, 0 = no limit
+}
+
+// Volume is a named Docker volume.
+type Volume struct {
+	Name       string
+	Mountpoint string // host path of the data
+	Labels     map[string]string
+}
+
+// ExecOptions are the options of a command run in a running container.
+type ExecOptions struct {
+	Cmd        []string
+	Tty        bool
+	Rows, Cols uint32
+}
+
+// ExecConn is an open exec session. Read gives the output (stdout and stderr together),
+// Write sends input. Read returns io.EOF when the command ends.
+type ExecConn interface {
+	io.Reader
+	io.Writer
+	// CloseWrite ends the input (like Ctrl-D on a closed pipe).
+	CloseWrite() error
+	// Resize changes the terminal size.
+	Resize(ctx context.Context, rows, cols uint32) error
+	// Wait returns the exit code after the output has ended.
+	Wait(ctx context.Context) (int, error)
+	// Close ends the session.
+	Close() error
 }
 
 // Container is the state of one container.
@@ -84,4 +124,14 @@ type Client interface {
 	Logs(ctx context.Context, idOrName string, tail int) (string, error)
 	// Events streams container events until ctx ends.
 	Events(ctx context.Context) (<-chan Event, error)
+	// VolumeCreate creates a named volume. An existing volume is returned as it is.
+	VolumeCreate(ctx context.Context, name string, labels map[string]string) (*Volume, error)
+	// VolumeInspect returns a volume. A missing volume returns ErrNotFound.
+	VolumeInspect(ctx context.Context, name string) (*Volume, error)
+	// VolumeList returns the volumes that have every label pair in labels.
+	VolumeList(ctx context.Context, labels map[string]string) ([]Volume, error)
+	// VolumeRemove removes a volume and its data. A missing volume returns ErrNotFound.
+	VolumeRemove(ctx context.Context, name string) error
+	// Exec starts a command in a running container and attaches to it.
+	Exec(ctx context.Context, idOrName string, opts ExecOptions) (ExecConn, error)
 }

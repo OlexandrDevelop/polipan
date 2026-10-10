@@ -6,6 +6,7 @@ import type {
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
+  TextareaHTMLAttributes,
 } from 'react'
 import { t } from '@/i18n'
 import type { Tone } from '@/status'
@@ -124,6 +125,67 @@ export function TextField({ label, hint, error, id, className = '', ...rest }: T
         {...rest}
       />
     </FieldShell>
+  )
+}
+
+interface TextAreaFieldProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label: string
+  hint?: string
+  error?: string | null
+}
+
+export function TextAreaField({
+  label,
+  hint,
+  error,
+  id,
+  className = '',
+  ...rest
+}: TextAreaFieldProps) {
+  const auto = useId()
+  const fieldId = id ?? auto
+  return (
+    <FieldShell id={fieldId} label={label} required={rest.required} hint={hint} error={error}>
+      <textarea
+        id={fieldId}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(fieldId, hint, error)}
+        className={`${inputClass} min-h-24 font-mono text-sm ${className}`}
+        {...rest}
+      />
+    </FieldShell>
+  )
+}
+
+interface SecretFieldProps extends Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  'type' | 'autoComplete' | 'value' | 'onChange'
+> {
+  label: string
+  value: string
+  onValue: (value: string) => void
+  // The current version when a value is already stored. The value itself is never read back.
+  version?: number
+  error?: string | null
+}
+
+// A write-only input for a secret value (REQ-UI-005). It never shows a stored value and has no
+// reveal button. The parent clears the value after save.
+export function SecretField({ label, value, onValue, version, error, ...rest }: SecretFieldProps) {
+  return (
+    <TextField
+      {...rest}
+      label={label}
+      type="password"
+      autoComplete="new-password"
+      autoCapitalize="none"
+      spellCheck={false}
+      data-secret-input=""
+      value={value}
+      onChange={(e) => onValue(e.target.value)}
+      error={error}
+      hint={version ? t('secret.set_version', { version }) : t('secret.write_only')}
+    />
   )
 }
 

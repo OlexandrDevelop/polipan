@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/polipan/polipan/api/gen"
+	"github.com/polipan/polipan/server/internal/git"
 	"github.com/polipan/polipan/server/internal/logging"
 	"github.com/polipan/polipan/server/internal/store"
 )
@@ -349,6 +350,7 @@ func (h *Handlers) ListServices(w http.ResponseWriter, r *http.Request, environm
 	out := make([]gen.Service, len(list))
 	for i := range list {
 		out[i] = serviceJSON(&list[i])
+		out[i].PendingChanges = ptr(h.pendingChanges(r.Context(), &list[i]))
 	}
 	WriteJSON(w, http.StatusOK, out)
 }
@@ -384,13 +386,20 @@ func (h *Handlers) CreateService(w http.ResponseWriter, r *http.Request, environ
 	if body.Source != nil {
 		src = *body.Source
 	}
-	raw, err := buildImageConfig(cfg, src)
-	if err != nil {
+	sourceType := "image"
+	var raw json.RawMessage
+	if _, isGit := gitSourceOf(cfg, src); isGit { // git source: handlers_git.go
+		sourceType = "git"
+		if raw, err = h.buildGitConfig(r, env.Protected, cfg, src, nil); err != nil {
+			writeGitConfigError(w, r, err)
+			return
+		}
+	} else if raw, err = buildImageConfig(cfg, src); err != nil {
 		invalid(w, r, "config", err.Error())
 		return
 	}
 	s, err := h.Store.CreateService(r.Context(), h.orgID(r), store.NewService{
-		EnvironmentID: environmentID, Name: body.Name, Type: "app", SourceType: "image", Config: raw})
+		EnvironmentID: environmentID, Name: body.Name, Type: "app", SourceType: sourceType, Config: raw})
 	if unique, _ := store.IsUnique(err); unique {
 		WriteError(w, r, http.StatusConflict, CodeNameConflict, "a service with this name exists in the environment", map[string]any{"field": "name"})
 		return
@@ -407,7 +416,9 @@ func (h *Handlers) GetService(w http.ResponseWriter, r *http.Request, serviceID 
 	if fail(w, r, err) {
 		return
 	}
-	WriteJSON(w, http.StatusOK, serviceJSON(s))
+	out := serviceJSON(s)
+	out.PendingChanges = ptr(h.pendingChanges(r.Context(), s))
+	WriteJSON(w, http.StatusOK, out)
 }
 
 // UpdateService replaces the config and changes failover. The config is used from the next deployment.
@@ -424,7 +435,13 @@ func (h *Handlers) UpdateService(w http.ResponseWriter, r *http.Request, service
 		return
 	}
 	var cfg json.RawMessage
-	if body.Config != nil {
+	if body.Config != nil && cur.SourceType == "git" { // handlers_git.go
+		current, _ := git.SourceOf(cur.Config)
+		if cfg, err = h.buildGitConfig(r, cur.EnvProtected, map[string]any(*body.Config), nil, current); err != nil {
+			writeGitConfigError(w, r, err)
+			return
+		}
+	} else if body.Config != nil {
 		cfg, err = checkImageConfig(map[string]any(*body.Config))
 		if err != nil {
 			invalid(w, r, "config", err.Error())
@@ -504,8 +521,8 @@ func (h *Handlers) DeployService(w http.ResponseWriter, r *http.Request, service
 		invalid(w, r, "strategy", "only the recreate strategy is available in this version")
 		return
 	}
-	if body.Commit != nil {
-		invalid(w, r, "commit", "commit is only for git services")
+	if body.Commit != nil && (s.SourceType != "git" || !git.ValidCommit(*body.Commit)) {
+		invalid(w, r, "commit", "commit must be a commit id of a git service")
 		return
 	}
 	if body.DryRun != nil && *body.DryRun {
@@ -520,7 +537,7 @@ func (h *Handlers) DeployService(w http.ResponseWriter, r *http.Request, service
 		WriteJSON(w, http.StatusOK, gen.DeployPlan{Strategy: &strategy, ExpectedDowntime: &downtime, Nodes: &nodes, Forced: ptr(false)})
 		return
 	}
-	depID, err := h.Orch.Deploy(r.Context(), serviceID, PrincipalFrom(r.Context()).User.ID, "manual")
+	depID, err := h.Orch.Deploy(deployContext(r.Context(), s.SourceType, body), serviceID, PrincipalFrom(r.Context()).User.ID, "manual")
 	if h.orchestratorFailed(w, r, err) {
 		return
 	}
@@ -601,11 +618,16 @@ func (h *Handlers) GetServiceLogs(w http.ResponseWriter, r *http.Request, servic
 	if h.orchestratorFailed(w, r, err) {
 		return
 	}
+	masker, err := h.maskerFor(r, serviceID)
+	if fail(w, r, err) {
+		return
+	}
 	lines := []gen.LogLine{}
 	for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
 		if l == "" {
 			continue
 		}
+		l = masker.Mask(l) // REQ-SEC-007
 		lines = append(lines, gen.LogLine{Message: ptr(l), ServiceId: &s.ID, EnvironmentId: &s.EnvironmentID, ProjectId: &s.ProjectID})
 	}
 	WriteJSON(w, http.StatusOK, lines)

@@ -17,6 +17,7 @@ import (
 	"github.com/polipan/polipan/api/gen"
 	"github.com/polipan/polipan/server/internal/auth"
 	"github.com/polipan/polipan/server/internal/orchestrator"
+	"github.com/polipan/polipan/server/internal/secrets"
 	"github.com/polipan/polipan/server/internal/shared/clock"
 	"github.com/polipan/polipan/server/internal/store"
 )
@@ -48,6 +49,12 @@ type Deps struct {
 	// SessionTTL and SessionAbsoluteTTL are config session_ttl and session_absolute_ttl.
 	SessionTTL         time.Duration
 	SessionAbsoluteTTL time.Duration
+	// Secrets is the secrets store (M2).
+	Secrets *secrets.Manager
+	// Git is the Git side (connections, webhooks, deploy keys). Optional.
+	Git *GitDeps
+	// Exec opens terminals on the nodes (the gateway, WP2.6).
+	Exec ExecGateway
 	// MaxBodyBytes is the size limit of a request body. Default 1 MiB.
 	MaxBodyBytes int64
 }
@@ -101,6 +108,9 @@ func NewRouter(d Deps) (http.Handler, error) {
 			SessionTTL: d.SessionTTL, SessionAbsoluteTTL: d.SessionAbsoluteTTL},
 		cookieSecure: secureCookies(d.ExternalURL),
 		perms:        perms,
+		Secrets:      d.Secrets,
+		Git:          d.Git,
+		Exec:         d.Exec,
 	}
 	if d.Pool != nil {
 		h.Store = store.New(d.Pool)

@@ -4,6 +4,7 @@ package state
 
 import (
 	"bytes"
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,19 +18,29 @@ func sample(version int64) *agentv1.DesiredState {
 		PlacementId: "plc_1", ContainerName: "pp-plc_1", ImageRef: "nginx@sha256:aa",
 		Env:           map[string]string{"PLAIN": "visible", "DB_PASSWORD": "s3cret-value"},
 		SecretEnvKeys: []string{"DB_PASSWORD"},
-	}}}
+		Mounts: []*agentv1.Mount{{Kind: "file", Source: "key.pem", Target: "/etc/key.pem", Content: []byte("file-secret-text"), Secret: true},
+			{Kind: "file", Source: "app.conf", Target: "/etc/app.conf", Content: []byte("plain-file-text")}},
+		RegistryAuthRef: "reg_1",
+	}}, RegistryAuths: []*agentv1.RegistryAuth{{Ref: "reg_1", Server: "ghcr.io", Username: "bot", Password: "registry-pass-value"}}}
 }
 
+// The state file holds the env secrets, the secret files and the registry passwords only sealed, with mode 0600.
 func TestSecretsSealedAndRoundTrip(t *testing.T) {
 	dir := t.TempDir()
+	_ = os.Chmod(dir, 0o755)
 	s, _ := New(dir)
+	if st, _ := os.Stat(dir); st.Mode().Perm() != 0o700 {
+		t.Fatalf("dir mode %v", st.Mode())
+	}
 	ok, err := s.SaveDesired(sample(3))
 	if !ok || err != nil {
 		t.Fatal(ok, err)
 	}
 	raw, _ := os.ReadFile(filepath.Join(dir, "desired.json"))
-	if bytes.Contains(raw, []byte("s3cret-value")) {
-		t.Fatal("secret is readable in desired.json")
+	for _, secret := range []string{"s3cret-value", "registry-pass-value", "file-secret-text"} {
+		if bytes.Contains(raw, []byte(secret)) || bytes.Contains(raw, []byte(base64.StdEncoding.EncodeToString([]byte(secret)))) {
+			t.Fatalf("secret %q is readable in desired.json", secret)
+		}
 	}
 	if !bytes.Contains(raw, []byte("visible")) {
 		t.Fatal("plain value should stay readable")

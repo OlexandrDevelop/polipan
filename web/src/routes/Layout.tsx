@@ -2,11 +2,15 @@
 
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, Navigate, Outlet, useNavigate, useParams } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 import { api, setCsrfToken } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { sessionWasActive, useMe } from '@/auth'
+import { CommandPalette } from '@/components/CommandPalette'
+import { ContextSwitcher } from '@/components/ContextSwitcher'
 import { ThemeCycle } from '@/components/ThemeToggle'
 import { Button, Skeleton } from '@/components/ui'
+import { saveContext } from '@/context'
 import { t } from '@/i18n'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { queryClient } from '@/queryClient'
@@ -31,7 +35,28 @@ const navLink =
 // The frame of every signed-in page: navigation, top bar and the sign-in check.
 export function AppShell() {
   const { org } = useParams({ from: '/o/$org' })
+  const { project, env } = useParams({ strict: false })
   const me = useMe()
+  const [palette, setPalette] = useState(false)
+  const userId = me.data?.user?.id
+
+  // Ctrl+K or Cmd+K opens the command palette on every signed-in page (REQ-UI-019).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setPalette(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // The switcher remembers the last project and environment the user opened.
+  useEffect(() => {
+    if (project && env) saveContext(userId, { project, env })
+  }, [userId, project, env])
+
   const navigate = useNavigate()
   const orgQuery = useQuery({
     queryKey: ['org'],
@@ -93,9 +118,24 @@ export function AppShell() {
       </nav>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2 sm:px-6">
-          <span className="truncate font-medium">{orgName}</span>
-          <div className="flex items-center gap-1">
-            <ThemeCycle />
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="hidden truncate font-medium sm:inline">{orgName}</span>
+            <ContextSwitcher org={org} projectSlug={project} envSlug={env} />
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              aria-keyshortcuts="Control+K Meta+K"
+              onClick={() => setPalette(true)}
+            >
+              {t('palette.open')}
+              <kbd className="hidden rounded-sm border border-border px-1 text-xs text-muted lg:inline">
+                {t('palette.shortcut')}
+              </kbd>
+            </Button>
+            <span className="hidden sm:inline-flex">
+              <ThemeCycle />
+            </span>
             <Button variant="ghost" loading={logout.isPending} onClick={() => logout.mutate()}>
               {t('nav.sign_out')}
             </Button>
@@ -108,6 +148,15 @@ export function AppShell() {
         >
           {wrongOrg ? <NotFoundPage /> : <Outlet />}
         </main>
+        {palette && (
+          <CommandPalette
+            org={org}
+            projectSlug={project}
+            envSlug={env}
+            onClose={() => setPalette(false)}
+            onSignOut={() => logout.mutate()}
+          />
+        )}
       </div>
     </div>
   )

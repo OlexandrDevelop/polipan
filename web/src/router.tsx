@@ -4,7 +4,9 @@ import { createRootRoute, createRoute, createRouter } from '@tanstack/react-rout
 import { HomeRedirect, LoginPage, SetupPage } from '@/routes/Auth'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { AppShell, RootLayout } from '@/routes/Layout'
+import { DeploymentPage } from '@/routes/DeploymentPage'
 import { NewServicePage } from '@/routes/NewService'
+import type { SourceKind } from '@/routes/NewService'
 import { NodesPage } from '@/routes/Nodes'
 import { ProfilePage } from '@/routes/Profile'
 import { ProjectPage } from '@/routes/ProjectPage'
@@ -71,6 +73,14 @@ const newServiceRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'p/$project/e/$env/new',
   component: NewServicePage,
+  // The chosen start path of the wizard stays in the URL (UI-32).
+  validateSearch: (search: Record<string, unknown>): { source?: SourceKind } =>
+    search.source === 'git' || search.source === 'image' ? { source: search.source } : {},
+})
+const deploymentRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'p/$project/e/$env/s/$service/deployments/$deployment',
+  component: DeploymentPage,
 })
 const serviceRoute = createRoute({
   getParentRoute: () => orgRoute,
@@ -97,6 +107,7 @@ const routeTree = rootRoute.addChildren([
     newServiceRoute,
     serviceRoute,
     serviceTabRoute,
+    deploymentRoute,
   ]),
 ])
 

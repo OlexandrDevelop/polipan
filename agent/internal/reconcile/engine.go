@@ -64,8 +64,22 @@ type Engine struct {
 	Infra    func(ctx context.Context) error
 	Log      *slog.Logger
 	Interval time.Duration // default 30 s
+	// BindsDir, FilesDir and SecretsDir are the host folders of the mounts. Empty = the defaults.
+	BindsDir   string
+	FilesDir   string
+	SecretsDir string
+	// CheckTmpfs checks that SecretsDir is on tmpfs. Nil = a statfs check (tests replace it).
+	CheckTmpfs func(dir string) error
+	// Quota enforces size_limit_bytes. Nil = XFS project quota when supported.
+	Quota Quota
+	// Now is the clock of the usage report (REQ-CORE-031). Nil = time.Now.
+	Now func() time.Time
 
 	mu         sync.Mutex
+	execs      map[string]*execSession // open terminals by command id
+	quotas     map[string]uint64
+	usage      []*agentv1.VolumeUsage
+	usageAt    time.Time
 	desired    *agentv1.DesiredState
 	applied    int64
 	running    uint32
@@ -88,7 +102,7 @@ func New(d docker.Client, store *state.Store, network string, log *slog.Logger) 
 	}
 	return &Engine{Docker: d, Store: store, Network: network, Log: log, hold: true,
 		suppressed: map[string]bool{}, pulled: map[string]bool{}, inflight: map[string]bool{},
-		trigger: make(chan struct{}, 1)}
+		execs: map[string]*execSession{}, quotas: map[string]uint64{}, trigger: make(chan struct{}, 1)}
 }
 
 // Load reads the persisted desired state and the stored command acks.
@@ -231,8 +245,9 @@ func (e *Engine) Reconcile(ctx context.Context) {
 			ex = &c
 		}
 		if err := e.ensure(ctx, w, ex); err != nil {
-			e.Log.Error("workload failed", "placement", w.PlacementId, "error", err)
-			errs = append(errs, fmt.Sprintf("%s: placement %s: %v", codeFor(err, "container_start_failed"), w.PlacementId, err))
+			msg := e.scrub(err.Error())
+			e.Log.Error("workload failed", "placement", w.PlacementId, "error", msg)
+			errs = append(errs, fmt.Sprintf("%s: placement %s: %s", codeFor(err, "container_start_failed"), w.PlacementId, msg))
 		}
 	}
 	for _, c := range managed {
@@ -240,9 +255,13 @@ func (e *Engine) Reconcile(ctx context.Context) {
 			continue
 		}
 		e.Log.Info("removing container that is not in the desired state", "name", c.Name)
+		e.closeExecs(c.Labels[LabelPlacement])
 		if err := e.Docker.Remove(ctx, c.ID, true); err != nil && !errors.Is(err, docker.ErrNotFound) {
-			errs = append(errs, fmt.Sprintf("remove %s: %v", c.Name, err))
+			errs = append(errs, fmt.Sprintf("remove %s: %s", c.Name, e.scrub(err.Error())))
+			continue
 		}
+		// Volumes stay. Only the file mounts of the placement go.
+		e.removeFiles(c.Labels[LabelPlacement])
 	}
 	e.finish(ctx, ds, errs, true)
 }
@@ -341,6 +360,7 @@ func (e *Engine) actual(ctx context.Context, ds *agentv1.DesiredState) *agentv1.
 	e.mu.Lock()
 	e.running = running
 	e.mu.Unlock()
+	out.Volumes = e.volumeUsage(ctx, ds)
 	return out
 }
 
@@ -374,16 +394,6 @@ func (e *Engine) containerSpec(w *agentv1.WorkloadSpec) docker.ContainerSpec {
 	if sp.RestartPolicy == "" {
 		sp.RestartPolicy = "always"
 	}
-	for _, m := range w.Mounts {
-		if m.Kind != "bind" && m.Kind != "volume" {
-			continue
-		}
-		b := m.Source + ":" + m.Target
-		if m.ReadOnly {
-			b += ":ro"
-		}
-		sp.Binds = append(sp.Binds, b)
-	}
 	for _, p := range w.Ports {
 		proto := p.Protocol
 		if proto == "" {
@@ -404,6 +414,8 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 	if ex != nil && (ex.Image != w.ImageRef || ex.Labels[LabelRelease] != w.ReleaseId ||
 		(ex.State == "running" && ex.IP == "" && e.Network != "host")) {
 		e.Log.Info("recreating container", "name", w.ContainerName)
+		e.closeExecs(w.PlacementId)
+		// The volumes are not touched: the new container mounts the same data (AC-VOL-01).
 		if err := e.Docker.Remove(ctx, ex.ID, true); err != nil && !errors.Is(err, docker.ErrNotFound) {
 			return err
 		}
@@ -411,6 +423,7 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 	}
 	if stopped {
 		if ex != nil && ex.State == "running" {
+			e.closeExecs(w.PlacementId)
 			return e.Docker.Stop(ctx, ex.ID, int(w.StopGraceSeconds))
 		}
 		return nil
@@ -420,14 +433,24 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 		done := e.pulled[w.ImageRef]
 		e.mu.Unlock()
 		if !done {
-			if _, err := e.Docker.PullImage(ctx, w.ImageRef, w.RegistryAuthRef); err != nil {
+			auth, err := e.pullAuth(w.RegistryAuthRef)
+			if err != nil {
+				return err
+			}
+			if _, err := e.Docker.PullImage(ctx, w.ImageRef, auth); err != nil {
 				return &codedErr{"image_pull_failed", err}
 			}
 			e.mu.Lock()
 			e.pulled[w.ImageRef] = true
 			e.mu.Unlock()
 		}
-		if _, err := e.Docker.CreateAndStart(ctx, e.containerSpec(w)); err != nil {
+		mounts, err := e.prepareMounts(ctx, w)
+		if err != nil {
+			return err
+		}
+		sp := e.containerSpec(w)
+		sp.Mounts = mounts
+		if _, err := e.Docker.CreateAndStart(ctx, sp); err != nil {
 			return &codedErr{"container_start_failed", err}
 		}
 		return nil
@@ -435,6 +458,10 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 	switch ex.State {
 	case "running", "restarting", "paused", "removing":
 		return nil
+	}
+	// The file mounts are written again: /run is empty after a reboot.
+	if _, err := e.prepareMounts(ctx, w); err != nil {
+		return err
 	}
 	if err := e.Docker.Start(ctx, ex.ID); err != nil {
 		return &codedErr{"container_start_failed", err}

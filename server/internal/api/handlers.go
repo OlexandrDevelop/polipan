@@ -12,6 +12,7 @@ import (
 	"github.com/polipan/polipan/server/internal/auth"
 	"github.com/polipan/polipan/server/internal/logging"
 	"github.com/polipan/polipan/server/internal/orchestrator"
+	"github.com/polipan/polipan/server/internal/secrets"
 	"github.com/polipan/polipan/server/internal/shared/clock"
 	"github.com/polipan/polipan/server/internal/store"
 	"github.com/polipan/polipan/server/internal/version"
@@ -47,6 +48,12 @@ type Handlers struct {
 	Throttle *auth.Throttle
 	Limiter  *RateLimiter
 	Settings Settings
+	// Secrets is the secrets store (M2). Without it secret writes answer 500.
+	Secrets *secrets.Manager
+	// Git is the Git side: key store, SSRF policy, providers (handlers_git.go). Nil: git operations answer 500.
+	Git *GitDeps
+	// Exec opens terminals on the nodes (the gateway). Without it exec answers 500.
+	Exec ExecGateway
 
 	cookieSecure bool
 	perms        map[Route]string

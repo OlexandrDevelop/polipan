@@ -29,6 +29,10 @@ func (e *Engine) send(m *agentv1.AgentMessage) bool {
 
 // HandleCommand runs one command and sends the ack. A repeated command id gets the stored ack (REQ-AGENT-004).
 func (e *Engine) HandleCommand(ctx context.Context, cmd *agentv1.Command) {
+	if in := cmd.GetExecInput(); in != nil {
+		e.execInput(in) // keys of a terminal: no ack, not stored
+		return
+	}
 	id := cmd.CommandId
 	if ack, ok := e.Store.Ack(id); ok {
 		e.send(&agentv1.AgentMessage{Body: &agentv1.AgentMessage_Ack{Ack: ack}})
@@ -65,7 +69,7 @@ func (e *Engine) HandleCommand(ctx context.Context, cmd *agentv1.Command) {
 	if code == "" {
 		ack.Ok, ack.ResultJson = true, result
 	} else {
-		ack.ErrorCode, ack.ErrorMessage = code, msg
+		ack.ErrorCode, ack.ErrorMessage = code, e.scrub(msg)
 	}
 	e.finishAck(ack)
 }
@@ -84,7 +88,11 @@ func (e *Engine) run(ctx context.Context, cmd *agentv1.Command) ([]byte, string,
 	}
 	switch b := cmd.Body.(type) {
 	case *agentv1.Command_PullImage:
-		ref, err := e.Docker.PullImage(ctx, b.PullImage.ImageRef, b.PullImage.RegistryAuthRef)
+		auth, err := e.pullAuth(b.PullImage.RegistryAuthRef)
+		if err != nil {
+			return fail(err, "image_pull_failed")
+		}
+		ref, err := e.Docker.PullImage(ctx, b.PullImage.ImageRef, auth)
 		if err != nil {
 			return fail(err, "image_pull_failed")
 		}
@@ -109,6 +117,7 @@ func (e *Engine) run(ctx context.Context, cmd *agentv1.Command) ([]byte, string,
 			return fail(err, "docker_unavailable")
 		}
 		e.suppress(b.StopWorkload.PlacementId)
+		e.closeExecs(b.StopWorkload.PlacementId)
 		for _, c := range cs {
 			if c.State != "running" {
 				continue
@@ -124,12 +133,31 @@ func (e *Engine) run(ctx context.Context, cmd *agentv1.Command) ([]byte, string,
 			return fail(err, "docker_unavailable")
 		}
 		e.suppress(b.RemoveWorkload.PlacementId)
+		e.closeExecs(b.RemoveWorkload.PlacementId)
+		service := ""
+		if w := e.workload(b.RemoveWorkload.PlacementId); w != nil {
+			service = w.ServiceId
+		}
 		for _, c := range cs {
 			if err := e.Docker.Remove(ctx, c.ID, true); err != nil && !errors.Is(err, docker.ErrNotFound) {
 				return fail(err, "internal_error")
 			}
+			if service == "" {
+				service = c.Labels[LabelService]
+			}
 		}
-		return []byte("{}"), "", ""
+		e.removeFiles(b.RemoveWorkload.PlacementId)
+		if !b.RemoveWorkload.RemoveVolumes {
+			return []byte("{}"), "", "" // volumes are kept (REQ-VOL-004)
+		}
+		removed, err := e.removeVolumes(ctx, service)
+		if err != nil {
+			return fail(err, "internal_error")
+		}
+		res, _ := json.Marshal(map[string][]string{"removed_volumes": removed})
+		return res, "", ""
+	case *agentv1.Command_ExecSession:
+		return e.execStart(ctx, cmd.CommandId, b.ExecSession)
 	case *agentv1.Command_StartWorkload:
 		w := b.StartWorkload.Workload
 		if w == nil {
