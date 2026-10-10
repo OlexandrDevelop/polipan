@@ -63,6 +63,28 @@ type Config struct {
 	// TrustedProxies are the networks of reverse proxies (the Caddy of the node). For a request from
 	// one of them the client address is taken from X-Forwarded-For. Default: the polipan network.
 	TrustedProxies []string `yaml:"trusted_proxies"`
+
+	// M8 observability. VictoriaMetricsURL and VictoriaLogsURL are the storage backends (empty: monitoring is off).
+	// They are on the internal control-plane network and only the server talks to them. BasicUser and BasicPassword
+	// are for their basic auth (-httpAuth.*), when it is set.
+	VictoriaMetricsURL string `yaml:"victoria_metrics_url"`
+	VictoriaLogsURL    string `yaml:"victoria_logs_url"`
+	VictoriaUser       string `yaml:"victoria_user"`
+	VictoriaPassword   string `yaml:"victoria_password"`
+	// IngestListen is the mTLS listener where agents send metrics and log batches (default :9444).
+	// IngestURL is how agents reach it (default https://<first agent host>:<port>).
+	IngestListen string `yaml:"ingest_listen"`
+	IngestURL    string `yaml:"ingest_url"`
+	// VMAgentImage is the image of the vmagent that every agent runs.
+	VMAgentImage string `yaml:"vmagent_image"`
+	// StorageMetricsRetentionDays and StorageLogsRetentionDays are the -retentionPeriod of the two stores.
+	// An org retention above them is refused, because the store would delete the data first.
+	StorageMetricsRetentionDays int `yaml:"storage_metrics_retention_days"`
+	StorageLogsRetentionDays    int `yaml:"storage_logs_retention_days"`
+	// TelegramAPI is the base of the Telegram bot API. Only tests change it.
+	TelegramAPI string `yaml:"telegram_api"`
+	// AlertRepeatInterval is the default time between reminders of a firing alert (alert_repeat_interval).
+	AlertRepeatInterval time.Duration `yaml:"alert_repeat_interval"`
 }
 
 // Default returns the config with the default values.
@@ -72,6 +94,12 @@ func Default() Config {
 		LogLevel:        "info",
 		APIRateLimit:    600,
 		ShutdownTimeout: 15 * time.Second,
+
+		IngestListen:                ":9444",
+		VMAgentImage:                "victoriametrics/vmagent:v1.108.1",
+		StorageMetricsRetentionDays: 365,
+		StorageLogsRetentionDays:    90,
+		AlertRepeatInterval:         4 * time.Hour,
 
 		TrustedProxies:     []string{"172.30.0.0/24"},
 		MasterKeyFile:      "/etc/polipan/master.key",
@@ -129,11 +157,19 @@ func applyEnv(cfg *Config, getenv func(string) string) error {
 		cfg.APIRateLimit = n
 	}
 	for env, dst := range map[string]*string{
-		"POLIPAN_EXTERNAL_URL":    &cfg.ExternalURL,
-		"POLIPAN_MASTER_KEY_FILE": &cfg.MasterKeyFile,
-		"POLIPAN_AGENT_LISTEN":    &cfg.AgentListen,
-		"POLIPAN_MESH_CIDR":       &cfg.MeshCIDR,
-		"POLIPAN_ACME_EMAIL":      &cfg.ACMEEmail,
+		"POLIPAN_EXTERNAL_URL":      &cfg.ExternalURL,
+		"POLIPAN_MASTER_KEY_FILE":   &cfg.MasterKeyFile,
+		"POLIPAN_AGENT_LISTEN":      &cfg.AgentListen,
+		"POLIPAN_MESH_CIDR":         &cfg.MeshCIDR,
+		"POLIPAN_ACME_EMAIL":        &cfg.ACMEEmail,
+		"POLIPAN_VM_URL":            &cfg.VictoriaMetricsURL,
+		"POLIPAN_VL_URL":            &cfg.VictoriaLogsURL,
+		"POLIPAN_VICTORIA_USER":     &cfg.VictoriaUser,
+		"POLIPAN_VICTORIA_PASSWORD": &cfg.VictoriaPassword,
+		"POLIPAN_INGEST_LISTEN":     &cfg.IngestListen,
+		"POLIPAN_INGEST_URL":        &cfg.IngestURL,
+		"POLIPAN_VMAGENT_IMAGE":     &cfg.VMAgentImage,
+		"POLIPAN_TELEGRAM_API":      &cfg.TelegramAPI,
 	} {
 		if v := getenv(env); v != "" {
 			*dst = v
@@ -146,8 +182,9 @@ func applyEnv(cfg *Config, getenv func(string) string) error {
 		cfg.AgentHosts = strings.Split(v, ",")
 	}
 	for env, dst := range map[string]*time.Duration{
-		"POLIPAN_NODE_SUSPECT_AFTER": &cfg.NodeSuspectAfter,
-		"POLIPAN_NODE_DOWN_AFTER":    &cfg.NodeDownAfter,
+		"POLIPAN_NODE_SUSPECT_AFTER":    &cfg.NodeSuspectAfter,
+		"POLIPAN_NODE_DOWN_AFTER":       &cfg.NodeDownAfter,
+		"POLIPAN_ALERT_REPEAT_INTERVAL": &cfg.AlertRepeatInterval,
 	} {
 		if v := getenv(env); v != "" {
 			d, err := time.ParseDuration(v)
@@ -155,6 +192,18 @@ func applyEnv(cfg *Config, getenv func(string) string) error {
 				return fmt.Errorf("%s: not a duration", env)
 			}
 			*dst = d
+		}
+	}
+	for env, dst := range map[string]*int{
+		"POLIPAN_STORAGE_METRICS_RETENTION_DAYS": &cfg.StorageMetricsRetentionDays,
+		"POLIPAN_STORAGE_LOGS_RETENTION_DAYS":    &cfg.StorageLogsRetentionDays,
+	} {
+		if v := getenv(env); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 1 {
+				return fmt.Errorf("%s: not a number of days", env)
+			}
+			*dst = n
 		}
 	}
 	if v := getenv("POLIPAN_WIREGUARD_PORT"); v != "" {
