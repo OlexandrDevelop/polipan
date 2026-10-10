@@ -458,10 +458,11 @@ func (c *HTTPClient) List(ctx context.Context, labels map[string]string) ([]Cont
 // Inspect returns one container. A missing one gives ErrNotFound.
 func (c *HTTPClient) Inspect(ctx context.Context, idOrName string) (*Container, error) {
 	var r struct {
-		ID    string `json:"Id"`
-		Name  string `json:"Name"`
-		Image string `json:"Image"`
-		State struct {
+		ID           string `json:"Id"`
+		Name         string `json:"Name"`
+		Image        string `json:"Image"`
+		RestartCount int    `json:"RestartCount"`
+		State        struct {
 			Status    string `json:"Status"`
 			ExitCode  int    `json:"ExitCode"`
 			StartedAt string `json:"StartedAt"`
@@ -479,7 +480,8 @@ func (c *HTTPClient) Inspect(ctx context.Context, idOrName string) (*Container, 
 		return nil, err
 	}
 	ct := &Container{ID: r.ID, Name: strings.TrimPrefix(r.Name, "/"), Image: r.Config.Image, ImageID: r.Image,
-		State: r.State.Status, ExitCode: r.State.ExitCode, Labels: r.Config.Labels, IP: c.ipOf(r.NetworkSettings)}
+		State: r.State.Status, ExitCode: r.State.ExitCode, Labels: r.Config.Labels, IP: c.ipOf(r.NetworkSettings),
+		RestartCount: r.RestartCount}
 	if t, err := time.Parse(time.RFC3339Nano, r.State.StartedAt); err == nil && t.Year() > 1 {
 		ct.StartedAt = t
 	}

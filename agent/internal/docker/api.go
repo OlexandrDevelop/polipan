@@ -92,6 +92,8 @@ type Container struct {
 	Labels    map[string]string
 	IP        string // address on the polipan network, empty if none
 	Health    string // Docker health state, empty if no health check
+	// RestartCount is how often Docker restarted the container (set by Inspect only).
+	RestartCount int
 }
 
 // Event is a container event from Docker.
