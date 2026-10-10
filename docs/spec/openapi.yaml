@@ -1,0 +1,1979 @@
+openapi: 3.1.0
+info:
+  title: Polipan API
+  version: 1.0.0
+  description: >
+    Public API of Polipan. This file is the source of truth for the server, the CLI, the Terraform provider
+    and the web client (see docs/spec/05-api.md). Every operation has operationId and x-permission.
+    x-permission is a permission from the matrix in docs/spec/10-security.md, or one of two special values:
+    public (no login) and authenticated (any logged-in user, no matrix check).
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: /api/v1
+security:
+  - bearerToken: []
+  - sessionCookie: []
+tags:
+  - {name: system}
+  - {name: auth}
+  - {name: org}
+  - {name: nodes}
+  - {name: projects}
+  - {name: environments}
+  - {name: services}
+  - {name: deployments}
+  - {name: releases}
+  - {name: domains}
+  - {name: volumes}
+  - {name: variables}
+  - {name: secrets}
+  - {name: observability}
+  - {name: templates}
+  - {name: git}
+  - {name: backups}
+  - {name: alerts}
+  - {name: audit}
+  - {name: config}
+
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Liveness and readiness of the server
+      tags: [system]
+      security: []
+      x-permission: public
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Health'}}}}
+  /version:
+    get:
+      operationId: getVersion
+      summary: Server version and API version
+      tags: [system]
+      security: []
+      x-permission: public
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {version: {type: string}, commit: {type: string}, api: {type: string}}}}}}
+  /setup/first-user:
+    post:
+      operationId: setupFirstUser
+      summary: Create the first owner with the one-time setup token (404 after first use)
+      tags: [system]
+      security: []
+      x-permission: public
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [setup_token, email, name, password], properties: {setup_token: {type: string}, email: {type: string, format: email}, name: {type: string}, password: {type: string, minLength: 12}}}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /auth/login:
+    post:
+      operationId: login
+      summary: Password login. Sets the session cookie. Needs totp_code if 2FA is on.
+      tags: [auth]
+      security: []
+      x-permission: public
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [email, password], properties: {email: {type: string, format: email}, password: {type: string}, totp_code: {type: string}}}}}}
+      responses:
+        '200': {description: Logged in, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
+        '401': {$ref: '#/components/responses/Error'}
+        '429': {$ref: '#/components/responses/Error'}
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: End the current session
+      tags: [auth]
+      x-permission: authenticated
+      responses:
+        '204': {description: Logged out}
+  /auth/totp/enroll:
+    post:
+      operationId: enrollTotp
+      summary: Start TOTP enrollment. Returns the otpauth URI once.
+      tags: [auth]
+      x-permission: authenticated
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {otpauth_uri: {type: string}}}}}}
+  /auth/totp/verify:
+    post:
+      operationId: verifyTotp
+      summary: Confirm TOTP enrollment. Returns recovery codes once.
+      tags: [auth]
+      x-permission: authenticated
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [totp_code], properties: {totp_code: {type: string}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {recovery_codes: {type: array, items: {type: string}}}}}}}
+  /auth/totp/disable:
+    post:
+      operationId: disableTotp
+      summary: Turn TOTP off for the current user (needs password)
+      tags: [auth]
+      x-permission: authenticated
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [password], properties: {password: {type: string}}}}}}
+      responses:
+        '204': {description: Disabled}
+  /auth/password-reset:
+    post:
+      operationId: requestPasswordReset
+      summary: Send a password reset email (always returns 202)
+      tags: [auth]
+      security: []
+      x-permission: public
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [email], properties: {email: {type: string, format: email}}}}}}
+      responses:
+        '202': {description: Accepted}
+  /auth/password-reset/confirm:
+    post:
+      operationId: confirmPasswordReset
+      summary: Set a new password with the token from the email
+      tags: [auth]
+      security: []
+      x-permission: public
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [token, password], properties: {token: {type: string}, password: {type: string, minLength: 12}}}}}}
+      responses:
+        '204': {description: Password changed}
+  /auth/invitations/accept:
+    post:
+      operationId: acceptInvitation
+      summary: Accept an invitation and set a password
+      tags: [auth]
+      security: []
+      x-permission: public
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [token, name, password], properties: {token: {type: string}, name: {type: string}, password: {type: string, minLength: 12}}}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
+  /auth/sso/providers:
+    get:
+      operationId: listLoginProviders
+      summary: List enabled SSO providers for the login page
+      tags: [auth]
+      security: []
+      x-permission: public
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {type: object, properties: {id: {type: string}, name: {type: string}, kind: {type: string}}}}}}}
+  /auth/sso/{provider_id}/start:
+    get:
+      operationId: startSsoLogin
+      summary: Redirect to the identity provider (PKCE, state, nonce)
+      tags: [auth]
+      security: []
+      x-permission: public
+      parameters: [{$ref: '#/components/parameters/ProviderId'}]
+      responses:
+        '302': {description: Redirect}
+  /auth/sso/{provider_id}/callback:
+    get:
+      operationId: finishSsoLogin
+      summary: Identity provider callback. Sets the session cookie and redirects.
+      tags: [auth]
+      security: []
+      x-permission: public
+      parameters:
+        - {$ref: '#/components/parameters/ProviderId'}
+        - {name: code, in: query, required: true, schema: {type: string}}
+        - {name: state, in: query, required: true, schema: {type: string}}
+      responses:
+        '302': {description: Redirect}
+  /me:
+    get:
+      operationId: getMe
+      summary: Current user with org role and effective permissions
+      tags: [auth]
+      x-permission: authenticated
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Me'}}}}
+    patch:
+      operationId: updateMe
+      summary: Change own name or password
+      tags: [auth]
+      x-permission: authenticated
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {name: {type: string}, current_password: {type: string}, new_password: {type: string, minLength: 12}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
+  /me/sessions:
+    get:
+      operationId: listMySessions
+      summary: List own sessions
+      tags: [auth]
+      x-permission: authenticated
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Session'}}}}}
+  /me/sessions/{session_id}:
+    delete:
+      operationId: revokeMySession
+      summary: Revoke one own session
+      tags: [auth]
+      x-permission: authenticated
+      parameters: [{name: session_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        '204': {description: Revoked}
+
+  /org:
+    get:
+      operationId: getOrg
+      summary: Get the organization
+      tags: [org]
+      x-permission: org:read
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Org'}}}}
+    patch:
+      operationId: updateOrg
+      summary: Update organization settings (name, retention, default domain, preview domain, sso_required, 2FA policy)
+      tags: [org]
+      x-permission: org:update
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OrgUpdate'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Org'}}}}
+    delete:
+      operationId: deleteOrg
+      summary: Delete the organization (soft delete, purge after 30 days). Needs the org slug in confirm.
+      tags: [org]
+      x-permission: org:delete
+      parameters: [{name: confirm, in: query, required: true, schema: {type: string}}]
+      responses:
+        '204': {description: Deleted}
+  /org/tokens/{token_id}:
+    delete:
+      operationId: revokeOrgToken
+      summary: Revoke the API token of any user
+      tags: [org]
+      x-permission: token:manage
+      parameters: [{$ref: '#/components/parameters/TokenId'}]
+      responses:
+        '204': {description: Revoked}
+  /members:
+    get:
+      operationId: listMembers
+      summary: List members of the organization
+      tags: [org]
+      x-permission: member:read
+      parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Cursor'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Member'}}, next_cursor: {type: [string, 'null']}}}}}}
+  /members/invitations:
+    post:
+      operationId: inviteMember
+      summary: Invite a user by email with a role
+      tags: [org]
+      x-permission: member:manage
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [email, role], properties: {email: {type: string, format: email}, role: {$ref: '#/components/schemas/Role'}}}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Member'}}}}
+  /members/{user_id}:
+    patch:
+      operationId: updateMember
+      summary: Change role or disable a member (409 last_owner if it would remove the last owner)
+      tags: [org]
+      x-permission: member:manage
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {role: {$ref: '#/components/schemas/Role'}, disabled: {type: boolean}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Member'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: removeMember
+      summary: Remove a member. Sessions and tokens are revoked.
+      tags: [org]
+      x-permission: member:manage
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      responses:
+        '204': {description: Removed}
+        '409': {$ref: '#/components/responses/Error'}
+  /members/{user_id}/sessions:
+    delete:
+      operationId: revokeMemberSessions
+      summary: Revoke all sessions of a member
+      tags: [org]
+      x-permission: member:manage
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      responses:
+        '204': {description: Revoked}
+  /teams:
+    get:
+      operationId: listTeams
+      summary: List teams
+      tags: [org]
+      x-permission: member:read
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Team'}}}}}
+    post:
+      operationId: createTeam
+      summary: Create a team
+      tags: [org]
+      x-permission: team:manage
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string}}}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Team'}}}}
+  /teams/{team_id}:
+    patch:
+      operationId: updateTeam
+      summary: Rename a team
+      tags: [org]
+      x-permission: team:manage
+      parameters: [{$ref: '#/components/parameters/TeamId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {name: {type: string}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Team'}}}}
+    delete:
+      operationId: deleteTeam
+      summary: Delete a team and its project roles
+      tags: [org]
+      x-permission: team:manage
+      parameters: [{$ref: '#/components/parameters/TeamId'}]
+      responses:
+        '204': {description: Deleted}
+  /teams/{team_id}/members/{user_id}:
+    put:
+      operationId: addTeamMember
+      summary: Add a user to a team
+      tags: [org]
+      x-permission: team:manage
+      parameters: [{$ref: '#/components/parameters/TeamId'}, {$ref: '#/components/parameters/UserId'}]
+      responses:
+        '204': {description: Added}
+    delete:
+      operationId: removeTeamMember
+      summary: Remove a user from a team
+      tags: [org]
+      x-permission: team:manage
+      parameters: [{$ref: '#/components/parameters/TeamId'}, {$ref: '#/components/parameters/UserId'}]
+      responses:
+        '204': {description: Removed}
+  /tokens:
+    get:
+      operationId: listTokens
+      summary: List own API tokens (with all=true and token:manage, list all)
+      tags: [org]
+      x-permission: token:own
+      parameters: [{name: all, in: query, schema: {type: boolean}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/ApiToken'}}}}}
+    post:
+      operationId: createToken
+      summary: Create an API token. The full token is returned once.
+      tags: [org]
+      x-permission: token:own
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name, scopes], properties: {name: {type: string}, scopes: {type: array, items: {type: string, enum: [read, deploy, write, admin]}}, project_id: {type: string}, expires_at: {type: string, format: date-time}}}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/ApiTokenCreated'}}}}
+  /tokens/{token_id}:
+    delete:
+      operationId: revokeToken
+      summary: Revoke one of your own tokens
+      tags: [org]
+      x-permission: token:own
+      parameters: [{$ref: '#/components/parameters/TokenId'}]
+      responses:
+        '204': {description: Revoked}
+  /sso-providers:
+    get:
+      operationId: listSsoProviders
+      summary: List SSO providers (client secret never returned)
+      tags: [org]
+      x-permission: sso:manage
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/SsoProvider'}}}}}
+    post:
+      operationId: createSsoProvider
+      summary: Create an SSO provider
+      tags: [org]
+      x-permission: sso:manage
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SsoProviderWrite'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/SsoProvider'}}}}
+  /sso-providers/{provider_id}:
+    patch:
+      operationId: updateSsoProvider
+      summary: Update an SSO provider
+      tags: [org]
+      x-permission: sso:manage
+      parameters: [{$ref: '#/components/parameters/ProviderId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SsoProviderWrite'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/SsoProvider'}}}}
+    delete:
+      operationId: deleteSsoProvider
+      summary: Delete an SSO provider
+      tags: [org]
+      x-permission: sso:manage
+      parameters: [{$ref: '#/components/parameters/ProviderId'}]
+      responses:
+        '204': {description: Deleted}
+  /sso-providers/{provider_id}/group-mappings:
+    get:
+      operationId: listGroupMappings
+      summary: List group to role mappings
+      tags: [org]
+      x-permission: sso:manage
+      parameters: [{$ref: '#/components/parameters/ProviderId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/GroupMapping'}}}}}
+    put:
+      operationId: replaceGroupMappings
+      summary: Replace all group mappings of a provider
+      tags: [org]
+      x-permission: sso:manage
+      parameters: [{$ref: '#/components/parameters/ProviderId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/GroupMapping'}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/GroupMapping'}}}}}
+  /audit-events:
+    get:
+      operationId: listAuditEvents
+      summary: Search the audit log
+      tags: [audit]
+      x-permission: audit:read
+      parameters:
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/Cursor'}
+        - {name: actor_id, in: query, schema: {type: string}}
+        - {name: action, in: query, schema: {type: string}}
+        - {name: target_type, in: query, schema: {type: string}}
+        - {name: target_id, in: query, schema: {type: string}}
+        - {name: project_id, in: query, schema: {type: string}}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/AuditEvent'}}, next_cursor: {type: [string, 'null']}}}}}}
+  /audit-events/export:
+    get:
+      operationId: exportAuditEvents
+      summary: Export audit events as JSON lines
+      tags: [audit]
+      x-permission: audit:export
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+      responses:
+        '200': {description: JSON lines, content: {application/x-ndjson: {schema: {type: string}}}}
+  /audit/verify:
+    get:
+      operationId: verifyAuditChain
+      summary: Verify the hash chain
+      tags: [audit]
+      x-permission: audit:read
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, required: [ok], properties: {ok: {type: boolean}, first_broken_seq: {type: integer}, checked_rows: {type: integer}}}}}}
+
+  /nodes:
+    get:
+      operationId: listNodes
+      summary: List nodes
+      tags: [nodes]
+      x-permission: node:read
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Node'}}}}}
+    post:
+      operationId: createNodeJoinToken
+      summary: Create a join token and the install command for a new node
+      tags: [nodes]
+      x-permission: node:manage
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string}, labels: {type: object, additionalProperties: {type: string}}}}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {type: object, properties: {node_id: {type: string}, token: {type: string}, install_command: {type: string}, expires_at: {type: string, format: date-time}}}}}}
+  /nodes/{node_id}:
+    get:
+      operationId: getNode
+      summary: Get a node
+      tags: [nodes]
+      x-permission: node:read
+      parameters: [{$ref: '#/components/parameters/NodeId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Node'}}}}
+    patch:
+      operationId: updateNode
+      summary: Change name or labels
+      tags: [nodes]
+      x-permission: node:manage
+      parameters: [{$ref: '#/components/parameters/NodeId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {name: {type: string}, labels: {type: object, additionalProperties: {type: string}}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Node'}}}}
+    delete:
+      operationId: deleteNode
+      summary: Delete a node (409 node_not_empty unless force=true)
+      tags: [nodes]
+      x-permission: node:manage
+      parameters: [{$ref: '#/components/parameters/NodeId'}, {name: force, in: query, schema: {type: boolean}}]
+      responses:
+        '204': {description: Deleted}
+        '409': {$ref: '#/components/responses/Error'}
+  /nodes/{node_id}/cordon:
+    post:
+      operationId: cordonNode
+      summary: Stop scheduling new workloads on the node
+      tags: [nodes]
+      x-permission: node:manage
+      parameters: [{$ref: '#/components/parameters/NodeId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Node'}}}}
+  /nodes/{node_id}/uncordon:
+    post:
+      operationId: uncordonNode
+      summary: Allow scheduling on the node again
+      tags: [nodes]
+      x-permission: node:manage
+      parameters: [{$ref: '#/components/parameters/NodeId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Node'}}}}
+  /nodes/{node_id}/drain:
+    post:
+      operationId: drainNode
+      summary: Move all workloads away with blue-green deploys
+      tags: [nodes]
+      x-permission: node:manage
+      parameters: [{$ref: '#/components/parameters/NodeId'}]
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/Node'}}}}
+  /nodes/{node_id}/maintenance:
+    post:
+      operationId: setNodeMaintenance
+      summary: Put a drained node into maintenance (or take it out with enabled=false)
+      tags: [nodes]
+      x-permission: node:manage
+      parameters: [{$ref: '#/components/parameters/NodeId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [enabled], properties: {enabled: {type: boolean}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Node'}}}}
+  /nodes/{node_id}/self-check:
+    post:
+      operationId: runNodeSelfCheck
+      summary: Ask the agent to check Docker, Caddy and WireGuard
+      tags: [nodes]
+      x-permission: node:manage
+      parameters: [{$ref: '#/components/parameters/NodeId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {docker: {type: boolean}, caddy: {type: boolean}, wireguard: {type: boolean}, clock_skew_ms: {type: integer}}}}}}
+  /nodes/{node_id}/metrics:
+    get:
+      operationId: getNodeMetrics
+      summary: Node metrics time series
+      tags: [observability]
+      x-permission: metrics:read
+      parameters: [{$ref: '#/components/parameters/NodeId'}, {$ref: '#/components/parameters/MetricNames'}, {$ref: '#/components/parameters/From'}, {$ref: '#/components/parameters/To'}, {$ref: '#/components/parameters/Step'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/MetricResult'}}}}
+  /nodes/{node_id}/orphan-volumes:
+    get:
+      operationId: listOrphanVolumes
+      summary: List volumes on the node that no service uses
+      tags: [nodes]
+      x-permission: node:read
+      parameters: [{$ref: '#/components/parameters/NodeId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {type: object, properties: {name: {type: string}, size_bytes: {type: integer}, last_service: {type: string}}}}}}}
+  /orphan-volumes/{node_id}/{name}:
+    delete:
+      operationId: deleteOrphanVolume
+      summary: Delete an orphan volume for good
+      tags: [nodes]
+      x-permission: volume:manage
+      parameters: [{$ref: '#/components/parameters/NodeId'}, {name: name, in: path, required: true, schema: {type: string}}]
+      responses:
+        '204': {description: Deleted}
+
+  /projects:
+    get:
+      operationId: listProjects
+      summary: List projects the user can see
+      tags: [projects]
+      x-permission: project:read
+      parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Cursor'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Project'}}, next_cursor: {type: [string, 'null']}}}}}}
+    post:
+      operationId: createProject
+      summary: Create a project (creates a production and a staging environment by default)
+      tags: [projects]
+      x-permission: project:create
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string}, slug: {type: string}, default_environments: {type: boolean, default: true}}}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Project'}}}}
+  /projects/{project_id}:
+    get:
+      operationId: getProject
+      summary: Get a project
+      tags: [projects]
+      x-permission: project:read
+      parameters: [{$ref: '#/components/parameters/ProjectId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Project'}}}}
+    patch:
+      operationId: updateProject
+      summary: Update project settings (retain_releases, previews, build_timeout, config source)
+      tags: [projects]
+      x-permission: project:update
+      parameters: [{$ref: '#/components/parameters/ProjectId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProjectUpdate'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Project'}}}}
+    delete:
+      operationId: deleteProject
+      summary: Delete a project (soft delete, purge after 30 days). Needs the project slug in confirm.
+      tags: [projects]
+      x-permission: project:delete
+      parameters: [{$ref: '#/components/parameters/ProjectId'}, {name: confirm, in: query, required: true, schema: {type: string}}]
+      responses:
+        '204': {description: Deleted}
+  /projects/{project_id}/roles:
+    get:
+      operationId: listProjectRoles
+      summary: List project role overrides
+      tags: [projects]
+      x-permission: project:read
+      parameters: [{$ref: '#/components/parameters/ProjectId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/ProjectRole'}}}}}
+    put:
+      operationId: replaceProjectRoles
+      summary: Replace project role overrides
+      tags: [projects]
+      x-permission: member:manage
+      parameters: [{$ref: '#/components/parameters/ProjectId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/ProjectRole'}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/ProjectRole'}}}}}
+  /projects/{project_id}/environments:
+    get:
+      operationId: listEnvironments
+      summary: List environments of a project
+      tags: [environments]
+      x-permission: env:read
+      parameters: [{$ref: '#/components/parameters/ProjectId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Environment'}}}}}
+    post:
+      operationId: createEnvironment
+      summary: Create an environment (optionally cloned from another one)
+      tags: [environments]
+      x-permission: env:create
+      parameters: [{$ref: '#/components/parameters/ProjectId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name, kind], properties: {name: {type: string}, kind: {type: string, enum: [production, staging, custom]}, clone_from_environment_id: {type: string}, protected: {type: boolean}}}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Environment'}}}}
+  /environments/{environment_id}:
+    get:
+      operationId: getEnvironment
+      summary: Get an environment
+      tags: [environments]
+      x-permission: env:read
+      parameters: [{$ref: '#/components/parameters/EnvironmentId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Environment'}}}}
+    patch:
+      operationId: updateEnvironment
+      summary: Update an environment. Changing protected needs admin.
+      tags: [environments]
+      x-permission: env:update
+      parameters: [{$ref: '#/components/parameters/EnvironmentId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {name: {type: string}, protected: {type: boolean}, settings: {type: object}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Environment'}}}}
+    delete:
+      operationId: deleteEnvironment
+      summary: Delete an environment and its services (volumes only with delete_volumes=true)
+      tags: [environments]
+      x-permission: env:delete
+      parameters: [{$ref: '#/components/parameters/EnvironmentId'}, {name: delete_volumes, in: query, schema: {type: boolean}}]
+      responses:
+        '204': {description: Deleted}
+  /environments/{environment_id}/promote:
+    post:
+      operationId: promoteEnvironment
+      summary: Promote all services of this environment to another one (batch). Supports dry_run.
+      tags: [environments]
+      x-permission: service:promote
+      parameters: [{$ref: '#/components/parameters/EnvironmentId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PromoteRequest'}}}}
+      responses:
+        '200': {description: Dry-run plan, content: {application/json: {schema: {$ref: '#/components/schemas/PromotionPlan'}}}}
+        '202': {description: Batch started, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Deployment'}}}}}
+        '422': {$ref: '#/components/responses/Error'}
+  /projects/{project_id}/previews:
+    get:
+      operationId: listPreviews
+      summary: List preview environments
+      tags: [environments]
+      x-permission: env:read
+      parameters: [{$ref: '#/components/parameters/ProjectId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Environment'}}}}}
+    post:
+      operationId: createPreview
+      summary: Create a preview by hand for a PR number or branch
+      tags: [environments]
+      x-permission: preview:manage
+      parameters: [{$ref: '#/components/parameters/ProjectId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [repo], properties: {repo: {type: string}, pr_number: {type: integer}, branch: {type: string}, base_environment_id: {type: string}}}}}}
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/Environment'}}}}
+  /projects/{project_id}/config:
+    get:
+      operationId: exportProjectConfig
+      summary: Export the project as polipan.yaml (secret names only)
+      tags: [config]
+      x-permission: project:read
+      parameters: [{$ref: '#/components/parameters/ProjectId'}]
+      responses:
+        '200': {description: YAML, content: {application/yaml: {schema: {type: string}}}}
+  /projects/{project_id}/config/plan:
+    post:
+      operationId: planProjectConfig
+      summary: Validate a polipan.yaml and return the diff. Changes nothing.
+      tags: [config]
+      x-permission: project:read
+      parameters: [{$ref: '#/components/parameters/ProjectId'}]
+      requestBody: {required: true, content: {application/yaml: {schema: {type: string}}, application/json: {schema: {type: object}}}}
+      responses:
+        '200': {description: Plan, content: {application/json: {schema: {$ref: '#/components/schemas/ConfigPlan'}}}}
+        '422': {$ref: '#/components/responses/Error'}
+  /projects/{project_id}/config/apply:
+    post:
+      operationId: applyProjectConfig
+      summary: Apply a plan. Needs plan_hash from the plan call.
+      tags: [config]
+      x-permission: config:apply
+      parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [config, plan_hash], properties: {config: {type: string}, plan_hash: {type: string}, prune: {type: boolean}, prune_data: {type: boolean}}}}}}
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {type: object, properties: {deployments: {type: array, items: {$ref: '#/components/schemas/Deployment'}}}}}}}
+        '409': {$ref: '#/components/responses/Error'}
+
+  /projects/{project_id}/variables:
+    get:
+      operationId: listVariables
+      summary: List variables (filter by scope)
+      tags: [variables]
+      x-permission: variable:read
+      parameters: [{$ref: '#/components/parameters/ProjectId'}, {name: environment_id, in: query, schema: {type: string}}, {name: service_id, in: query, schema: {type: string}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Variable'}}}}}
+    post:
+      operationId: createVariable
+      summary: Create a variable
+      tags: [variables]
+      x-permission: variable:write
+      parameters: [{$ref: '#/components/parameters/ProjectId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VariableWrite'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Variable'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /projects/{project_id}/variables:bulk:
+    post:
+      operationId: bulkSetVariables
+      summary: Import many variables or secrets (.env text or list)
+      tags: [variables]
+      x-permission: variable:write
+      parameters: [{$ref: '#/components/parameters/ProjectId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [items], properties: {environment_id: {type: string}, service_id: {type: string}, items: {type: array, items: {type: object, required: [name, value], properties: {name: {type: string}, value: {type: string}, secret: {type: boolean}, preview: {type: boolean}, build_time: {type: boolean}}}}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {created: {type: integer}, updated: {type: integer}}}}}}
+  /variables/{variable_id}:
+    patch:
+      operationId: updateVariable
+      summary: Change a variable (409 managed_by_git if set by polipan.yaml)
+      tags: [variables]
+      x-permission: variable:write
+      parameters: [{$ref: '#/components/parameters/VariableId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VariableWrite'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Variable'}}}}
+    delete:
+      operationId: deleteVariable
+      summary: Delete a variable
+      tags: [variables]
+      x-permission: variable:write
+      parameters: [{$ref: '#/components/parameters/VariableId'}]
+      responses:
+        '204': {description: Deleted}
+  /projects/{project_id}/secrets:
+    get:
+      operationId: listSecrets
+      summary: List secrets (names, versions, flags, never values)
+      tags: [secrets]
+      x-permission: secret:list
+      parameters: [{$ref: '#/components/parameters/ProjectId'}, {name: environment_id, in: query, schema: {type: string}}, {name: service_id, in: query, schema: {type: string}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Secret'}}}}}
+    post:
+      operationId: createSecret
+      summary: Create a secret. The value is write-only.
+      tags: [secrets]
+      x-permission: secret:write
+      parameters: [{$ref: '#/components/parameters/ProjectId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SecretWrite'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Secret'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /secrets/{secret_id}:
+    put:
+      operationId: setSecretValue
+      summary: Write a new version of the value (and optionally change flags)
+      tags: [secrets]
+      x-permission: secret:write
+      parameters: [{$ref: '#/components/parameters/SecretId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [value], properties: {value: {type: string, writeOnly: true}, preview: {type: boolean}, build_time: {type: boolean}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Secret'}}}}
+    delete:
+      operationId: deleteSecret
+      summary: Delete a secret (versions used by retained releases are kept until destroyed)
+      tags: [secrets]
+      x-permission: secret:write
+      parameters: [{$ref: '#/components/parameters/SecretId'}]
+      responses:
+        '204': {description: Deleted}
+  /secrets/{secret_id}/versions:
+    get:
+      operationId: listSecretVersions
+      summary: List versions (number, who, when, destroyed)
+      tags: [secrets]
+      x-permission: secret:list
+      parameters: [{$ref: '#/components/parameters/SecretId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/SecretVersion'}}}}}
+  /secrets/{secret_id}/versions/{version}/restore:
+    post:
+      operationId: restoreSecretVersion
+      summary: Make an earlier version current by writing it as a new version
+      tags: [secrets]
+      x-permission: secret:write
+      parameters: [{$ref: '#/components/parameters/SecretId'}, {$ref: '#/components/parameters/Version'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Secret'}}}}
+  /secrets/{secret_id}/versions/{version}:
+    delete:
+      operationId: destroySecretVersion
+      summary: Destroy the ciphertext of an old version for good
+      tags: [secrets]
+      x-permission: secret:destroy
+      parameters: [{$ref: '#/components/parameters/SecretId'}, {$ref: '#/components/parameters/Version'}]
+      responses:
+        '204': {description: Destroyed}
+        '409': {$ref: '#/components/responses/Error'}
+
+  /environments/{environment_id}/services:
+    get:
+      operationId: listServices
+      summary: List services of an environment
+      tags: [services]
+      x-permission: service:read
+      parameters: [{$ref: '#/components/parameters/EnvironmentId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Service'}}}}}
+    post:
+      operationId: createService
+      summary: Create a service (app, database, worker, cron)
+      tags: [services]
+      x-permission: service:create
+      parameters: [{$ref: '#/components/parameters/EnvironmentId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ServiceCreate'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Service'}}}}
+        '422': {$ref: '#/components/responses/Error'}
+  /services/{service_id}:
+    get:
+      operationId: getService
+      summary: Get a service with its live config, live release and placements
+      tags: [services]
+      x-permission: service:read
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Service'}}}}
+    patch:
+      operationId: updateService
+      summary: Change service config. Takes effect with the next deploy except domains, replicas and failover. 409 managed_by_git for git managed fields.
+      tags: [services]
+      x-permission: service:update
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ServiceUpdate'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Service'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: deleteService
+      summary: Delete a service (volumes only with delete_volumes=true; needs the service name in confirm)
+      tags: [services]
+      x-permission: service:delete
+      parameters: [{$ref: '#/components/parameters/ServiceId'}, {name: confirm, in: query, required: true, schema: {type: string}}, {name: delete_volumes, in: query, schema: {type: boolean}}]
+      responses:
+        '204': {description: Deleted}
+  /services/{service_id}/deploy:
+    post:
+      operationId: deployService
+      summary: Start a deployment. With dry_run=true returns only the plan.
+      tags: [deployments]
+      x-permission: service:deploy
+      parameters: [{$ref: '#/components/parameters/ServiceId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {content: {application/json: {schema: {$ref: '#/components/schemas/DeployRequest'}}}}
+      responses:
+        '200': {description: Dry-run plan, content: {application/json: {schema: {$ref: '#/components/schemas/DeployPlan'}}}}
+        '202': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/Deployment'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /services/{service_id}/rollback:
+    post:
+      operationId: rollbackService
+      summary: Roll back to an earlier release (no build)
+      tags: [deployments]
+      x-permission: service:rollback
+      parameters: [{$ref: '#/components/parameters/ServiceId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [release_id], properties: {release_id: {type: string}, strategy: {$ref: '#/components/schemas/Strategy'}, force: {type: boolean}}}}}}
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/Deployment'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /services/{service_id}/move:
+    post:
+      operationId: moveService
+      summary: Move a service to another node
+      tags: [deployments]
+      x-permission: service:move
+      parameters: [{$ref: '#/components/parameters/ServiceId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [target_node_id], properties: {target_node_id: {type: string}, volume_copy: {type: string, enum: [backup, direct]}}}}}}
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/Deployment'}}}}
+  /services/{service_id}/restart:
+    post:
+      operationId: restartService
+      summary: Restart containers of the live release (no new release)
+      tags: [services]
+      x-permission: service:restart
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      responses:
+        '202': {description: Accepted}
+  /services/{service_id}/stop:
+    post:
+      operationId: stopService
+      summary: Stop the service (keeps release and volumes)
+      tags: [services]
+      x-permission: service:update
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      responses:
+        '202': {description: Accepted}
+  /services/{service_id}/start:
+    post:
+      operationId: startService
+      summary: Start a stopped service
+      tags: [services]
+      x-permission: service:update
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      responses:
+        '202': {description: Accepted}
+  /services/{service_id}/health-check:test:
+    post:
+      operationId: testHealthCheck
+      summary: Run the service health check once against a live container
+      tags: [services]
+      x-permission: service:read
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {healthy: {type: boolean}, status: {type: integer}, body_excerpt: {type: string}, duration_ms: {type: integer}}}}}}
+  /services/{service_id}/exec:
+    get:
+      operationId: execService
+      summary: WebSocket terminal into a running container (upgrade request). Audited.
+      tags: [services]
+      x-permission: service:exec
+      parameters: [{$ref: '#/components/parameters/ServiceId'}, {name: command, in: query, schema: {type: string, default: /bin/sh}}, {name: replica, in: query, schema: {type: integer}}]
+      responses:
+        '101': {description: Switching protocols}
+  /services/{service_id}/deployments:
+    get:
+      operationId: listServiceDeployments
+      summary: List deployments of a service
+      tags: [deployments]
+      x-permission: deployment:read
+      parameters: [{$ref: '#/components/parameters/ServiceId'}, {$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Cursor'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Deployment'}}, next_cursor: {type: [string, 'null']}}}}}}
+  /deployments/{deployment_id}:
+    get:
+      operationId: getDeployment
+      summary: Get a deployment with its steps
+      tags: [deployments]
+      x-permission: deployment:read
+      parameters: [{$ref: '#/components/parameters/DeploymentId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Deployment'}}}}
+  /deployments/{deployment_id}/cancel:
+    post:
+      operationId: cancelDeployment
+      summary: Cancel a deployment (409 deployment_not_cancellable in switching and draining)
+      tags: [deployments]
+      x-permission: deployment:cancel
+      parameters: [{$ref: '#/components/parameters/DeploymentId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Deployment'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /deployments/{deployment_id}/promote:
+    post:
+      operationId: promoteCanary
+      summary: Skip the wait of the current canary step
+      tags: [deployments]
+      x-permission: service:deploy
+      parameters: [{$ref: '#/components/parameters/DeploymentId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Deployment'}}}}
+  /deployments/{deployment_id}/abort:
+    post:
+      operationId: abortCanary
+      summary: Abort a canary and send all traffic back to the old release
+      tags: [deployments]
+      x-permission: service:deploy
+      parameters: [{$ref: '#/components/parameters/DeploymentId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Deployment'}}}}
+  /deployments/{deployment_id}/pause:
+    post:
+      operationId: pauseCanary
+      summary: Pause the canary timer
+      tags: [deployments]
+      x-permission: service:deploy
+      parameters: [{$ref: '#/components/parameters/DeploymentId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Deployment'}}}}
+  /deployments/{deployment_id}/resume:
+    post:
+      operationId: resumeCanary
+      summary: Resume a paused canary
+      tags: [deployments]
+      x-permission: service:deploy
+      parameters: [{$ref: '#/components/parameters/DeploymentId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Deployment'}}}}
+  /deployments/{deployment_id}/events:
+    get:
+      operationId: streamDeploymentEvents
+      summary: SSE stream of state changes, health results and log lines of a deployment
+      tags: [deployments]
+      x-permission: deployment:read
+      parameters: [{$ref: '#/components/parameters/DeploymentId'}]
+      responses:
+        '200': {description: Event stream, content: {text/event-stream: {schema: {$ref: '#/components/schemas/DeploymentEvent'}}}}
+  /deployments/{deployment_id}/logs:
+    get:
+      operationId: getDeploymentLogs
+      summary: Build and pre_deploy log lines (secrets masked)
+      tags: [deployments]
+      x-permission: deployment:read
+      parameters: [{$ref: '#/components/parameters/DeploymentId'}, {name: after_seq, in: query, schema: {type: integer}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {type: object, properties: {seq: {type: integer}, stream: {type: string}, line: {type: string}, time: {type: string, format: date-time}}}}}}}
+  /services/{service_id}/releases:
+    get:
+      operationId: listReleases
+      summary: Release history of a service
+      tags: [releases]
+      x-permission: deployment:read
+      parameters: [{$ref: '#/components/parameters/ServiceId'}, {$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Cursor'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Release'}}, next_cursor: {type: [string, 'null']}}}}}}
+  /releases/{release_id}:
+    get:
+      operationId: getRelease
+      summary: Get a release
+      tags: [releases]
+      x-permission: deployment:read
+      parameters: [{$ref: '#/components/parameters/ReleaseId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Release'}}}}
+    patch:
+      operationId: annotateRelease
+      summary: Set the note of a release
+      tags: [releases]
+      x-permission: service:update
+      parameters: [{$ref: '#/components/parameters/ReleaseId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [note], properties: {note: {type: string}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Release'}}}}
+  /releases/{release_id}/promote:
+    post:
+      operationId: promoteRelease
+      summary: Promote a release to the same-named service in another environment. Supports dry_run.
+      tags: [releases]
+      x-permission: service:promote
+      parameters: [{$ref: '#/components/parameters/ReleaseId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PromoteRequest'}}}}
+      responses:
+        '200': {description: Dry-run plan, content: {application/json: {schema: {$ref: '#/components/schemas/PromotionPlan'}}}}
+        '202': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/Deployment'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+  /releases/{release_id}/diff/{other_release_id}:
+    get:
+      operationId: diffReleases
+      summary: Compare two releases
+      tags: [releases]
+      x-permission: deployment:read
+      parameters: [{$ref: '#/components/parameters/ReleaseId'}, {name: other_release_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {changes: {type: array, items: {$ref: '#/components/schemas/FieldChange'}}}}}}}
+
+  /services/{service_id}/domains:
+    get:
+      operationId: listDomains
+      summary: List domains of a service
+      tags: [domains]
+      x-permission: service:read
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Domain'}}}}}
+    post:
+      operationId: createDomain
+      summary: Add a domain (409 domain_in_use)
+      tags: [domains]
+      x-permission: domain:manage
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DomainWrite'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Domain'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /domains/{domain_id}:
+    patch:
+      operationId: updateDomain
+      summary: Change a domain
+      tags: [domains]
+      x-permission: domain:manage
+      parameters: [{$ref: '#/components/parameters/DomainId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DomainWrite'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Domain'}}}}
+    delete:
+      operationId: deleteDomain
+      summary: Remove a domain
+      tags: [domains]
+      x-permission: domain:manage
+      parameters: [{$ref: '#/components/parameters/DomainId'}]
+      responses:
+        '204': {description: Deleted}
+  /domains/{domain_id}/move:
+    post:
+      operationId: moveDomain
+      summary: Move a domain to another service in one atomic ingress change
+      tags: [domains]
+      x-permission: domain:manage
+      parameters: [{$ref: '#/components/parameters/DomainId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [target_service_id], properties: {target_service_id: {type: string}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Domain'}}}}
+  /services/{service_id}/volumes:
+    get:
+      operationId: listVolumes
+      summary: List volumes of a service
+      tags: [volumes]
+      x-permission: service:read
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Volume'}}}}}
+    post:
+      operationId: createVolume
+      summary: Add a volume
+      tags: [volumes]
+      x-permission: volume:manage
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VolumeWrite'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Volume'}}}}
+  /volumes/{volume_id}:
+    patch:
+      operationId: updateVolume
+      summary: Change mount path, size limit or access mode
+      tags: [volumes]
+      x-permission: volume:manage
+      parameters: [{$ref: '#/components/parameters/VolumeId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VolumeWrite'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Volume'}}}}
+    delete:
+      operationId: deleteVolume
+      summary: Unmount a volume (data is deleted only with delete_data=true)
+      tags: [volumes]
+      x-permission: volume:manage
+      parameters: [{$ref: '#/components/parameters/VolumeId'}, {name: delete_data, in: query, schema: {type: boolean}}]
+      responses:
+        '204': {description: Deleted}
+
+  /services/{service_id}/logs:
+    get:
+      operationId: getServiceLogs
+      summary: Recent log lines of a service
+      tags: [observability]
+      x-permission: logs:read
+      parameters: [{$ref: '#/components/parameters/ServiceId'}, {$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/From'}, {$ref: '#/components/parameters/To'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/LogLine'}}}}}
+  /services/{service_id}/logs/stream:
+    get:
+      operationId: streamServiceLogs
+      summary: SSE live tail (last 200 lines, then new lines)
+      tags: [observability]
+      x-permission: logs:read
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      responses:
+        '200': {description: Event stream, content: {text/event-stream: {schema: {$ref: '#/components/schemas/LogLine'}}}}
+  /logs/search:
+    get:
+      operationId: searchLogs
+      summary: Search logs by text and fields (LogsQL subset)
+      tags: [observability]
+      x-permission: logs:read
+      parameters:
+        - {name: q, in: query, schema: {type: string}, description: "Free text, a phrase in quotes, or /regex/"}
+        - {name: project_id, in: query, schema: {type: string}}
+        - {name: environment_id, in: query, schema: {type: string}}
+        - {name: service_id, in: query, schema: {type: string}}
+        - {name: release_id, in: query, schema: {type: string}}
+        - {name: node_id, in: query, schema: {type: string}}
+        - {name: level, in: query, schema: {type: string, enum: [debug, info, warn, error, unknown]}}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/Cursor'}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/LogLine'}}, next_cursor: {type: [string, 'null']}}}}}}
+  /services/{service_id}/metrics:
+    get:
+      operationId: getServiceMetrics
+      summary: Service metrics time series
+      tags: [observability]
+      x-permission: metrics:read
+      parameters: [{$ref: '#/components/parameters/ServiceId'}, {$ref: '#/components/parameters/MetricNames'}, {$ref: '#/components/parameters/From'}, {$ref: '#/components/parameters/To'}, {$ref: '#/components/parameters/Step'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/MetricResult'}}}}
+  /events:
+    get:
+      operationId: streamEvents
+      summary: SSE stream of platform events the user may see (deployments, nodes, alerts, backups)
+      tags: [observability]
+      x-permission: org:read
+      parameters: [{name: topics, in: query, schema: {type: array, items: {type: string}}}]
+      responses:
+        '200': {description: Event stream, content: {text/event-stream: {schema: {type: object, properties: {topic: {type: string}, object_id: {type: string}, payload: {type: object}}}}}}
+
+  /templates:
+    get:
+      operationId: listTemplates
+      summary: List built-in and custom templates
+      tags: [templates]
+      x-permission: template:read
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Template'}}}}}
+    post:
+      operationId: createTemplate
+      summary: Add a custom template (validated by the safety rules)
+      tags: [templates]
+      x-permission: template:manage
+      requestBody: {required: true, content: {application/yaml: {schema: {type: string}}, application/json: {schema: {type: object}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Template'}}}}
+        '422': {$ref: '#/components/responses/Error'}
+  /templates/{slug}:
+    get:
+      operationId: getTemplate
+      summary: Get a template with its inputs
+      tags: [templates]
+      x-permission: template:read
+      parameters: [{name: slug, in: path, required: true, schema: {type: string}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Template'}}}}
+  /templates/{slug}/instantiate:
+    post:
+      operationId: instantiateTemplate
+      summary: Create the services of a template in one transaction
+      tags: [templates]
+      x-permission: service:create
+      parameters: [{name: slug, in: path, required: true, schema: {type: string}}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [environment_id, inputs], properties: {environment_id: {type: string}, inputs: {type: object, additionalProperties: true}}}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Service'}}}}}
+        '422': {$ref: '#/components/responses/Error'}
+  /environments/{environment_id}/import-compose:
+    post:
+      operationId: importCompose
+      summary: Convert a Docker Compose file to services (safety validated). dry_run returns the result only.
+      tags: [templates]
+      x-permission: service:create
+      parameters: [{$ref: '#/components/parameters/EnvironmentId'}, {name: dry_run, in: query, schema: {type: boolean}}]
+      requestBody: {required: true, content: {application/yaml: {schema: {type: string}}}}
+      responses:
+        '200': {description: Conversion result, content: {application/json: {schema: {type: object, properties: {services: {type: array, items: {$ref: '#/components/schemas/ServiceCreate'}}, warnings: {type: array, items: {type: string}}}}}}}
+        '422': {$ref: '#/components/responses/Error'}
+
+  /git-connections:
+    get:
+      operationId: listGitConnections
+      summary: List Git connections
+      tags: [git]
+      x-permission: git:manage
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/GitConnection'}}}}}
+    post:
+      operationId: createGitConnection
+      summary: Add a Git connection (GitHub App, GitLab or Gitea token)
+      tags: [git]
+      x-permission: git:manage
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/GitConnectionWrite'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/GitConnection'}}}}
+  /git-connections/{connection_id}:
+    delete:
+      operationId: deleteGitConnection
+      summary: Delete a Git connection
+      tags: [git]
+      x-permission: git:manage
+      parameters: [{$ref: '#/components/parameters/ConnectionId'}]
+      responses:
+        '204': {description: Deleted}
+  /git-connections/{connection_id}/repos:
+    get:
+      operationId: listGitRepos
+      summary: List repositories and branches reachable by the connection
+      tags: [git]
+      x-permission: service:create
+      parameters: [{$ref: '#/components/parameters/ConnectionId'}, {name: q, in: query, schema: {type: string}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {type: object, properties: {full_name: {type: string}, default_branch: {type: string}, private: {type: boolean}}}}}}}
+  /services/{service_id}/deploy-key:
+    post:
+      operationId: createDeployKey
+      summary: Generate an SSH deploy key for a Git service (public key returned)
+      tags: [git]
+      x-permission: service:update
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {type: object, properties: {public_key: {type: string}}}}}}
+  /webhooks/git/{webhook_id}:
+    post:
+      operationId: receiveGitWebhook
+      summary: Inbound Git webhook (push, pull request). Signature checked. 401 on bad signature.
+      tags: [git]
+      security: []
+      x-permission: public
+      parameters: [{name: webhook_id, in: path, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        '202': {description: Accepted}
+        '401': {$ref: '#/components/responses/Error'}
+  /webhooks/deploy/{webhook_id}:
+    post:
+      operationId: receiveDeployHook
+      summary: Deploy hook URL for CI systems. The secret is part of the URL id and a header token.
+      tags: [git]
+      security: []
+      x-permission: public
+      parameters: [{name: webhook_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        '202': {description: Accepted}
+        '401': {$ref: '#/components/responses/Error'}
+
+  /backup-targets:
+    get:
+      operationId: listBackupTargets
+      summary: List backup targets
+      tags: [backups]
+      x-permission: backup:read
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/BackupTarget'}}}}}
+    post:
+      operationId: createBackupTarget
+      summary: Add a backup target. Credentials are write-only.
+      tags: [backups]
+      x-permission: backup:manage
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BackupTargetWrite'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/BackupTarget'}}}}
+  /backup-targets/{target_id}:
+    patch:
+      operationId: updateBackupTarget
+      summary: Change a backup target
+      tags: [backups]
+      x-permission: backup:manage
+      parameters: [{$ref: '#/components/parameters/TargetId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BackupTargetWrite'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BackupTarget'}}}}
+    delete:
+      operationId: deleteBackupTarget
+      summary: Delete a target (409 if a policy uses it)
+      tags: [backups]
+      x-permission: backup:manage
+      parameters: [{$ref: '#/components/parameters/TargetId'}]
+      responses:
+        '204': {description: Deleted}
+        '409': {$ref: '#/components/responses/Error'}
+  /backup-targets/{target_id}/test:
+    post:
+      operationId: testBackupTarget
+      summary: Write and read a small test object on the target
+      tags: [backups]
+      x-permission: backup:manage
+      parameters: [{$ref: '#/components/parameters/TargetId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {ok: {type: boolean}, error: {type: string}}}}}}
+  /services/{service_id}/backup-policies:
+    get:
+      operationId: listBackupPolicies
+      summary: List backup policies of a service
+      tags: [backups]
+      x-permission: backup:read
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/BackupPolicy'}}}}}
+    post:
+      operationId: createBackupPolicy
+      summary: Create a backup policy
+      tags: [backups]
+      x-permission: backup:manage
+      parameters: [{$ref: '#/components/parameters/ServiceId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BackupPolicyWrite'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/BackupPolicy'}}}}
+  /backup-policies/{policy_id}:
+    get:
+      operationId: getBackupPolicy
+      summary: Get a backup policy with its health (verified, unverified, failing)
+      tags: [backups]
+      x-permission: backup:read
+      parameters: [{$ref: '#/components/parameters/PolicyId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BackupPolicy'}}}}
+    patch:
+      operationId: updateBackupPolicy
+      summary: Change a backup policy
+      tags: [backups]
+      x-permission: backup:manage
+      parameters: [{$ref: '#/components/parameters/PolicyId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BackupPolicyWrite'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BackupPolicy'}}}}
+    delete:
+      operationId: deleteBackupPolicy
+      summary: Delete a policy (snapshots on targets are kept unless delete_snapshots=true)
+      tags: [backups]
+      x-permission: backup:manage
+      parameters: [{$ref: '#/components/parameters/PolicyId'}, {name: delete_snapshots, in: query, schema: {type: boolean}}]
+      responses:
+        '204': {description: Deleted}
+  /backup-policies/{policy_id}/run:
+    post:
+      operationId: runBackup
+      summary: Run a backup now
+      tags: [backups]
+      x-permission: backup:manage
+      parameters: [{$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/BackupRun'}}}}
+  /backup-policies/{policy_id}/runs:
+    get:
+      operationId: listBackupRuns
+      summary: List backup runs
+      tags: [backups]
+      x-permission: backup:read
+      parameters: [{$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Cursor'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/BackupRun'}}, next_cursor: {type: [string, 'null']}}}}}}
+  /backup-runs/{run_id}/restore:
+    post:
+      operationId: restoreBackup
+      summary: Restore a snapshot into the service or into a new service (clone)
+      tags: [backups]
+      x-permission: backup:restore
+      parameters: [{name: run_id, in: path, required: true, schema: {type: string}}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [target_id, mode], properties: {target_id: {type: string}, mode: {type: string, enum: [in_place, new_service]}, new_service_name: {type: string}, confirm: {type: string}}}}}}
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {type: object, properties: {job_id: {type: string}, service_id: {type: string}}}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /backup-policies/{policy_id}/restore-checks:
+    post:
+      operationId: runRestoreCheck
+      summary: Start a restore check now
+      tags: [backups]
+      x-permission: backup:manage
+      parameters: [{$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/RestoreCheck'}}}}
+  /restore-checks:
+    get:
+      operationId: listRestoreChecks
+      summary: List restore checks (filter by policy)
+      tags: [backups]
+      x-permission: backup:read
+      parameters: [{name: policy_id, in: query, schema: {type: string}}, {$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Cursor'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/RestoreCheck'}}, next_cursor: {type: [string, 'null']}}}}}}
+
+  /alert-channels:
+    get:
+      operationId: listAlertChannels
+      summary: List alert channels (secrets never returned)
+      tags: [alerts]
+      x-permission: alert:read
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/AlertChannel'}}}}}
+    post:
+      operationId: createAlertChannel
+      summary: Create an alert channel
+      tags: [alerts]
+      x-permission: alert:manage
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AlertChannelWrite'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/AlertChannel'}}}}
+  /alert-channels/{channel_id}:
+    patch:
+      operationId: updateAlertChannel
+      summary: Change an alert channel
+      tags: [alerts]
+      x-permission: alert:manage
+      parameters: [{$ref: '#/components/parameters/ChannelId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AlertChannelWrite'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/AlertChannel'}}}}
+    delete:
+      operationId: deleteAlertChannel
+      summary: Delete an alert channel
+      tags: [alerts]
+      x-permission: alert:manage
+      parameters: [{$ref: '#/components/parameters/ChannelId'}]
+      responses:
+        '204': {description: Deleted}
+  /alert-channels/{channel_id}/test:
+    post:
+      operationId: testAlertChannel
+      summary: Send a test message
+      tags: [alerts]
+      x-permission: alert:manage
+      parameters: [{$ref: '#/components/parameters/ChannelId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {ok: {type: boolean}, error: {type: string}}}}}}
+  /alert-rules:
+    get:
+      operationId: listAlertRules
+      summary: List alert rules
+      tags: [alerts]
+      x-permission: alert:read
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/AlertRule'}}}}}
+    post:
+      operationId: createAlertRule
+      summary: Create an alert rule
+      tags: [alerts]
+      x-permission: alert:manage
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AlertRuleWrite'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/AlertRule'}}}}
+  /alert-rules/{rule_id}:
+    patch:
+      operationId: updateAlertRule
+      summary: Change an alert rule
+      tags: [alerts]
+      x-permission: alert:manage
+      parameters: [{$ref: '#/components/parameters/RuleId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AlertRuleWrite'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/AlertRule'}}}}
+    delete:
+      operationId: deleteAlertRule
+      summary: Delete an alert rule
+      tags: [alerts]
+      x-permission: alert:manage
+      parameters: [{$ref: '#/components/parameters/RuleId'}]
+      responses:
+        '204': {description: Deleted}
+  /alert-rules/{rule_id}/mute:
+    post:
+      operationId: muteAlertRule
+      summary: Mute a rule until a time, with a reason (audited)
+      tags: [alerts]
+      x-permission: alert:manage
+      parameters: [{$ref: '#/components/parameters/RuleId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [until, reason], properties: {until: {type: string, format: date-time}, reason: {type: string}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/AlertRule'}}}}
+  /alert-instances:
+    get:
+      operationId: listAlertInstances
+      summary: List firing and recently resolved alerts
+      tags: [alerts]
+      x-permission: alert:read
+      parameters: [{name: state, in: query, schema: {type: string, enum: [firing, resolved]}}, {$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Cursor'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/AlertInstance'}}, next_cursor: {type: [string, 'null']}}}}}}
+
+components:
+  securitySchemes:
+    bearerToken: {type: http, scheme: bearer, description: "API token starting with pp_"}
+    sessionCookie: {type: apiKey, in: cookie, name: pp_session, description: "Browser session. State-changing requests also need header X-CSRF-Token."}
+  parameters:
+    Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+    Cursor: {name: cursor, in: query, schema: {type: string}}
+    IdempotencyKey: {name: Idempotency-Key, in: header, schema: {type: string, maxLength: 128}}
+    From: {name: from, in: query, schema: {type: string, format: date-time}}
+    To: {name: to, in: query, schema: {type: string, format: date-time}}
+    Step: {name: step, in: query, schema: {type: string, example: 60s}}
+    MetricNames: {name: metrics, in: query, required: true, schema: {type: array, items: {type: string, enum: [cpu, memory, network_in, network_out, disk, requests, status_5xx_rate, latency_p50, latency_p95, latency_p99, restarts, load]}}}
+    ProviderId: {name: provider_id, in: path, required: true, schema: {type: string}}
+    UserId: {name: user_id, in: path, required: true, schema: {type: string}}
+    TeamId: {name: team_id, in: path, required: true, schema: {type: string}}
+    TokenId: {name: token_id, in: path, required: true, schema: {type: string}}
+    NodeId: {name: node_id, in: path, required: true, schema: {type: string}}
+    ProjectId: {name: project_id, in: path, required: true, schema: {type: string}}
+    EnvironmentId: {name: environment_id, in: path, required: true, schema: {type: string}}
+    ServiceId: {name: service_id, in: path, required: true, schema: {type: string}}
+    DeploymentId: {name: deployment_id, in: path, required: true, schema: {type: string}}
+    ReleaseId: {name: release_id, in: path, required: true, schema: {type: string}}
+    DomainId: {name: domain_id, in: path, required: true, schema: {type: string}}
+    VolumeId: {name: volume_id, in: path, required: true, schema: {type: string}}
+    VariableId: {name: variable_id, in: path, required: true, schema: {type: string}}
+    SecretId: {name: secret_id, in: path, required: true, schema: {type: string}}
+    Version: {name: version, in: path, required: true, schema: {type: integer}}
+    ConnectionId: {name: connection_id, in: path, required: true, schema: {type: string}}
+    TargetId: {name: target_id, in: path, required: true, schema: {type: string}}
+    PolicyId: {name: policy_id, in: path, required: true, schema: {type: string}}
+    ChannelId: {name: channel_id, in: path, required: true, schema: {type: string}}
+    RuleId: {name: rule_id, in: path, required: true, schema: {type: string}}
+  responses:
+    Error:
+      description: Error
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  schemas:
+    Error:
+      type: object
+      required: [code, message, request_id]
+      properties:
+        code: {type: string, description: "Stable machine code, for example domain_in_use, managed_by_git, last_owner, plan_changed"}
+        message: {type: string}
+        details: {type: object, additionalProperties: true}
+        request_id: {type: string}
+    Health:
+      type: object
+      required: [status]
+      properties: {status: {type: string, enum: [ok, degraded]}, database: {type: boolean}, queue_lag_seconds: {type: number}}
+    Role: {type: string, enum: [owner, admin, developer, viewer]}
+    Strategy: {type: string, enum: [recreate, blue_green, canary]}
+    DeploymentState:
+      type: string
+      enum: [queued, building, image_ready, starting, health_checking, shifting, switching, draining, live, failed, rolled_back, cancelled, superseded]
+    User:
+      type: object
+      properties: {id: {type: string}, email: {type: string}, name: {type: string}, totp_enabled: {type: boolean}, created_at: {type: string, format: date-time}}
+    Me:
+      type: object
+      properties:
+        user: {$ref: '#/components/schemas/User'}
+        org_role: {$ref: '#/components/schemas/Role'}
+        project_roles: {type: array, items: {$ref: '#/components/schemas/ProjectRole'}}
+    Session:
+      type: object
+      properties: {id: {type: string}, ip: {type: string}, user_agent: {type: string}, created_at: {type: string, format: date-time}, expires_at: {type: string, format: date-time}, current: {type: boolean}}
+    Org:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        slug: {type: string}
+        sso_required: {type: boolean}
+        settings: {$ref: '#/components/schemas/OrgSettings'}
+    OrgSettings:
+      type: object
+      properties:
+        default_domain_suffix: {type: string}
+        preview_domain: {type: string}
+        metrics_retention_days: {type: integer, default: 90}
+        logs_retention_days: {type: integer, default: 30}
+        audit_retention_days: {type: integer, default: 365}
+        require_2fa: {type: boolean, default: false}
+        allow_private_targets: {type: boolean, default: false}
+        allow_owner_password: {type: boolean, default: true}
+        acme_email: {type: string}
+        acme_dns_provider: {type: object, description: "DNS-01 provider name and credential secret id", additionalProperties: true}
+    OrgUpdate:
+      type: object
+      properties: {name: {type: string}, sso_required: {type: boolean}, settings: {$ref: '#/components/schemas/OrgSettings'}}
+    Member:
+      type: object
+      properties: {user_id: {type: string}, email: {type: string}, name: {type: string}, role: {$ref: '#/components/schemas/Role'}, source: {type: string, enum: [manual, sso]}, status: {type: string, enum: [invited, active, disabled]}, last_login_at: {type: string, format: date-time}}
+    Team:
+      type: object
+      properties: {id: {type: string}, name: {type: string}, member_ids: {type: array, items: {type: string}}}
+    ProjectRole:
+      type: object
+      required: [role]
+      properties: {user_id: {type: string}, team_id: {type: string}, role: {type: string, enum: [admin, developer, viewer]}}
+    ApiToken:
+      type: object
+      properties: {id: {type: string}, name: {type: string}, token_prefix: {type: string}, scopes: {type: array, items: {type: string}}, project_id: {type: string}, expires_at: {type: string, format: date-time}, last_used_at: {type: string, format: date-time}, revoked_at: {type: string, format: date-time}}
+    ApiTokenCreated:
+      allOf:
+        - {$ref: '#/components/schemas/ApiToken'}
+        - {type: object, properties: {token: {type: string, description: "Full token, shown once"}}}
+    SsoProvider:
+      type: object
+      properties: {id: {type: string}, kind: {type: string, enum: [oidc, google, github]}, name: {type: string}, issuer_url: {type: string}, client_id: {type: string}, scopes: {type: array, items: {type: string}}, groups_claim: {type: string}, allowed_domains: {type: array, items: {type: string}}, default_role: {$ref: '#/components/schemas/Role'}, auto_create_users: {type: boolean}, enabled: {type: boolean}}
+    SsoProviderWrite:
+      allOf:
+        - {$ref: '#/components/schemas/SsoProvider'}
+        - {type: object, properties: {client_secret: {type: string, writeOnly: true}}}
+    GroupMapping:
+      type: object
+      required: [group_value, role]
+      properties: {group_value: {type: string}, role: {$ref: '#/components/schemas/Role'}, project_id: {type: string}}
+    AuditEvent:
+      type: object
+      properties: {seq: {type: integer}, id: {type: string}, actor_type: {type: string, enum: [user, token, system, agent, sso]}, actor_id: {type: string}, action: {type: string}, target_type: {type: string}, target_id: {type: string}, project_id: {type: string}, diff: {type: object, additionalProperties: true}, ip: {type: string}, user_agent: {type: string}, request_id: {type: string}, hash: {type: string}, created_at: {type: string, format: date-time}}
+    Node:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        state: {type: string, enum: [pending, ready, suspect, down, draining, cordoned, maintenance]}
+        labels: {type: object, additionalProperties: {type: string}}
+        public_ip: {type: string}
+        mesh_ip: {type: string}
+        os: {type: string}
+        arch: {type: string}
+        docker_version: {type: string}
+        agent_version: {type: string}
+        capacity: {type: object, properties: {cpu_millis: {type: integer}, memory_bytes: {type: integer}, disk_bytes: {type: integer}}}
+        usage: {type: object, properties: {cpu_millis: {type: integer}, memory_bytes: {type: integer}, disk_bytes: {type: integer}}}
+        last_heartbeat_at: {type: string, format: date-time}
+        workload_count: {type: integer}
+    Project:
+      type: object
+      properties: {id: {type: string}, name: {type: string}, slug: {type: string}, settings: {$ref: '#/components/schemas/ProjectSettings'}, config_source: {type: object, properties: {repo: {type: string}, branch: {type: string}, path: {type: string}, connection_id: {type: string}}}, config_sync_state: {type: string, enum: [in_sync, drifted, plan_pending, apply_failed]}, created_at: {type: string, format: date-time}}
+    ProjectSettings:
+      type: object
+      properties:
+        retain_releases: {type: integer, default: 10}
+        build_timeout_minutes: {type: integer, default: 30}
+        previews: {$ref: '#/components/schemas/PreviewSettings'}
+    PreviewSettings:
+      type: object
+      properties: {enabled: {type: boolean, default: false}, base_environment_id: {type: string}, max_active: {type: integer, default: 10}, ttl_days: {type: integer, default: 7}, from_forks: {type: boolean, default: false}, node_selector: {type: object, additionalProperties: {type: string}}, seed_command: {type: array, items: {type: string}}, strategy: {$ref: '#/components/schemas/Strategy'}}
+    ProjectUpdate:
+      type: object
+      properties: {name: {type: string}, settings: {$ref: '#/components/schemas/ProjectSettings'}, config_source: {type: object, additionalProperties: true}}
+    Environment:
+      type: object
+      properties: {id: {type: string}, project_id: {type: string}, name: {type: string}, slug: {type: string}, kind: {type: string, enum: [production, staging, preview, custom]}, protected: {type: boolean}, base_environment_id: {type: string}, preview: {type: object, properties: {repo: {type: string}, pr_number: {type: integer}, state: {type: string}, expires_at: {type: string, format: date-time}, url: {type: string}}}, settings: {type: object, additionalProperties: true}}
+    ServiceConfig:
+      type: object
+      description: "Same shape as one entry of services in polipan.yaml, after defaults. See docs/spec/07-config-as-code.md."
+      additionalProperties: true
+    Service:
+      type: object
+      properties:
+        id: {type: string}
+        environment_id: {type: string}
+        name: {type: string}
+        type: {type: string, enum: [app, database, worker, cron]}
+        source_type: {type: string, enum: [git, image]}
+        db_engine: {type: string, enum: [postgres, mysql, mariadb, mongo, redis]}
+        config: {$ref: '#/components/schemas/ServiceConfig'}
+        git_managed_fields: {type: array, items: {type: string}}
+        status: {type: string, enum: [no_release, deploying, running, degraded, stopped, failed]}
+        desired_state: {type: string, enum: [running, stopped]}
+        failover: {type: string, enum: [none, auto]}
+        allow_data_loss_failover: {type: boolean}
+        live_release_id: {type: string}
+        placements: {type: array, items: {$ref: '#/components/schemas/Placement'}}
+        pending_changes: {type: boolean}
+    Placement:
+      type: object
+      properties: {id: {type: string}, node_id: {type: string}, release_id: {type: string}, replica_index: {type: integer}, color: {type: string, enum: [blue, green]}, role: {type: string, enum: [live, candidate, draining, stopped]}, weight: {type: integer}, health: {type: string, enum: [unknown, starting, healthy, unhealthy]}}
+    ServiceCreate:
+      type: object
+      required: [name, type]
+      properties:
+        name: {type: string, pattern: '^[a-z0-9-]{1,40}$'}
+        type: {type: string, enum: [app, database, worker, cron]}
+        source: {type: object, description: "git: {connection_id, repo, branch, path, builder, dockerfile}; image: {image, registry_secret}", additionalProperties: true}
+        db_engine: {type: string, enum: [postgres, mysql, mariadb, mongo, redis]}
+        db_version: {type: string}
+        config: {$ref: '#/components/schemas/ServiceConfig'}
+    ServiceUpdate:
+      type: object
+      properties:
+        config: {$ref: '#/components/schemas/ServiceConfig'}
+        failover: {type: string, enum: [none, auto]}
+        allow_data_loss_failover: {type: boolean}
+        override_git: {type: boolean}
+    DeployRequest:
+      type: object
+      properties:
+        strategy: {$ref: '#/components/schemas/Strategy'}
+        strategy_options: {$ref: '#/components/schemas/StrategyOptions'}
+        commit: {type: string}
+        dry_run: {type: boolean, default: false}
+        no_cache: {type: boolean}
+    StrategyOptions:
+      type: object
+      properties:
+        drain_seconds: {type: integer, default: 30}
+        canary_steps: {type: array, items: {type: integer, minimum: 1, maximum: 100}, default: [10, 25, 50, 100]}
+        canary_step_interval_seconds: {type: integer, default: 300}
+        canary_max_5xx_rate: {type: number, default: 0.02}
+        canary_max_p95_ratio: {type: number, default: 1.5}
+        allow_downtime_on_low_capacity: {type: boolean, default: false}
+        allow_overlap: {type: boolean, default: true}
+    DeployPlan:
+      type: object
+      properties:
+        strategy: {$ref: '#/components/schemas/Strategy'}
+        forced: {type: boolean}
+        expected_downtime: {type: string, enum: [none, short]}
+        nodes: {type: array, items: {type: string}}
+        warnings: {type: array, items: {$ref: '#/components/schemas/Warning'}}
+    Warning:
+      type: object
+      properties: {code: {type: string, description: "for example zero_downtime_not_available, migration_compat, domain_port_mismatch"}, message: {type: string}}
+    Deployment:
+      type: object
+      properties:
+        id: {type: string}
+        service_id: {type: string}
+        environment_id: {type: string}
+        release_id: {type: string}
+        previous_release_id: {type: string}
+        trigger: {type: string, enum: [manual, git_push, pull_request, promotion, rollback, api, config_apply, failover, move, schedule]}
+        strategy: {$ref: '#/components/schemas/Strategy'}
+        strategy_options: {$ref: '#/components/schemas/StrategyOptions'}
+        state: {$ref: '#/components/schemas/DeploymentState'}
+        canary_step: {type: integer}
+        failure_reason: {type: string}
+        failure_detail: {type: string}
+        warnings: {type: array, items: {$ref: '#/components/schemas/Warning'}}
+        steps: {type: array, items: {type: object, properties: {state: {type: string}, message: {type: string}, time: {type: string, format: date-time}}}}
+        actor_id: {type: string}
+        started_at: {type: string, format: date-time}
+        finished_at: {type: string, format: date-time}
+    DeploymentEvent:
+      type: object
+      properties: {type: {type: string, enum: [state, health, log, canary_gate]}, state: {$ref: '#/components/schemas/DeploymentState'}, data: {type: object, additionalProperties: true}, time: {type: string, format: date-time}}
+    Release:
+      type: object
+      properties:
+        id: {type: string}
+        service_id: {type: string}
+        number: {type: integer}
+        image_digest: {type: string}
+        image_ref: {type: string}
+        config_snapshot: {$ref: '#/components/schemas/ServiceConfig'}
+        variables: {type: object, additionalProperties: {type: string}, description: "Plain variables only"}
+        secret_versions: {type: object, additionalProperties: {type: integer}, description: "Secret name to version number. Never values."}
+        source: {type: object, properties: {type: {type: string}, commit_sha: {type: string}, branch: {type: string}, pr_number: {type: integer}, promoted_from_release_id: {type: string}, rollback_of_release_id: {type: string}}}
+        note: {type: string}
+        status: {type: string, enum: [live, previous, available, pruned]}
+        fast_rollback_possible: {type: boolean}
+        created_by: {type: string}
+        created_at: {type: string, format: date-time}
+    PromoteRequest:
+      type: object
+      required: [target_environment_id]
+      properties:
+        target_environment_id: {type: string}
+        dry_run: {type: boolean, default: false}
+        plan_hash: {type: string}
+        allow_missing: {type: array, items: {type: string}}
+        create_missing: {type: boolean, default: false}
+        include_databases: {type: boolean, default: false}
+        strategy: {$ref: '#/components/schemas/Strategy'}
+    PromotionPlan:
+      type: object
+      properties:
+        plan_hash: {type: string}
+        items: {type: array, items: {type: object, properties: {service: {type: string}, source_release_id: {type: string}, image_digest: {type: string}, changes: {type: array, items: {$ref: '#/components/schemas/FieldChange'}}, missing_variables: {type: array, items: {type: string}}, strategy: {$ref: '#/components/schemas/Strategy'}, skipped_reason: {type: string}}}}
+        warnings: {type: array, items: {$ref: '#/components/schemas/Warning'}}
+    FieldChange:
+      type: object
+      properties: {path: {type: string}, before: {}, after: {}}
+    Domain:
+      type: object
+      properties: {id: {type: string}, service_id: {type: string}, host: {type: string}, path_prefix: {type: string}, container_port: {type: integer}, https: {type: boolean}, redirect_www: {type: string, enum: [to_www, to_apex]}, ingress_node_ids: {type: array, items: {type: string}}, tls_status: {type: string, enum: [pending, issued, failed]}, tls_expires_at: {type: string, format: date-time}, tls_error: {type: string}, dns_records: {type: array, items: {type: object, properties: {type: {type: string}, name: {type: string}, value: {type: string}}}}}
+    DomainWrite:
+      type: object
+      properties: {host: {type: string}, path_prefix: {type: string, default: /}, container_port: {type: integer}, https: {type: boolean, default: true}, redirect_www: {type: string, enum: [to_www, to_apex]}, ingress_node_ids: {type: array, items: {type: string}}, basic_auth_secret: {type: string}, ip_allow: {type: array, items: {type: string}}, max_body_bytes: {type: integer}}
+    Volume:
+      type: object
+      properties: {id: {type: string}, name: {type: string}, kind: {type: string, enum: [volume, bind, tmpfs]}, mount_path: {type: string}, node_id: {type: string}, access_mode: {type: string, enum: [single_writer, shared]}, size_limit_bytes: {type: integer}, usage_bytes: {type: integer}}
+    VolumeWrite:
+      type: object
+      properties: {name: {type: string}, kind: {type: string, enum: [volume, bind, tmpfs]}, mount_path: {type: string}, access_mode: {type: string, enum: [single_writer, shared]}, size_limit_bytes: {type: integer}}
+    Variable:
+      type: object
+      properties: {id: {type: string}, name: {type: string}, value: {type: string}, environment_id: {type: string}, service_id: {type: string}, preview: {type: boolean}, build_time: {type: boolean}, git_managed: {type: boolean}}
+    VariableWrite:
+      type: object
+      required: [name, value]
+      properties: {name: {type: string}, value: {type: string}, environment_id: {type: string}, service_id: {type: string}, preview: {type: boolean, default: false}, build_time: {type: boolean, default: false}}
+    Secret:
+      type: object
+      description: "Never contains a value."
+      properties: {id: {type: string}, name: {type: string}, environment_id: {type: string}, service_id: {type: string}, preview: {type: boolean}, build_time: {type: boolean}, current_version: {type: integer}, git_managed: {type: boolean}, updated_by: {type: string}, updated_at: {type: string, format: date-time}}
+    SecretWrite:
+      type: object
+      required: [name, value]
+      properties: {name: {type: string}, value: {type: string, writeOnly: true}, environment_id: {type: string}, service_id: {type: string}, preview: {type: boolean, default: false}, build_time: {type: boolean, default: false}}
+    SecretVersion:
+      type: object
+      properties: {version: {type: integer}, created_by: {type: string}, created_at: {type: string, format: date-time}, destroyed: {type: boolean}, used_by_releases: {type: integer}}
+    LogLine:
+      type: object
+      properties: {time: {type: string, format: date-time}, message: {type: string}, level: {type: string}, stream: {type: string, enum: [stdout, stderr]}, project_id: {type: string}, environment_id: {type: string}, service_id: {type: string}, release_id: {type: string}, node_id: {type: string}, container: {type: string}}
+    MetricResult:
+      type: object
+      properties:
+        step_seconds: {type: integer}
+        series: {type: array, items: {type: object, properties: {metric: {type: string}, labels: {type: object, additionalProperties: {type: string}}, points: {type: array, items: {type: array, minItems: 2, maxItems: 2, items: {type: number}, description: "[unix_seconds, value]"}}}}}
+    Template:
+      type: object
+      properties: {slug: {type: string}, version: {type: string}, name: {type: string}, description: {type: string}, icon: {type: string}, builtin: {type: boolean}, inputs: {type: array, items: {type: object, additionalProperties: true}}, services: {type: array, items: {type: object, additionalProperties: true}}}
+    GitConnection:
+      type: object
+      properties: {id: {type: string}, provider: {type: string, enum: [github, gitlab, gitea, generic]}, name: {type: string}, base_url: {type: string}, webhook_url: {type: string}}
+    GitConnectionWrite:
+      type: object
+      required: [provider, name]
+      properties: {provider: {type: string, enum: [github, gitlab, gitea, generic]}, name: {type: string}, base_url: {type: string}, app_id: {type: string}, installation_id: {type: string}, token: {type: string, writeOnly: true}, private_key: {type: string, writeOnly: true}}
+    BackupTarget:
+      type: object
+      properties: {id: {type: string}, name: {type: string}, kind: {type: string, enum: [s3, b2, sftp, local, azure, gcs]}, config: {type: object, additionalProperties: true}, last_test_at: {type: string, format: date-time}, last_test_ok: {type: boolean}}
+    BackupTargetWrite:
+      type: object
+      required: [name, kind, config]
+      properties: {name: {type: string}, kind: {type: string, enum: [s3, b2, sftp, local, azure, gcs]}, config: {type: object, additionalProperties: true}, credentials: {type: object, writeOnly: true, additionalProperties: {type: string}}}
+    BackupPolicy:
+      type: object
+      properties: {id: {type: string}, service_id: {type: string}, volume_id: {type: string}, schedule: {type: string}, target_ids: {type: array, items: {type: string}}, retention: {type: object, properties: {keep_daily: {type: integer, default: 7}, keep_weekly: {type: integer, default: 4}, keep_monthly: {type: integer, default: 6}}}, restore_check_schedule: {type: string, default: '0 3 * * 0'}, restore_check_enabled: {type: boolean, default: true}, enabled: {type: boolean}, health: {type: string, enum: [verified, unverified, failing]}, last_run: {$ref: '#/components/schemas/BackupRun'}, last_restore_check: {$ref: '#/components/schemas/RestoreCheck'}}
+    BackupPolicyWrite:
+      type: object
+      properties: {volume_id: {type: string}, schedule: {type: string}, target_ids: {type: array, items: {type: string}}, retention: {type: object, additionalProperties: {type: integer}}, restore_check_schedule: {type: string}, restore_check_enabled: {type: boolean}, enabled: {type: boolean}, pre_hook: {type: array, items: {type: string}}, post_hook: {type: array, items: {type: string}}}
+    BackupRun:
+      type: object
+      properties: {id: {type: string}, policy_id: {type: string}, state: {type: string, enum: [queued, running, succeeded, failed]}, snapshots: {type: array, items: {type: object, properties: {target_id: {type: string}, snapshot_id: {type: string}, size_bytes: {type: integer}, ok: {type: boolean}, error: {type: string}}}}, error: {type: string}, started_at: {type: string, format: date-time}, finished_at: {type: string, format: date-time}}
+    RestoreCheck:
+      type: object
+      properties: {id: {type: string}, policy_id: {type: string}, backup_run_id: {type: string}, target_id: {type: string}, node_id: {type: string}, state: {type: string, enum: [queued, running, passed, failed]}, checks: {type: array, items: {type: object, properties: {name: {type: string}, ok: {type: boolean}, detail: {type: string}}}}, duration_ms: {type: integer}, started_at: {type: string, format: date-time}, finished_at: {type: string, format: date-time}}
+    AlertChannel:
+      type: object
+      properties: {id: {type: string}, kind: {type: string, enum: [telegram, slack, email, webhook]}, name: {type: string}, config: {type: object, additionalProperties: true}, enabled: {type: boolean}, state: {type: string, enum: [ok, failing]}}
+    AlertChannelWrite:
+      type: object
+      required: [kind, name]
+      properties: {kind: {type: string, enum: [telegram, slack, email, webhook]}, name: {type: string}, config: {type: object, additionalProperties: true}, secret: {type: string, writeOnly: true}, enabled: {type: boolean}}
+    AlertRule:
+      type: object
+      properties: {id: {type: string}, name: {type: string}, type: {type: string}, scope: {type: object, properties: {project_id: {type: string}, environment_id: {type: string}, service_id: {type: string}, node_id: {type: string}}}, params: {type: object, properties: {threshold: {type: number}, for_seconds: {type: integer}, query: {type: string}, count: {type: integer}}}, severity: {type: string, enum: [info, warning, critical]}, channel_ids: {type: array, items: {type: string}}, repeat_interval_seconds: {type: integer, default: 14400}, enabled: {type: boolean}, muted_until: {type: string, format: date-time}}
+    AlertRuleWrite:
+      type: object
+      required: [name, type, severity, channel_ids]
+      properties: {name: {type: string}, type: {type: string}, scope: {type: object, additionalProperties: {type: string}}, params: {type: object, additionalProperties: true}, severity: {type: string, enum: [info, warning, critical]}, channel_ids: {type: array, items: {type: string}}, repeat_interval_seconds: {type: integer}, enabled: {type: boolean}}
+    AlertInstance:
+      type: object
+      properties: {id: {type: string}, rule_id: {type: string}, state: {type: string, enum: [firing, resolved]}, first_fired_at: {type: string, format: date-time}, resolved_at: {type: string, format: date-time}, details: {type: object, additionalProperties: true}}
+    ConfigPlan:
+      type: object
+      properties:
+        plan_hash: {type: string}
+        valid: {type: boolean}
+        errors: {type: array, items: {type: object, properties: {line: {type: integer}, path: {type: string}, message: {type: string}}}}
+        changes: {type: array, items: {type: object, properties: {action: {type: string, enum: [create, update, delete, unmanaged]}, resource: {type: string}, name: {type: string}, fields: {type: array, items: {$ref: '#/components/schemas/FieldChange'}}}}}

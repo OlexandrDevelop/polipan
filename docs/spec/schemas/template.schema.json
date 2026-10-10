@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polipan.dev/schemas/template.schema.json",
+  "title": "Polipan service template",
+  "description": "A template expands into services. The service entries use the same shape as services in polipan.schema.json. See docs/spec/04-features/C03-templates.md.",
+  "type": "object",
+  "required": ["slug", "version", "name", "services"],
+  "additionalProperties": false,
+  "properties": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9-]{1,40}$" },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "icon": { "type": "string", "description": "Relative path or https URL of an image." },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "label": { "type": "string" },
+          "type": { "enum": ["string", "number", "bool", "secret", "domain"] },
+          "default": {},
+          "required": { "type": "boolean", "default": false },
+          "generate": { "type": "boolean", "default": false, "description": "Only for secret inputs. Polipan creates a random value and never shows it." }
+        }
+      }
+    },
+    "services": {
+      "type": "object",
+      "description": "Service entries keyed by name. Values may use ${{inputs.NAME}} and ${{services.NAME.FIELD}} references.",
+      "propertyNames": { "pattern": "^[a-z0-9-]{1,40}$" },
+      "additionalProperties": { "type": "object" }
+    }
+  }
+}
