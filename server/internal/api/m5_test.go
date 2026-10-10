@@ -474,6 +474,10 @@ func TestAC_AUTH_02_ApiTokenScopes(t *testing.T) {
 	if rec := e.bearer(str(admin, "token"), "POST", "/api/v1/tokens", map[string]any{"name": "x", "scopes": []string{"admin"}}); rec.Code != 403 {
 		t.Fatalf("a token makes a token: %d", rec.Code)
 	}
+	// A token cannot end the sessions of its user, whatever its scope (RV-1).
+	if rec := e.bearer(str(read, "token"), "DELETE", "/api/v1/me/sessions/x", nil); rec.Code != 403 || !strings.Contains(rec.Body.String(), "session_required") {
+		t.Fatalf("a read token revokes a session: %d %s", rec.Code, rec.Body)
+	}
 	// Never more than the user: an admin-scope token of a viewer is a viewer.
 	vt := mk(viewer, map[string]any{"name": "v", "scopes": []string{"admin"}})
 	if rec := e.bearer(str(vt, "token"), "POST", "/api/v1/projects", map[string]any{"name": "z"}); rec.Code != 403 {

@@ -51,6 +51,7 @@ func PrincipalFrom(ctx context.Context) *Principal {
 // scopes or change the login of its user.
 var sessionOnly = map[string]bool{
 	"createToken": true, "updateMe": true, "enrollTotp": true, "verifyTotp": true, "disableTotp": true,
+	"revokeMySession": true,
 }
 
 // twoFactorSetup are the operations a user may call while the org requires 2FA and the user has none.
