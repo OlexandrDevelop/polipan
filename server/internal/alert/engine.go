@@ -80,6 +80,9 @@ func (e *Engine) repeatDefault() int {
 	return 4 * 3600
 }
 
+// DefaultRepeatSeconds is the repeat interval of a new rule, in seconds.
+func (e *Engine) DefaultRepeatSeconds() int { return e.repeatDefault() }
+
 // Run reads events and sends due messages every second, and evaluates the metric and database rules every 30 s.
 // On start the engine continues from the saved event cursor and loads nothing else: the firing instances are in
 // the database, so no message is sent twice after a restart (REQ-OBS-104).

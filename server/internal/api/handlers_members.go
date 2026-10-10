@@ -5,8 +5,10 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/polipan/polipan/api/gen"
 	"github.com/polipan/polipan/server/internal/auth"
@@ -520,7 +522,13 @@ func (h *Handlers) UpdateOrg(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		if !h.checkRetention(w, r, s) {
+			return
+		}
+		confirm := s.ConfirmRetentionShrink
+		s.ConfirmRetentionShrink = nil // a request flag, not a setting
 		raw, err := json.Marshal(s)
+		s.ConfirmRetentionShrink = confirm
 		if err != nil {
 			internalError(w, r, err)
 			return
@@ -535,4 +543,34 @@ func (h *Handlers) UpdateOrg(w http.ResponseWriter, r *http.Request) {
 	var settings gen.OrgSettings
 	_ = json.Unmarshal(o.Settings, &settings)
 	WriteJSON(w, http.StatusOK, gen.Org{Id: &o.ID, Name: &o.Name, Slug: &o.Slug, SsoRequired: &o.SSORequired, Settings: &settings})
+}
+
+// checkRetention checks the metric and log retention of an org change (REQ-OBS-012). A value above the limit of the
+// store is refused, because the store would delete the data first. A shorter value deletes older data, so it needs
+// confirm_retention_shrink. It writes the answer and returns false when the change is not allowed.
+func (h *Handlers) checkRetention(w http.ResponseWriter, r *http.Request, s *gen.OrgSettings) bool {
+	curMetrics, curLogs := h.retentionOf(r)
+	for _, c := range []struct {
+		field   string
+		want    *int
+		limit   int
+		current time.Duration
+	}{
+		{"metrics_retention_days", s.MetricsRetentionDays, h.Monitoring.MetricsRetentionDays, curMetrics},
+		{"logs_retention_days", s.LogsRetentionDays, h.Monitoring.LogsRetentionDays, curLogs},
+	} {
+		if c.want == nil {
+			continue
+		}
+		if c.limit > 0 && *c.want > c.limit {
+			invalid(w, r, "settings."+c.field, fmt.Sprintf("the store keeps at most %d days (storage retention of the server)", c.limit))
+			return false
+		}
+		if time.Duration(*c.want)*day < c.current && (s.ConfirmRetentionShrink == nil || !*s.ConfirmRetentionShrink) {
+			WriteError(w, r, http.StatusConflict, "retention_shrink_needs_confirm",
+				"a shorter retention deletes older data. Send confirm_retention_shrink to go on", map[string]any{"field": c.field})
+			return false
+		}
+	}
+	return true
 }

@@ -15,8 +15,10 @@ import (
 
 	"github.com/polipan/polipan/api"
 	"github.com/polipan/polipan/api/gen"
+	"github.com/polipan/polipan/server/internal/alert"
 	"github.com/polipan/polipan/server/internal/auth"
 	"github.com/polipan/polipan/server/internal/backup"
+	"github.com/polipan/polipan/server/internal/obs"
 	"github.com/polipan/polipan/server/internal/orchestrator"
 	"github.com/polipan/polipan/server/internal/secrets"
 	"github.com/polipan/polipan/server/internal/shared/clock"
@@ -62,6 +64,18 @@ type Deps struct {
 	KEK []byte
 	// MaxBodyBytes is the size limit of a request body. Default 1 MiB.
 	MaxBodyBytes int64
+	// Obs is the metrics and log store (M8). Nil: the log and metric operations answer 503.
+	Obs *obs.Backends
+	// Alerts is the alert engine (M8), for the channels, the rules and the instances.
+	Alerts *alert.Engine
+	// Monitoring has the limits of the stores.
+	Monitoring MonitoringSettings
+}
+
+// MonitoringSettings are the storage limits of the metrics and log stores. An org retention is at most this.
+type MonitoringSettings struct {
+	MetricsRetentionDays int
+	LogsRetentionDays    int
 }
 
 // secureCookies tells if the session cookie gets the Secure flag: always, unless
@@ -121,6 +135,9 @@ func NewRouter(d Deps) (http.Handler, error) {
 		Git:          d.Git,
 		Exec:         d.Exec,
 		Backup:       d.Backup,
+		Obs:          d.Obs,
+		Alerts:       d.Alerts,
+		Monitoring:   d.Monitoring,
 	}
 	if d.Pool != nil {
 		h.Store = store.New(d.Pool)

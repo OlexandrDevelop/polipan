@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/polipan/polipan/api/gen"
+	"github.com/polipan/polipan/server/internal/alert"
 	"github.com/polipan/polipan/server/internal/auth"
 	"github.com/polipan/polipan/server/internal/backup"
 	"github.com/polipan/polipan/server/internal/cac"
 	"github.com/polipan/polipan/server/internal/logging"
+	"github.com/polipan/polipan/server/internal/obs"
 	"github.com/polipan/polipan/server/internal/orchestrator"
 	"github.com/polipan/polipan/server/internal/secrets"
 	"github.com/polipan/polipan/server/internal/shared/clock"
@@ -60,6 +62,11 @@ type Handlers struct {
 	Exec ExecGateway
 	// Backup is the backup service (M4). Without it the backup operations answer 500.
 	Backup *backup.Service
+
+	// Obs is the metrics and log store (M8). Alerts is the alert engine. Monitoring has the limits of the stores.
+	Obs        *obs.Backends
+	Alerts     *alert.Engine
+	Monitoring MonitoringSettings
 
 	// Config is the config as code engine (M6). Without it the config operations answer 500.
 	Config *cac.Syncer
@@ -150,7 +157,9 @@ func (h *Handlers) orchestratorFailed(w http.ResponseWriter, r *http.Request, er
 	case errors.Is(err, orchestrator.ErrNoLiveRelease):
 		WriteError(w, r, http.StatusConflict, CodeConflict, "the service has no live container", map[string]any{"reason": "no_live_release"})
 	case errors.Is(err, orchestrator.ErrStrategyUnavailable):
-		invalid(w, r, "strategy", "this strategy is not available in this version (use recreate or blue_green)")
+		invalid(w, r, "strategy", "this strategy is not available for this service (a canary needs a domain)")
+	case errors.Is(err, orchestrator.ErrNotCanary):
+		WriteError(w, r, http.StatusConflict, CodeConflict, "the deployment is not a running canary", map[string]any{"reason": "deployment_not_canary"})
 	case errors.Is(err, orchestrator.ErrNodeNotEmpty):
 		WriteError(w, r, http.StatusConflict, CodeNodeNotEmpty, "the node has workloads. Drain it first, or delete it with force=true", nil)
 	case errors.Is(err, orchestrator.ErrNodeState):

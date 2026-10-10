@@ -476,6 +476,8 @@ type Deployment struct {
 	StrategyOptions json.RawMessage
 	State           string
 	CanaryStep      *int
+	CanaryPaused    bool
+	CanaryGate      json.RawMessage
 	FailureReason   *string
 	FailureDetail   *string
 	ActorID         *string
@@ -494,13 +496,13 @@ type DeploymentStep struct {
 }
 
 const depCols = `d.id, d.service_id, d.environment_id, d.release_id, d.previous_release_id, d.trigger, d.strategy, d.strategy_options,
-	d.state, d.canary_step, d.failure_reason, d.failure_detail, d.actor_id, d.started_at, d.finished_at, d.created_at, d.warnings`
+	d.state, d.canary_step, d.canary_paused, d.canary_gate, d.failure_reason, d.failure_detail, d.actor_id, d.started_at, d.finished_at, d.created_at, d.warnings`
 const depFrom = ` FROM deployments d JOIN environments e ON e.id = d.environment_id JOIN projects p ON p.id = e.project_id`
 
 func scanDeployment(row pgx.Row) (*Deployment, error) {
 	var d Deployment
 	if err := row.Scan(&d.ID, &d.ServiceID, &d.EnvironmentID, &d.ReleaseID, &d.PrevReleaseID, &d.Trigger, &d.Strategy, &d.StrategyOptions,
-		&d.State, &d.CanaryStep, &d.FailureReason, &d.FailureDetail, &d.ActorID, &d.StartedAt, &d.FinishedAt, &d.CreatedAt, &d.Warnings); err != nil {
+		&d.State, &d.CanaryStep, &d.CanaryPaused, &d.CanaryGate, &d.FailureReason, &d.FailureDetail, &d.ActorID, &d.StartedAt, &d.FinishedAt, &d.CreatedAt, &d.Warnings); err != nil {
 		return nil, notFound(err)
 	}
 	return &d, nil
@@ -524,7 +526,7 @@ func (s *Store) ListDeployments(ctx context.Context, orgID, serviceID string, li
 	for rows.Next() {
 		var d Deployment
 		if err := rows.Scan(&d.ID, &d.ServiceID, &d.EnvironmentID, &d.ReleaseID, &d.PrevReleaseID, &d.Trigger, &d.Strategy, &d.StrategyOptions,
-			&d.State, &d.CanaryStep, &d.FailureReason, &d.FailureDetail, &d.ActorID, &d.StartedAt, &d.FinishedAt, &d.CreatedAt, &d.Warnings); err != nil {
+			&d.State, &d.CanaryStep, &d.CanaryPaused, &d.CanaryGate, &d.FailureReason, &d.FailureDetail, &d.ActorID, &d.StartedAt, &d.FinishedAt, &d.CreatedAt, &d.Warnings); err != nil {
 			return nil, err
 		}
 		out = append(out, d)

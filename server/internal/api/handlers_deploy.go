@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"sort"
@@ -83,6 +84,18 @@ func paramsFromRequest(serviceID, actorID string, body gen.DeployRequest) orches
 		p.DrainSeconds = o.DrainSeconds
 		p.AllowDowntimeOnLowCapacity = o.AllowDowntimeOnLowCapacity
 		p.AllowOverlap = o.AllowOverlap
+		if o.CanarySteps != nil {
+			p.CanarySteps = *o.CanarySteps
+		}
+		p.CanaryStepIntervalSeconds = o.CanaryStepIntervalSeconds
+		if o.CanaryMax5xxRate != nil {
+			v := float64(*o.CanaryMax5xxRate)
+			p.CanaryMax5xxRate = &v
+		}
+		if o.CanaryMaxP95Ratio != nil {
+			v := float64(*o.CanaryMaxP95Ratio)
+			p.CanaryMaxP95Ratio = &v
+		}
 	}
 	return p
 }
@@ -424,4 +437,53 @@ func (h *Handlers) RestartService(w http.ResponseWriter, r *http.Request, servic
 	}
 	h.auditUser(r, s.OrgID, s.ProjectID, "service.restart", "service", serviceID, nil)
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// canaryAction runs promote, abort, pause or resume of a canary (REQ-DEPLOY-006).
+func (h *Handlers) canaryAction(w http.ResponseWriter, r *http.Request, deploymentID, action string) {
+	d, err := h.Store.GetDeployment(r.Context(), h.orgID(r), deploymentID)
+	if fail(w, r, err) {
+		return
+	}
+	s, err := h.Store.GetService(r.Context(), h.orgID(r), d.ServiceID)
+	if fail(w, r, err) {
+		return
+	}
+	if denyProtected(w, r, "service:deploy", s.EnvProtected) {
+		return
+	}
+	cc, ok := h.Orch.(orchestrator.CanaryController)
+	if !ok {
+		internalError(w, r, errors.New("the orchestrator has no canary control"))
+		return
+	}
+	if h.orchestratorFailed(w, r, cc.CanaryAction(r.Context(), deploymentID, action, PrincipalFrom(r.Context()).User.ID)) {
+		return
+	}
+	h.auditUser(r, s.OrgID, s.ProjectID, "deployment.canary_"+action, "deployment", deploymentID, map[string]any{"service_id": d.ServiceID})
+	d, err = h.Store.GetDeployment(r.Context(), h.orgID(r), deploymentID)
+	if fail(w, r, err) {
+		return
+	}
+	WriteJSON(w, http.StatusOK, deploymentJSON(d))
+}
+
+// PromoteCanary skips the wait of the current canary step.
+func (h *Handlers) PromoteCanary(w http.ResponseWriter, r *http.Request, deploymentID gen.DeploymentId) {
+	h.canaryAction(w, r, deploymentID, "promote")
+}
+
+// AbortCanary sends all the traffic back to the old release.
+func (h *Handlers) AbortCanary(w http.ResponseWriter, r *http.Request, deploymentID gen.DeploymentId) {
+	h.canaryAction(w, r, deploymentID, "abort")
+}
+
+// PauseCanary stops the timer of the canary step.
+func (h *Handlers) PauseCanary(w http.ResponseWriter, r *http.Request, deploymentID gen.DeploymentId) {
+	h.canaryAction(w, r, deploymentID, "pause")
+}
+
+// ResumeCanary starts the timer of a paused canary again.
+func (h *Handlers) ResumeCanary(w http.ResponseWriter, r *http.Request, deploymentID gen.DeploymentId) {
+	h.canaryAction(w, r, deploymentID, "resume")
 }

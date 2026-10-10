@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/polipan/polipan/api/gen"
@@ -566,6 +565,16 @@ func deploymentJSON(d *store.Deployment) gen.Deployment {
 	var opts gen.StrategyOptions
 	if json.Unmarshal(d.StrategyOptions, &opts) == nil {
 		out.StrategyOptions = &opts
+		if d.Strategy == "canary" {
+			out.CanarySteps = opts.CanarySteps
+		}
+	}
+	if d.Strategy == "canary" {
+		out.CanaryPaused = &d.CanaryPaused
+		var gate map[string]any
+		if len(d.CanaryGate) > 0 && json.Unmarshal(d.CanaryGate, &gate) == nil && gate != nil {
+			out.CanaryGate = &gate
+		}
 	}
 	var warnings []gen.Warning
 	if json.Unmarshal(d.Warnings, &warnings) == nil && len(warnings) > 0 {
@@ -642,31 +651,6 @@ func (h *Handlers) GetDeployment(w http.ResponseWriter, r *http.Request, deploym
 		return
 	}
 	WriteJSON(w, http.StatusOK, deploymentJSON(d))
-}
-
-// GetServiceLogs returns the last lines of the live container (docker logs tail until M8).
-func (h *Handlers) GetServiceLogs(w http.ResponseWriter, r *http.Request, serviceID gen.ServiceId, params gen.GetServiceLogsParams) {
-	s, err := h.Store.GetService(r.Context(), h.orgID(r), serviceID)
-	if fail(w, r, err) {
-		return
-	}
-	text, err := h.Orch.Logs(r.Context(), serviceID, min(pageLimitLogs(params.Limit), 1000))
-	if h.orchestratorFailed(w, r, err) {
-		return
-	}
-	masker, err := h.maskerFor(r, serviceID)
-	if fail(w, r, err) {
-		return
-	}
-	lines := []gen.LogLine{}
-	for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
-		if l == "" {
-			continue
-		}
-		l = masker.Mask(l) // REQ-SEC-007
-		lines = append(lines, gen.LogLine{Message: ptr(l), ServiceId: &s.ID, EnvironmentId: &s.EnvironmentID, ProjectId: &s.ProjectID})
-	}
-	WriteJSON(w, http.StatusOK, lines)
 }
 
 func pageLimitLogs(l *gen.Limit) int {
