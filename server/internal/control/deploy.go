@@ -395,7 +395,13 @@ func (c *Control) setStateTx(ctx context.Context, tx pgx.Tx, depID, state, msg s
 		depID, state, now, finished); err != nil {
 		return err
 	}
-	return c.addStep(ctx, tx, depID, state, msg, data)
+	if err := c.addStep(ctx, tx, depID, state, msg, data); err != nil {
+		return err
+	}
+	if state == "live" && cur != "live" { // the alert event is in the same transaction as the state (REQ-ALERT-009)
+		c.deploymentAlert(ctx, tx, depID, "deployment_live", "info")
+	}
+	return nil
 }
 
 func (c *Control) addStep(ctx context.Context, tx pgx.Tx, depID, state, msg string, data map[string]any) error {

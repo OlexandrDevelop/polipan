@@ -318,7 +318,6 @@ func (r *run) finalize(ctx context.Context) *deployErr {
 	if e := r.step(ctx, "live", "deployment is live", map[string]any{"release_id": *d.releaseID}); e != nil {
 		return e
 	}
-	c.deploymentAlert(ctx, c.DB, d.id, "deployment_live", "info")
 	c.prune(ctx, r.svc, r.cfg)
 	r.recordMove(ctx)
 	if len(r.cfg.PostDeploy) > 0 && d.trigger != "move" && d.trigger != "failover" {

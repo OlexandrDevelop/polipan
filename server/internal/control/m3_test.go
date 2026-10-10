@@ -299,9 +299,10 @@ func TestAC_DEPLOY_04_ForcedRecreateSingleWriter(t *testing.T) {
 	if stop, check := m.sim.index("stop:"+v1), m.sim.index("check:"+m.placementOf(t, m.releaseID(t, 2))); stop < 0 || check < stop {
 		t.Fatalf("recreate order: %v", m.sim.cmds)
 	}
-	// Canary is not in this version.
-	if _, err := m.ctl.Plan(context.Background(), orchestrator.DeployParams{ServiceID: m.serviceID, Strategy: "canary"}); !errors.Is(err, orchestrator.ErrStrategyUnavailable) {
-		t.Fatalf("canary: %v", err)
+	// A canary on a service with a single-writer volume is a forced recreate too.
+	cp, err := m.ctl.Plan(context.Background(), orchestrator.DeployParams{ServiceID: m.serviceID, Strategy: "canary"})
+	if err != nil || cp.Strategy != "recreate" || !cp.Forced {
+		t.Fatalf("canary plan %+v %v", cp, err)
 	}
 }
 

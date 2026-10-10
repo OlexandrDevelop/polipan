@@ -113,7 +113,7 @@ services:
 
   # VictoriaLogs keeps the logs (REQ-OBS-005).
   victoria-logs:
-    image: ${POLIPAN_VL_IMAGE:-victoriametrics/victoria-logs:v1.53.0}
+    image: ${POLIPAN_VL_IMAGE:-victoriametrics/victoria-logs:v1.9.1-victorialogs}
     restart: unless-stopped
     command:
       - -storageDataPath=/storage
