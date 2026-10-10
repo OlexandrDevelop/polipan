@@ -92,6 +92,15 @@ message ActualState {
   string caddy_config_hash = 3;
   repeated string errors = 4;
   repeated DomainStatus domains = 5;  // TLS state of every host in the ingress spec (REQ-DOM-003)
+  repeated VolumeUsage volumes = 6;   // every 60 s (REQ-VOL-005)
+}
+
+message VolumeUsage {
+  string name = 1;                   // Docker volume name or bind directory
+  string kind = 2;                   // volume | bind | tmpfs
+  uint64 used_bytes = 3;
+  uint64 used_inodes = 4;
+  int64 sampled_unix_ms = 5;
 }
 
 message DomainStatus {
@@ -172,6 +181,15 @@ message DesiredState {
   IngressSpec ingress = 4;
   repeated BackupJobSpec backup_jobs = 5;
   repeated ScrapeTarget scrape_targets = 6;
+  repeated RegistryAuth registry_auths = 7;  // credentials for image pulls, only for this node's workloads
+}
+
+// RegistryAuth is the pull credential behind a registry_auth_ref. Only sent over the mTLS stream.
+message RegistryAuth {
+  string ref = 1;
+  string server = 2;                 // registry host[:port]
+  string username = 3;
+  string password = 4;               // never logged
 }
 
 message WorkloadSpec {
@@ -199,10 +217,13 @@ message WorkloadSpec {
 }
 
 message Mount {
-  string kind = 1;                   // volume | bind | tmpfs
-  string source = 2;
+  string kind = 1;                   // volume | bind | tmpfs | file
+  string source = 2;                 // volume name or bind sub path. For file: the file name
   string target = 3;
   bool read_only = 4;
+  bytes content = 5;                 // kind file: the file content (up to 1 MiB)
+  bool secret = 6;                   // kind file: content is a secret, write it on tmpfs and never log it
+  uint64 size_limit_bytes = 7;       // volume, tmpfs: quota or alert threshold, 0 = none
 }
 
 message PortSpec {
@@ -285,6 +306,7 @@ message Command {
     ExecSession exec_session = 19;
     StreamLogs stream_logs = 20;
     PruneImages prune_images = 21;
+    ExecInput exec_input = 22;
   }
 }
 
@@ -297,6 +319,8 @@ message CheckHealth { string placement_id = 1; uint32 timeout_seconds = 2; }   /
 message SwitchTraffic { IngressSpec ingress = 1; int64 desired_state_version = 2; }
 message RunBackup { string policy_id = 1; BackupJobSpec job = 2; }
 message RunRestoreCheck { string policy_id = 1; string backup_run_id = 2; string target_id = 3; }
-message ExecSession { string placement_id = 1; repeated string command = 2; bool tty = 3; }
+message ExecSession { string placement_id = 1; repeated string command = 2; bool tty = 3; uint32 rows = 4; uint32 cols = 5; }
+// ExecInput goes to a running exec session (command_id of the ExecSession): keys, a resize or the end.
+message ExecInput { string session_command_id = 1; bytes data = 2; uint32 rows = 3; uint32 cols = 4; bool eof = 5; }
 message StreamLogs { string placement_id = 1; int64 since_unix_ms = 2; bool follow = 3; }
 message PruneImages { repeated string keep_image_refs = 1; }
