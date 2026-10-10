@@ -250,8 +250,8 @@ func (s *Service) executeRestore(ctx context.Context, id string) {
 			fail("the safety backup was not made: %v", err)
 			return
 		}
-		s.executeRun(ctx, safety.ID)
-		if done, err := s.GetRun(ctx, orgID, safety.ID); err != nil || done.State != "succeeded" {
+		s.executeRun(ctx, safety.ID) // returns at once when the loop took the run first: then we wait for it below
+		if done, err := s.waitRun(ctx, orgID, safety.ID); err != nil || done.State != "succeeded" {
 			msg := "the safety backup failed"
 			if err == nil && done.Error != nil {
 				msg += ": " + *done.Error
@@ -355,4 +355,23 @@ func (s *Service) deployAndWait(ctx context.Context, serviceID string, actor *st
 		}
 	}
 	return errors.New("the deployment did not end in 10 minutes")
+}
+
+// waitRun waits until a run has ended (the loop may run it in another goroutine).
+func (s *Service) waitRun(ctx context.Context, orgID, id string) (*Run, error) {
+	deadline := time.Now().Add(s.RunTimeout + time.Minute)
+	for {
+		r, err := s.GetRun(ctx, orgID, id)
+		if err != nil || r.State == "succeeded" || r.State == "failed" {
+			return r, err
+		}
+		if time.Now().After(deadline) {
+			return r, errors.New("the run did not end in time")
+		}
+		select {
+		case <-ctx.Done():
+			return r, ctx.Err()
+		case <-time.After(300 * time.Millisecond):
+		}
+	}
 }
