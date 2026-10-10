@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	pb "github.com/polipan/polipan/proto/agentv1"
+	"github.com/polipan/polipan/server/internal/orchestrator"
 )
 
 // serviceConfig is the image service config (services.config and releases.config_snapshot).
@@ -143,6 +144,9 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 		var https bool
 		if err := drows.Scan(&id, &host, &prefix, &port, &https, &redirect, &sid); err != nil {
 			return nil, err
+		}
+		if orchestrator.IsPanelHost(c.Config.ExternalURL, host) {
+			continue // old rows: a service never gets the host of the panel
 		}
 		route := &pb.Route{
 			RouteId: id, Hosts: []string{host}, PathPrefix: prefix, Https: https, RedirectWww: redirect, ServiceId: sid,

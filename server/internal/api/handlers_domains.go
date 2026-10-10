@@ -9,6 +9,7 @@ import (
 
 	"github.com/polipan/polipan/api/gen"
 	"github.com/polipan/polipan/server/internal/logging"
+	"github.com/polipan/polipan/server/internal/orchestrator"
 	"github.com/polipan/polipan/server/internal/store"
 )
 
@@ -177,7 +178,7 @@ func (h *Handlers) CreateDomain(w http.ResponseWriter, r *http.Request, serviceI
 		return
 	}
 	d := store.Domain{ServiceID: serviceID, PathPrefix: "/", HTTPS: true, TLSStatus: "pending", ContainerPort: configPort(s.Config)}
-	if !applyDomainWrite(w, r, &d, &body) {
+	if !applyDomainWrite(w, r, &d, &body) || h.refusePanelHost(w, r, d.Host) {
 		return
 	}
 	if d.ContainerPort == 0 {
@@ -209,7 +210,7 @@ func (h *Handlers) UpdateDomain(w http.ResponseWriter, r *http.Request, domainID
 	if denyProtected(w, r, "domain:manage", protected) {
 		return
 	}
-	if !applyDomainWrite(w, r, d, &body) {
+	if !applyDomainWrite(w, r, d, &body) || h.refusePanelHost(w, r, d.Host) {
 		return
 	}
 	updated, err := h.Store.UpdateDomain(r.Context(), *d)
@@ -238,4 +239,14 @@ func (h *Handlers) DeleteDomain(w http.ResponseWriter, r *http.Request, domainID
 	}
 	h.domainsChanged(r, d.ServiceID)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// refusePanelHost answers 409 domain_in_use for the host of the panel and its www or apex partner,
+// so a service can never take the traffic of the panel (logins, session cookies).
+func (h *Handlers) refusePanelHost(w http.ResponseWriter, r *http.Request, host string) bool {
+	if !orchestrator.IsPanelHost(h.Settings.ExternalURL, host) {
+		return false
+	}
+	WriteError(w, r, http.StatusConflict, CodeDomainInUse, "this host is used by the panel", map[string]any{"host": host})
+	return true
 }

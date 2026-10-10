@@ -361,7 +361,7 @@ func (e *testEnv) count(query string, args ...any) int {
 // AC-DOM-02 and AC-DOM-03: a used host gives 409 domain_in_use. A domain change calls DomainsChanged,
 // makes no release and no deployment.
 func TestAC_DOM_02_03_Domains(t *testing.T) {
-	e := newTestEnv(t, "http://localhost")
+	e := newTestEnv(t, "http://panel.example.com")
 	c := e.owner()
 	prj, envs := c.project("Shop")
 	if len(envs) != 2 || envs["production"] == "" || envs["staging"] == "" {
@@ -414,6 +414,14 @@ func TestAC_DOM_02_03_Domains(t *testing.T) {
 		rec := c.do("POST", "/api/v1/services/"+b+"/domains", map[string]any{"host": host})
 		if rec.Code != 409 || !strings.Contains(rec.Body.String(), `"domain_in_use"`) {
 			t.Fatalf("second add of %s: %d %s", host, rec.Code, rec.Body)
+		}
+	}
+	// SEC-1: the host of the panel (and its www or apex partner) is reserved, with any path prefix.
+	panel := "panel.example.com"
+	for _, host := range []string{panel, strings.ToUpper(panel), "www." + panel} {
+		rec := c.do("POST", "/api/v1/services/"+b+"/domains", map[string]any{"host": host, "path_prefix": "/api"})
+		if rec.Code != 409 || !strings.Contains(rec.Body.String(), `"domain_in_use"`) {
+			t.Fatalf("panel host %s: %d %s", host, rec.Code, rec.Body)
 		}
 	}
 	if len(e.orch.domains) != 1 {

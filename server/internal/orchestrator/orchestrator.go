@@ -7,6 +7,8 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -41,4 +43,16 @@ type Orchestrator interface {
 	Logs(ctx context.Context, serviceID string, tail int) (string, error)
 	// CreateJoinToken makes a single-use token (join_token_ttl) and stores only its hash.
 	CreateJoinToken(ctx context.Context, orgID, nodeName string, labels map[string]string, actorID string) (JoinToken, error)
+}
+
+// IsPanelHost reports whether host is the host of the panel (the host of externalURL) or its
+// www or apex partner. Service domains must not use these hosts: the panel route is not a
+// domain row, and a service route on the same host could take the logins of the panel.
+func IsPanelHost(externalURL, host string) bool {
+	u, err := url.Parse(externalURL)
+	if err != nil || u.Hostname() == "" {
+		return false
+	}
+	norm := func(h string) string { return strings.TrimPrefix(strings.ToLower(strings.TrimSuffix(h, ".")), "www.") }
+	return norm(u.Hostname()) == norm(host)
 }
