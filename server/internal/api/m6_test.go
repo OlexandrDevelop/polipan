@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,10 +25,35 @@ import (
 	"github.com/polipan/polipan/server/internal/store"
 )
 
+// statusProvider is a Git provider that records the commit statuses.
+type statusProvider struct {
+	git.FakeProvider
+	mu       sync.Mutex
+	statuses []git.Status
+}
+
+func (p *statusProvider) PostStatus(_ context.Context, _, _ string, st git.Status) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.statuses = append(p.statuses, st)
+	return nil
+}
+
+func (p *statusProvider) states() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []string
+	for _, s := range p.statuses {
+		out = append(out, s.State)
+	}
+	return out
+}
+
 // m6Env is the M1 test env with the config engine's Git side (a fake cloner) and the backup service.
 type m6Env struct {
 	*testEnv
 	cloner *git.FakeCloner
+	prov   *statusProvider
 }
 
 func newM6Env(t *testing.T) *m6Env {
@@ -43,11 +69,13 @@ func newM6Env(t *testing.T) *m6Env {
 	}
 	log := slog.New(slog.NewJSONHandler(logOut, nil))
 	bk := backup.New(backup.Deps{DB: e.pool, Secrets: sec, Clock: e.clk, Log: log})
+	prov := &statusProvider{}
 	cl := &git.FakeCloner{Files: map[string]string{}, Commit: "0123456789abcdef0123456789abcdef01234567"}
 	handler, err := api.NewRouter(api.Deps{
 		Log: log, DB: e.pool, Clock: e.clk, RateLimit: 100000, Pool: e.pool, Orchestrator: gitOrch{e.orch},
 		ExternalURL: "https://panel.example.com", AgentListen: ":9443", SetupToken: "setup-secret", KEK: testKEK, Secrets: sec, Backup: bk,
-		Git: &api.GitDeps{Keys: store.NewGitSecrets(e.pool, make([]byte, 32)), Cloner: cl, Policy: func(context.Context, string) ssrf.Policy {
+		Git: &api.GitDeps{Keys: store.NewGitSecrets(e.pool, make([]byte, 32)), Cloner: cl,
+			NewProvider: func(git.Connection, ssrf.Policy) (git.Provider, error) { return prov, nil }, Policy: func(context.Context, string) ssrf.Policy {
 			p, _ := ssrf.New(false, "10.210.0.0/16", ssrf.DefaultDockerNetworks)
 			p.Resolver = publicResolver{}
 			return p
@@ -57,7 +85,7 @@ func newM6Env(t *testing.T) *m6Env {
 		t.Fatal(err)
 	}
 	e.h = handler
-	return &m6Env{testEnv: e, cloner: cl}
+	return &m6Env{testEnv: e, cloner: cl, prov: prov}
 }
 
 // keepOnly deletes the other environments of a project: a file applies its services to every environment.
@@ -412,6 +440,11 @@ func TestAC_CAC_07_PushProtectedPlanPending(t *testing.T) {
 		t.Fatalf("project state after apply %q", st)
 	}
 
+	// The commit status told the user: pending first, then success, then pending (waiting for an admin).
+	if got := strings.Join(e.prov.states(), ","); !strings.Contains(got, "success") || !strings.HasSuffix(got, "pending") {
+		t.Fatalf("commit statuses: %s", got)
+	}
+
 	// 3. An invalid file on push: nothing applies, the error is stored with its line.
 	e.cloner.Files["polipan.yaml"] = fixture(t, "unknown-key.yaml")
 	if rec := e.push(connID, secret, "d-3"); rec.Code != 202 {
@@ -420,6 +453,9 @@ func TestAC_CAC_07_PushProtectedPlanPending(t *testing.T) {
 	e.waitSync(prj, "invalid")
 	if n := e.count(`SELECT count(*) FROM config_syncs WHERE state = 'invalid' AND errors->0->>'line' IS NOT NULL`); n != 1 {
 		t.Fatalf("invalid sync without error line")
+	}
+	if got := e.prov.states(); got[len(got)-1] != "failure" {
+		t.Fatalf("commit status of an invalid file: %v", got)
 	}
 }
 
@@ -446,7 +482,7 @@ func TestAC_API_02_ApplyIdempotent(t *testing.T) {
 	if first.Code != http.StatusAccepted || second.Code != http.StatusAccepted || second.Header().Get("Idempotent-Replay") != "true" {
 		t.Fatalf("answers: %d %d %s", first.Code, second.Code, second.Body)
 	}
-	if n := e.count(`SELECT count(*) FROM deployments WHERE trigger = 'config_apply'`); n != 3 { // one per environment, once
+	if n := e.count(`SELECT count(*) FROM deployments WHERE trigger = 'config_apply'`); n != 2 { // one per environment, once
 		t.Fatalf("deployments: %d", n)
 	}
 }

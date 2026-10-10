@@ -213,21 +213,21 @@ func (s *Syncer) run(ctx context.Context, orgID, projectID, id string, content [
 		return err
 	}
 	if !pl.Valid {
+		s.audit(sctx, orgID, projectID, id, "config.sync", map[string]any{"state": SyncInvalid, "commit": commit, "author": author, "errors": len(pl.Errors)})
 		if err := finish(SyncInvalid, "", nil, pl.Errors); err != nil {
 			return err
 		}
 		s.status(ctx, orgID, projectID, src, commit, git.StatusFailure, firstIssue(pl.Errors))
-		s.audit(sctx, orgID, projectID, id, "config.sync", map[string]any{"state": SyncInvalid, "commit": commit, "author": author, "errors": len(pl.Errors)})
 		return nil
 	}
 	if NeedsAdmin(pl) {
 		// An older pending plan is replaced by this one.
 		_, _ = s.Pool.Exec(ctx, `UPDATE config_syncs SET state = 'superseded' WHERE project_id = $1 AND state = 'plan_pending' AND id <> $2`, projectID, id)
+		s.audit(sctx, orgID, projectID, id, "config.sync", map[string]any{"state": SyncPlanPending, "commit": commit, "author": author})
 		if err := finish(SyncPlanPending, ProjectPlanPending, nil, nil); err != nil {
 			return err
 		}
 		s.status(ctx, orgID, projectID, src, commit, git.StatusPending, "Waiting for an admin to apply the plan")
-		s.audit(sctx, orgID, projectID, id, "config.sync", map[string]any{"state": SyncPlanPending, "commit": commit, "author": author})
 		return nil
 	}
 	if !pl.HasChanges() {
@@ -241,6 +241,8 @@ func (s *Syncer) run(ctx context.Context, orgID, projectID, id string, content [
 	if err != nil {
 		return err
 	}
+	s.audit(sctx, orgID, projectID, id, "config.sync", map[string]any{"state": map[bool]string{true: SyncFailed, false: SyncApplied}[res.Failed()],
+		"commit": commit, "author": author, "changes": len(res.Items)})
 	if res.Failed() {
 		if err := finish(SyncFailed, ProjectApplyFailed, res, nil); err != nil {
 			return err
@@ -252,7 +254,6 @@ func (s *Syncer) run(ctx context.Context, orgID, projectID, id string, content [
 		}
 		s.status(ctx, orgID, projectID, src, commit, git.StatusSuccess, fmt.Sprintf("Applied %d changes", len(res.Items)))
 	}
-	s.audit(sctx, orgID, projectID, id, "config.sync", map[string]any{"state": SyncApplied, "commit": commit, "author": author, "changes": len(res.Items)})
 	return nil
 }
 
