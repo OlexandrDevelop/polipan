@@ -229,9 +229,15 @@ func (e *Engine) runProbe(ctx context.Context, w *agentv1.WorkloadSpec, c docker
 		s.health = "starting"
 	}
 	s.lastErr, s.lastStatus, s.lastBody, s.checked = res.err, res.status, res.body, now
-	s.next = now.Add(secondsOr(hc.IntervalSeconds, 5*time.Second))
+	// Until the container is healthy, it is checked every second at most, so a service that is ready early
+	// switches early (the fast rollback needs this). After that the interval of the config applies.
+	iv := secondsOr(hc.IntervalSeconds, 5*time.Second)
+	if s.health != "healthy" && s.health != "unhealthy" && iv > time.Second {
+		iv = time.Second
+	}
+	s.next = now.Add(iv)
 	switch {
-	case s.health == "unhealthy" && old != "unhealthy" && hc.RestartOnUnhealthy:
+	case s.health == "unhealthy" && old != "unhealthy" && hc.RestartOnUnhealthy && w.Role == "live": // only a live container is restarted (REQ-HC-007)
 		idx := min(s.restartIdx, len(restartBackoff)-1)
 		s.restartAt = now.Add(restartBackoff[idx])
 	case s.health == "healthy":

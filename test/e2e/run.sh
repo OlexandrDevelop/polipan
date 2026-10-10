@@ -84,17 +84,18 @@ restart_server() {
   done
 }
 
-step "REQ-DEPLOY-107 chaos: kill the server in switching (Caddy is paused, so the switch cannot be acked), restart it"
+step "REQ-DEPLOY-107 chaos: kill the server in switching (Caddy is stopped with SIGSTOP, so the switch cannot be acked), restart it"
 driver chaos-start switching
-dx docker pause polipan-caddy >/dev/null
+dx pkill -STOP -x caddy
 i=0
-until [ "$(pg "SELECT state FROM deployments ORDER BY created_at DESC LIMIT 1")" = "switching" ]; do
-  i=$((i + 1)); [ "$i" -lt 150 ] || { echo "the deployment did not reach switching"; dx docker unpause polipan-caddy; exit 1; }
+# The switch is saved (live_release_id is the new release) but Caddy is stopped, so the ack never comes.
+until [ "$(pg "SELECT count(*) FROM deployments d JOIN services s ON s.id = d.service_id WHERE d.state = 'switching' AND s.live_release_id = d.release_id")" = "1" ]; do
+  i=$((i + 1)); [ "$i" -lt 150 ] || { echo "the deployment did not reach switching"; dx pkill -CONT -x caddy; exit 1; }
   sleep 0.2
 done
 echo "deployment is in switching: kill the server"
 dx docker compose -f /opt/polipan/docker-compose.yml kill server
-dx docker unpause polipan-caddy >/dev/null
+dx pkill -CONT -x caddy
 dx docker compose -f /opt/polipan/docker-compose.yml start server
 i=0
 until dx docker compose -f /opt/polipan/docker-compose.yml exec -T server /polipan-server healthcheck >/dev/null 2>&1; do

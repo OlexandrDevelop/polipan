@@ -30,7 +30,7 @@ func healthEnv(t *testing.T, hc *agentv1.HealthCheckSpec, h http.HandlerFunc) (*
 	hc.Port = p
 	f := newFake()
 	e, sk := newEngine(t, t.TempDir(), f)
-	w := wl("p1", "candidate")
+	w := wl("p1", "live")
 	w.Health = hc
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

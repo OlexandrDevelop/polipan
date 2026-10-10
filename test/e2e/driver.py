@@ -524,14 +524,11 @@ def events_reader(p, topics):
 
     def run():
         try:
-            conn = http.client.HTTPConnection("127.0.0.1", 80, timeout=5)
+            conn = http.client.HTTPConnection("127.0.0.1", 80, timeout=None)  # a read timeout would break the reader for good
             conn.request("GET", "/api/v1/events?topics=" + topics, headers={"Host": PANEL, "Cookie": p.cookie})
             r = conn.getresponse()
             while not stop.is_set():
-                try:
-                    line = r.fp.readline()
-                except OSError:
-                    continue
+                line = r.fp.readline()
                 if not line:
                     break
                 if line.startswith(b"data: "):
