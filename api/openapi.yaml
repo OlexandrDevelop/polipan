@@ -1765,6 +1765,16 @@ components:
         usage: {type: object, properties: {cpu_millis: {type: integer}, memory_bytes: {type: integer}, disk_bytes: {type: integer}}}
         last_heartbeat_at: {type: string, format: date-time}
         workload_count: {type: integer}
+        mesh_subnet: {type: string, description: "the /24 of the node in mesh_cidr"}
+        drain_note: {type: string, description: "what a drain could not move yet"}
+        workloads: {type: array, description: "only in getNode", items: {$ref: '#/components/schemas/NodeWorkload'}}
+    NodeWorkload:
+      type: object
+      properties: {placement_id: {type: string}, service_id: {type: string}, service_name: {type: string}, environment_id: {type: string}, role: {type: string, enum: [live, candidate, draining, stopped]}, health: {type: string, enum: [unknown, starting, healthy, unhealthy]}}
+    FailoverStatus:
+      type: object
+      description: "State of the failover of a service (09 section 9). blocked: the node is down and the service was not moved, reason says why."
+      properties: {state: {type: string, enum: [healthy, blocked, moving, moved]}, reason: {type: string}, data_lost_since: {type: string, format: date-time}, at: {type: string, format: date-time}}
     Project:
       type: object
       properties: {id: {type: string}, name: {type: string}, slug: {type: string}, settings: {$ref: '#/components/schemas/ProjectSettings'}, config_source: {type: object, properties: {repo: {type: string}, branch: {type: string}, path: {type: string}, connection_id: {type: string}}}, config_sync_state: {type: string, enum: [in_sync, drifted, plan_pending, apply_failed]}, created_at: {type: string, format: date-time}}
@@ -1807,6 +1817,8 @@ components:
         desired_state: {type: string, enum: [running, stopped]}
         failover: {type: string, enum: [none, auto]}
         allow_data_loss_failover: {type: boolean}
+        failover_status: {$ref: '#/components/schemas/FailoverStatus'}
+        last_backup_at: {type: string, format: date-time, description: "volume services: the end of the last successful backup (REQ-NODE-007)"}
         live_release_id: {type: string}
         placements: {type: array, items: {$ref: '#/components/schemas/Placement'}}
         pending_changes: {type: boolean}

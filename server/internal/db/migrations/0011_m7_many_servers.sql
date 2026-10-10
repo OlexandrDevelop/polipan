@@ -13,6 +13,9 @@ CREATE UNIQUE INDEX placements_node_ip ON placements (node_id, ip) WHERE ip IS N
 ALTER TABLE nodes ADD COLUMN down_at timestamptz;
 ALTER TABLE nodes ADD COLUMN usage jsonb;
 ALTER TABLE nodes ADD COLUMN drain_note text;
+-- A deleted node stays as a row (its certificate is revoked and its placements may still wait for a failover).
+-- It has no mesh subnet and no key, and its name is changed so the name can be used again.
+ALTER TABLE nodes ADD COLUMN deleted_at timestamptz;
 
 -- Failover state of a service (09 section 9). blocked: the node is down and the service was not moved.
 ALTER TABLE services ADD COLUMN failover_state text NOT NULL DEFAULT 'healthy' CHECK (failover_state IN ('healthy','blocked','moving','moved'));

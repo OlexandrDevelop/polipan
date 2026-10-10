@@ -46,6 +46,10 @@ type Request struct {
 	VolumeNode string
 	// Exclude is a list of node ids that must not be used (the dead node of a failover, the source of a move).
 	Exclude []string
+	// OnlyIDs limits the nodes by id (the target of a move).
+	OnlyIDs []string
+	// IgnoreCapacity skips the capacity check. The deploy engine then decides about low capacity (recreate).
+	IgnoreCapacity bool
 }
 
 // Result is the answer of Schedule.
@@ -129,6 +133,9 @@ func Schedule(nodes []Node, req Request) (*Result, error) {
 	return res, nil
 }
 
+// Reject returns why a node cannot take one more replica, or "". Schedule uses it for every node.
+func Reject(n Node, req Request) string { return reject(&n, req) }
+
 // reject returns why a node cannot take one more replica, or "".
 func reject(n *Node, req Request) string {
 	switch {
@@ -138,6 +145,8 @@ func reject(n *Node, req Request) string {
 		return "excluded"
 	case len(req.Names) > 0 && !contains(req.Names, n.Name):
 		return "not in the allowed node names"
+	case len(req.OnlyIDs) > 0 && !contains(req.OnlyIDs, n.ID):
+		return "not the chosen node"
 	case contains(req.Deny, n.Name):
 		return "denied by name"
 	case req.VolumeNode != "" && n.ID != req.VolumeNode:
@@ -152,6 +161,9 @@ func reject(n *Node, req Request) string {
 	if len(missing) > 0 {
 		sort.Strings(missing)
 		return "missing labels " + strings.Join(missing, ", ")
+	}
+	if req.IgnoreCapacity {
+		return ""
 	}
 	if n.MemoryBytes > 0 && float64(n.UsedMemoryBytes+req.MemoryBytes) > float64(n.MemoryBytes)*(1-Reserve) {
 		return fmt.Sprintf("not enough memory (%d MiB free of the usable part)", free(n.MemoryBytes, n.UsedMemoryBytes)>>20)

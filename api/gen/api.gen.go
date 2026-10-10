@@ -225,6 +225,14 @@ const (
 	EnvironmentKindStaging    EnvironmentKind = "staging"
 )
 
+// Defines values for FailoverStatusState.
+const (
+	FailoverStatusStateBlocked FailoverStatusState = "blocked"
+	FailoverStatusStateHealthy FailoverStatusState = "healthy"
+	FailoverStatusStateMoved   FailoverStatusState = "moved"
+	FailoverStatusStateMoving  FailoverStatusState = "moving"
+)
+
 // Defines values for GitConnectionProvider.
 const (
 	GitConnectionProviderGeneric GitConnectionProvider = "generic"
@@ -277,6 +285,22 @@ const (
 	NodeStateSuspect     NodeState = "suspect"
 )
 
+// Defines values for NodeWorkloadHealth.
+const (
+	NodeWorkloadHealthHealthy   NodeWorkloadHealth = "healthy"
+	NodeWorkloadHealthStarting  NodeWorkloadHealth = "starting"
+	NodeWorkloadHealthUnhealthy NodeWorkloadHealth = "unhealthy"
+	NodeWorkloadHealthUnknown   NodeWorkloadHealth = "unknown"
+)
+
+// Defines values for NodeWorkloadRole.
+const (
+	NodeWorkloadRoleCandidate NodeWorkloadRole = "candidate"
+	NodeWorkloadRoleDraining  NodeWorkloadRole = "draining"
+	NodeWorkloadRoleLive      NodeWorkloadRole = "live"
+	NodeWorkloadRoleStopped   NodeWorkloadRole = "stopped"
+)
+
 // Defines values for PlacementColor.
 const (
 	Blue  PlacementColor = "blue"
@@ -316,10 +340,10 @@ const (
 
 // Defines values for ReleaseStatus.
 const (
-	Available ReleaseStatus = "available"
-	Live      ReleaseStatus = "live"
-	Previous  ReleaseStatus = "previous"
-	Pruned    ReleaseStatus = "pruned"
+	ReleaseStatusAvailable ReleaseStatus = "available"
+	ReleaseStatusLive      ReleaseStatus = "live"
+	ReleaseStatusPrevious  ReleaseStatus = "previous"
+	ReleaseStatusPruned    ReleaseStatus = "pruned"
 )
 
 // Defines values for RestoreCheckState.
@@ -957,6 +981,17 @@ type Error struct {
 	RequestId string                  `json:"request_id"`
 }
 
+// FailoverStatus State of the failover of a service (09 section 9). blocked: the node is down and the service was not moved, reason says why.
+type FailoverStatus struct {
+	At            *time.Time           `json:"at,omitempty"`
+	DataLostSince *time.Time           `json:"data_lost_since,omitempty"`
+	Reason        *string              `json:"reason,omitempty"`
+	State         *FailoverStatusState `json:"state,omitempty"`
+}
+
+// FailoverStatusState defines model for FailoverStatus.State.
+type FailoverStatusState string
+
 // FieldChange defines model for FieldChange.
 type FieldChange struct {
 	After  *interface{} `json:"after,omitempty"`
@@ -1076,25 +1111,50 @@ type Node struct {
 		DiskBytes   *int `json:"disk_bytes,omitempty"`
 		MemoryBytes *int `json:"memory_bytes,omitempty"`
 	} `json:"capacity,omitempty"`
-	DockerVersion   *string            `json:"docker_version,omitempty"`
+	DockerVersion *string `json:"docker_version,omitempty"`
+
+	// DrainNote what a drain could not move yet
+	DrainNote       *string            `json:"drain_note,omitempty"`
 	Id              *string            `json:"id,omitempty"`
 	Labels          *map[string]string `json:"labels,omitempty"`
 	LastHeartbeatAt *time.Time         `json:"last_heartbeat_at,omitempty"`
 	MeshIp          *string            `json:"mesh_ip,omitempty"`
-	Name            *string            `json:"name,omitempty"`
-	Os              *string            `json:"os,omitempty"`
-	PublicIp        *string            `json:"public_ip,omitempty"`
-	State           *NodeState         `json:"state,omitempty"`
-	Usage           *struct {
+
+	// MeshSubnet the /24 of the node in mesh_cidr
+	MeshSubnet *string    `json:"mesh_subnet,omitempty"`
+	Name       *string    `json:"name,omitempty"`
+	Os         *string    `json:"os,omitempty"`
+	PublicIp   *string    `json:"public_ip,omitempty"`
+	State      *NodeState `json:"state,omitempty"`
+	Usage      *struct {
 		CpuMillis   *int `json:"cpu_millis,omitempty"`
 		DiskBytes   *int `json:"disk_bytes,omitempty"`
 		MemoryBytes *int `json:"memory_bytes,omitempty"`
 	} `json:"usage,omitempty"`
 	WorkloadCount *int `json:"workload_count,omitempty"`
+
+	// Workloads only in getNode
+	Workloads *[]NodeWorkload `json:"workloads,omitempty"`
 }
 
 // NodeState defines model for Node.State.
 type NodeState string
+
+// NodeWorkload defines model for NodeWorkload.
+type NodeWorkload struct {
+	EnvironmentId *string             `json:"environment_id,omitempty"`
+	Health        *NodeWorkloadHealth `json:"health,omitempty"`
+	PlacementId   *string             `json:"placement_id,omitempty"`
+	Role          *NodeWorkloadRole   `json:"role,omitempty"`
+	ServiceId     *string             `json:"service_id,omitempty"`
+	ServiceName   *string             `json:"service_name,omitempty"`
+}
+
+// NodeWorkloadHealth defines model for NodeWorkload.Health.
+type NodeWorkloadHealth string
+
+// NodeWorkloadRole defines model for NodeWorkload.Role.
+type NodeWorkloadRole string
 
 // Org defines model for Org.
 type Org struct {
@@ -1337,19 +1397,25 @@ type Service struct {
 	DbEngine *ServiceDbEngine `json:"db_engine,omitempty"`
 
 	// DbVersion database services: the version tag chosen at creation
-	DbVersion          *string              `json:"db_version,omitempty"`
-	DesiredState       *ServiceDesiredState `json:"desired_state,omitempty"`
-	EnvironmentId      *string              `json:"environment_id,omitempty"`
-	Failover           *ServiceFailover     `json:"failover,omitempty"`
-	GitManagedFields   *[]string            `json:"git_managed_fields,omitempty"`
-	Id                 *string              `json:"id,omitempty"`
-	LiveReleaseId      *string              `json:"live_release_id,omitempty"`
-	Name               *string              `json:"name,omitempty"`
-	PendingChanges     *bool                `json:"pending_changes,omitempty"`
-	Placements         *[]Placement         `json:"placements,omitempty"`
-	SourceType         *ServiceSourceType   `json:"source_type,omitempty"`
-	Status             *ServiceStatus       `json:"status,omitempty"`
-	TemplateInstanceId *string              `json:"template_instance_id,omitempty"`
+	DbVersion     *string              `json:"db_version,omitempty"`
+	DesiredState  *ServiceDesiredState `json:"desired_state,omitempty"`
+	EnvironmentId *string              `json:"environment_id,omitempty"`
+	Failover      *ServiceFailover     `json:"failover,omitempty"`
+
+	// FailoverStatus State of the failover of a service (09 section 9). blocked: the node is down and the service was not moved, reason says why.
+	FailoverStatus   *FailoverStatus `json:"failover_status,omitempty"`
+	GitManagedFields *[]string       `json:"git_managed_fields,omitempty"`
+	Id               *string         `json:"id,omitempty"`
+
+	// LastBackupAt volume services: the end of the last successful backup (REQ-NODE-007)
+	LastBackupAt       *time.Time         `json:"last_backup_at,omitempty"`
+	LiveReleaseId      *string            `json:"live_release_id,omitempty"`
+	Name               *string            `json:"name,omitempty"`
+	PendingChanges     *bool              `json:"pending_changes,omitempty"`
+	Placements         *[]Placement       `json:"placements,omitempty"`
+	SourceType         *ServiceSourceType `json:"source_type,omitempty"`
+	Status             *ServiceStatus     `json:"status,omitempty"`
+	TemplateInstanceId *string            `json:"template_instance_id,omitempty"`
 
 	// TemplateSlug the slug of the template that made the service. The group delete asks for it.
 	TemplateSlug *string      `json:"template_slug,omitempty"`

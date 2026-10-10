@@ -2368,6 +2368,32 @@ export interface components {
             /** Format: date-time */
             last_heartbeat_at?: string;
             workload_count?: number;
+            /** @description the /24 of the node in mesh_cidr */
+            mesh_subnet?: string;
+            /** @description what a drain could not move yet */
+            drain_note?: string;
+            /** @description only in getNode */
+            workloads?: components["schemas"]["NodeWorkload"][];
+        };
+        NodeWorkload: {
+            placement_id?: string;
+            service_id?: string;
+            service_name?: string;
+            environment_id?: string;
+            /** @enum {string} */
+            role?: "live" | "candidate" | "draining" | "stopped";
+            /** @enum {string} */
+            health?: "unknown" | "starting" | "healthy" | "unhealthy";
+        };
+        /** @description State of the failover of a service (09 section 9). blocked: the node is down and the service was not moved, reason says why. */
+        FailoverStatus: {
+            /** @enum {string} */
+            state?: "healthy" | "blocked" | "moving" | "moved";
+            reason?: string;
+            /** Format: date-time */
+            data_lost_since?: string;
+            /** Format: date-time */
+            at?: string;
         };
         Project: {
             id?: string;
@@ -2467,6 +2493,12 @@ export interface components {
             /** @enum {string} */
             failover?: "none" | "auto";
             allow_data_loss_failover?: boolean;
+            failover_status?: components["schemas"]["FailoverStatus"];
+            /**
+             * Format: date-time
+             * @description volume services: the end of the last successful backup (REQ-NODE-007)
+             */
+            last_backup_at?: string;
             live_release_id?: string;
             placements?: components["schemas"]["Placement"][];
             pending_changes?: boolean;
