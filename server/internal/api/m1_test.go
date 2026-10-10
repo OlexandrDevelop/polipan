@@ -742,3 +742,30 @@ func (e *testEnv) addUser(id, email, role, hash, orgID string) {
 		e.t.Fatal(err)
 	}
 }
+
+// R7: behind the trusted proxy the client address comes from X-Forwarded-For, from anyone else it does not.
+func TestR7_TrustedProxyClientAddress(t *testing.T) {
+	var got string
+	h := api.TrustedProxies([]string{"172.30.0.0/24"})(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+		got = "ip:" + host
+	}))
+	cases := []struct{ remote, xff, want string }{
+		{"172.30.0.5:4000", "203.0.113.9", "ip:203.0.113.9"},
+		{"172.30.0.5:4000", "1.1.1.1, 203.0.113.9", "ip:203.0.113.9"},
+		{"198.51.100.7:4000", "203.0.113.9", "ip:198.51.100.7"},
+		{"172.30.0.5:4000", "", "ip:172.30.0.5"},
+		{"172.30.0.5:4000", "not-an-ip", "ip:172.30.0.5"},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.RemoteAddr = c.remote
+		if c.xff != "" {
+			req.Header.Set("X-Forwarded-For", c.xff)
+		}
+		h.ServeHTTP(httptest.NewRecorder(), req)
+		if got != c.want {
+			t.Errorf("remote %s xff %q: key %s, want %s", c.remote, c.xff, got, c.want)
+		}
+	}
+}

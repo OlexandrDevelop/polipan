@@ -59,7 +59,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 
 	handler, err := api.NewRouter(api.Deps{
 		Log: log, DB: pool, Pool: pool, Clock: clk, RateLimit: cfg.APIRateLimit, Web: web.Handler(),
-		Orchestrator: ctl, ExternalURL: cfg.ExternalURL, AgentListen: cfg.AgentListen,
+		Orchestrator: ctl, ExternalURL: cfg.ExternalURL, TrustedProxies: cfg.TrustedProxies, AgentListen: cfg.AgentListen,
 		SetupToken: pki.SetupToken(kek), SessionTTL: cfg.SessionTTL, SessionAbsoluteTTL: cfg.SessionAbsoluteTTL,
 	})
 	if err != nil {

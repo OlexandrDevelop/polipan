@@ -32,6 +32,8 @@ type Deps struct {
 	Web http.Handler
 	// Spec is the OpenAPI file. Empty means the embedded file. Tests set it.
 	Spec []byte
+	// TrustedProxies are CIDRs of reverse proxies. From them X-Forwarded-For gives the client address.
+	TrustedProxies []string
 
 	// Pool is the database. Without it only the operations that need no data work (health, version).
 	Pool *pgxpool.Pool
@@ -87,7 +89,7 @@ func NewRouter(d Deps) (http.Handler, error) {
 
 	r := chi.NewRouter()
 	hsts := strings.HasPrefix(strings.ToLower(d.ExternalURL), "https://")
-	r.Use(RequestID(d.Log), AccessLog, Recover, SecurityHeaders(hsts), BodyLimit(d.MaxBodyBytes))
+	r.Use(TrustedProxies(d.TrustedProxies), RequestID(d.Log), AccessLog, Recover, SecurityHeaders(hsts), BodyLimit(d.MaxBodyBytes))
 
 	h := &Handlers{
 		DB:       d.DB,

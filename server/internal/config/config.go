@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -57,6 +58,9 @@ type Config struct {
 	SessionAbsoluteTTL time.Duration `yaml:"session_absolute_ttl"`
 	// ACMEEmail is the contact address for the certificate authority. Optional.
 	ACMEEmail string `yaml:"acme_email"`
+	// TrustedProxies are the networks of reverse proxies (the Caddy of the node). For a request from
+	// one of them the client address is taken from X-Forwarded-For. Default: the polipan network.
+	TrustedProxies []string `yaml:"trusted_proxies"`
 }
 
 // Default returns the config with the default values.
@@ -67,6 +71,7 @@ func Default() Config {
 		APIRateLimit:    600,
 		ShutdownTimeout: 15 * time.Second,
 
+		TrustedProxies:     []string{"172.30.0.0/24"},
 		MasterKeyFile:      "/etc/polipan/master.key",
 		AgentListen:        ":9443",
 		MeshCIDR:           "10.210.0.0/16",
@@ -131,6 +136,9 @@ func applyEnv(cfg *Config, getenv func(string) string) error {
 			*dst = v
 		}
 	}
+	if v := getenv("POLIPAN_TRUSTED_PROXIES"); v != "" {
+		cfg.TrustedProxies = strings.Split(v, ",")
+	}
 	if v := getenv("POLIPAN_AGENT_HOSTS"); v != "" {
 		cfg.AgentHosts = strings.Split(v, ",")
 	}
@@ -148,6 +156,11 @@ func applyEnv(cfg *Config, getenv func(string) string) error {
 func (c Config) Validate() error {
 	if c.DatabaseURL == "" {
 		return errors.New("config: database_url (POLIPAN_DATABASE_URL) is required")
+	}
+	for _, p := range c.TrustedProxies {
+		if _, _, err := net.ParseCIDR(strings.TrimSpace(p)); err != nil {
+			return fmt.Errorf("config: trusted_proxies: %q is not a CIDR", p)
+		}
 	}
 	if c.APIRateLimit < 1 {
 		return errors.New("config: api_rate_limit must be at least 1")

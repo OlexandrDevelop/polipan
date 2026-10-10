@@ -6,6 +6,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -79,8 +80,8 @@ func (l *RateLimiter) collect(now time.Time) {
 	}
 }
 
-// clientKey is the client IP. M1 uses only RemoteAddr. X-Forwarded-For is not read,
-// because any client can send it. A trusted proxy setting can be added later.
+// clientKey is the client IP (RemoteAddr). X-Forwarded-For is read only from a trusted proxy,
+// see TrustedProxies, because any client can send it.
 // The key of a logged-in user (see Handlers.guard) is used in addition, after the session is valid.
 func clientKey(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -113,4 +114,40 @@ func (l *RateLimiter) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		}
 	})
+}
+
+// TrustedProxies sets r.RemoteAddr to the real client when the request comes from a trusted
+// proxy (the Caddy of the node). The last X-Forwarded-For entry is used: it is the address
+// that the proxy saw. A request from any other address keeps its RemoteAddr, and its
+// X-Forwarded-For is ignored.
+func TrustedProxies(cidrs []string) func(http.Handler) http.Handler {
+	var nets []*net.IPNet
+	for _, c := range cidrs {
+		if _, n, err := net.ParseCIDR(strings.TrimSpace(c)); err == nil {
+			nets = append(nets, n)
+		}
+	}
+	return func(next http.Handler) http.Handler {
+		if len(nets) == 0 {
+			return next
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			host, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err != nil {
+				host = r.RemoteAddr
+			}
+			peer := net.ParseIP(host)
+			for _, n := range nets {
+				if peer == nil || !n.Contains(peer) {
+					continue
+				}
+				parts := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+				if ip := net.ParseIP(strings.TrimSpace(parts[len(parts)-1])); ip != nil {
+					r.RemoteAddr = net.JoinHostPort(ip.String(), "0")
+				}
+				break
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
