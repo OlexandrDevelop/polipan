@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from '@tanstack/react-router'
+import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from '@/api/client'
@@ -28,6 +28,7 @@ import { useMe } from '@/auth'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { ServiceDomains } from '@/routes/ServiceDomains'
 import { ServiceLogs } from '@/routes/ServiceLogs'
+import { MetricsPanel } from '@/components/MetricsPanel'
 import { ServiceHealth } from '@/routes/ServiceHealth'
 import { ServiceReleases, useReleases } from '@/routes/ServiceReleases'
 import { ServicePlacement, FailoverBanner } from '@/routes/ServicePlacement'
@@ -51,6 +52,7 @@ const tabs = [
   'health',
   'backups',
   'logs',
+  'metrics',
   'terminal',
   'settings',
 ] as const
@@ -290,6 +292,7 @@ export function ServicePage() {
 
   const scope = useScope(projectSlug, envSlug, name)
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const me = useMe()
   const serviceId = scope.service?.id ?? ''
   const [notice, setNotice] = useState<ReactNode>(null)
@@ -595,6 +598,23 @@ export function ServicePage() {
         <ServiceBackups service={service} environmentProtected={environment.protected} />
       )}
       {tab === 'logs' && <ServiceLogs serviceId={serviceId} />}
+      {tab === 'metrics' && (
+        <MetricsPanel
+          kind="service"
+          id={serviceId}
+          markers={(releases.data?.items ?? [])
+            .filter((r) => r.created_at)
+            .map((r) => ({
+              time: Math.floor(new Date(r.created_at ?? '').getTime() / 1000),
+              label: `v${r.number}`,
+              onOpen: () =>
+                void navigate({
+                  to: '/o/$org/p/$project/e/$env/s/$service/$tab',
+                  params: { ...base, tab: 'releases' },
+                }),
+            }))}
+        />
+      )}
       {tab === 'terminal' && (
         <ServiceTerminal service={service} environmentProtected={environment.protected} />
       )}

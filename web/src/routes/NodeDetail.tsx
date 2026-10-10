@@ -6,6 +6,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
+import { MetricsPanel } from '@/components/MetricsPanel'
 import { NodeBars } from '@/components/NodeBars'
 import { DataList } from '@/components/DataList'
 import { ErrorBanner } from '@/components/ErrorBanner'
@@ -307,6 +308,10 @@ export function NodeDetailPage() {
         <Card className="space-y-3 lg:col-span-2">
           <h2 className="font-semibold">{t('nodes.load')}</h2>
           <NodeBars node={node} />
+        </Card>
+        <Card className="space-y-3 lg:col-span-2">
+          <h2 className="font-semibold">{t('nodes.metrics')}</h2>
+          <MetricsPanel kind="node" id={id} />
         </Card>
         <Card className="space-y-1 text-sm">
           <h2 className="font-semibold">{t('nodes.details')}</h2>
