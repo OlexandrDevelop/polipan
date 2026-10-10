@@ -74,7 +74,7 @@ func (c *Control) CanaryAction(ctx context.Context, depID, action, actorID strin
 			shifted = &t
 		}
 		return c.canaryNote(ctx, depID, "the canary was resumed by the user",
-			`UPDATE deployments SET canary_paused = false, canary_paused_at = NULL, canary_step_started_at = COALESCE($3, canary_step_started_at) WHERE id = $1`, now, shifted)
+			`UPDATE deployments SET canary_paused = false, canary_paused_at = NULL, canary_step_started_at = COALESCE($2, canary_step_started_at) WHERE id = $1`, shifted)
 	case "promote", "abort":
 		c.mu.Lock()
 		ad := c.active[depID]
