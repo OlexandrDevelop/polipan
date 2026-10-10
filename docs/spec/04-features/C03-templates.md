@@ -12,7 +12,7 @@ A template is a ready recipe that expands into one or more services (for example
 
 ## Rules
 
-- **REQ-TPL-001** (MUST) A template manifest (YAML, validated by [template.schema.json](../schemas/template.schema.json), described in [07](../07-config-as-code.md#7-templates)) has: `slug`, `version`, `name`, `description`, `icon`, `inputs` (name, label, type `string|number|bool|secret|domain`, default, generate), `services` (same shape as config-as-code `services`), `domains`, `volumes`.
+- **REQ-TPL-001** (MUST) A template manifest (YAML, validated by [template.schema.json](../schemas/template.schema.json), described in [07](../07-config-as-code.md#7-templates)) has: `slug`, `version`, `name`, `description`, `icon`, `inputs` (name, label, type `string|number|bool|secret|domain`, default, generate), `services` (same shape as config-as-code `services`, with their own `domains` and `volumes`).
 - **REQ-TPL-002** (MUST) Inputs of type `secret` are stored as secrets. With `generate: true` Polipan creates a random value and never shows it.
 - **REQ-TPL-003** (MUST) Instantiating a template creates a `template_instances` row and its services in one transaction. If any service fails validation nothing is created.
 - **REQ-TPL-004** (MUST) Built-in templates live in `/templates` in the repo, are embedded in the server binary and versioned. The v1 catalog contains at least: WordPress, Ghost, Plausible, n8n, Uptime Kuma, Gitea, Nextcloud, Metabase, Directus, Vaultwarden, MinIO, pgAdmin.
