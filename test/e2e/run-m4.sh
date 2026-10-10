@@ -16,6 +16,8 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
 host=${E2E_HOST:-pp-e2e-m4}
 dx() { docker exec "$host" "$@"; }
+# dxi forwards stdin, for the commands that read a pipe.
+dxi() { docker exec -i "$host" "$@"; }
 step() { printf '\n== %s\n' "$*"; }
 free_gb() { df -BG --output=avail / | tail -1 | tr -dc '0-9'; }
 compose="docker compose -f /opt/polipan/docker-compose.yml"
@@ -106,11 +108,11 @@ pw=$(dx $compose exec -T server /polipan-server admin backup-password --policy "
 [ -n "$pw" ]
 dx docker exec -e RESTIC_PASSWORD="$pw" -e AWS_ACCESS_KEY_ID=minio -e AWS_SECRET_ACCESS_KEY=minio-secret-123 agent \
   restic -r "s3:http://127.0.0.1:9000/backups/pp/$policy" dump latest /dump.pgdump \
-  | dx docker run --rm -i postgres:16-alpine pg_restore -l | grep -q "items"
+  | dxi docker run --rm -i postgres:16-alpine pg_restore -l | grep -q "items"
 echo "ok: the MinIO repository restores with the restic binary and holds the table"
 dx docker exec -e RESTIC_PASSWORD="$pw" agent restic -r "sftp:bk@127.0.0.1:/srv/restic/$policy" \
   -o sftp.command="ssh -p 2222 -i /e2e/sftp/id_ed25519 -o StrictHostKeyChecking=no bk@127.0.0.1 -s sftp" dump latest /dump.pgdump \
-  | dx docker run --rm -i postgres:16-alpine pg_restore -l | grep -q "items"
+  | dxi docker run --rm -i postgres:16-alpine pg_restore -l | grep -q "items"
 echo "ok: the SFTP repository restores with the restic binary and holds the table"
 
 step "AC-BKP-04: restore into a new service, the original stays"
