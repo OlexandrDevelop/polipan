@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
-# End-to-end test of milestone M4 (T-E2E-09 without alert delivery, AC-DB-01..04, AC-TPL-01, AC-BKP-01, 03, 04, 06, 07, 08, 09,
+# End-to-end test of milestone M4 (T-E2E-09 with the alert delivery of M8, AC-DB-01..04, AC-TPL-01, AC-BKP-01, 03, 04, 06, 07, 08, 09,
 # AC-OSS-05). It runs a throw-away Docker host (docker:dind) with the control plane, one agent, a MinIO server and an SFTP
 # server. Postgres, MySQL and WordPress images are pulled inside the test Docker host and removed with it.
 #
@@ -149,12 +149,19 @@ after=$(count_snapshots)
 if restic_minio snapshots --compact | grep -q "^$oldest "; then echo "FAIL: the oldest snapshot $oldest is still there"; exit 1; fi
 echo "ok: AC-BKP-05: $before snapshots before the run, $after after, the oldest ($oldest) was removed"
 
+step "T-E2E-09 alert part: a fake Telegram server and a channel for it"
+dx docker network create --subnet 192.168.78.0/24 rcv >/dev/null
+dx docker run -d --name rcv --network rcv --ip 192.168.78.10 -v /e2e:/e2e python:3.12-slim python -u /e2e/m8/receiver.py 8081 >/dev/null
+dx docker network connect rcv "$(dx $compose ps -q server)"
+driver m4-alert-setup
+
 step "AC-BKP-08: corrupt the snapshot on the SFTP target, the check fails and a critical alert is raised"
 dx docker exec sftp sh -c "for f in \$(find /srv/restic/$policy/data -type f); do echo corrupted > \$f; done"
 driver m4-check-corrupt
 a=$(pg "select count(*) from events where topic = 'alert' and payload->>'rule' = 'restore_check_failed' and payload->>'severity' = 'critical'")
 [ "$a" -ge 1 ] || { echo "FAIL: no critical alert"; exit 1; }
-echo "ok: $a critical alert event(s) for restore_check_failed (delivery to channels is M8)"
+echo "ok: $a critical alert event(s) for restore_check_failed"
+driver m4-alert-check
 left=$(dx docker ps -a -q --filter label=polipan.role=restore-check | wc -l)
 [ "$left" = 0 ] || { echo "FAIL: a failed check left a container"; exit 1; }
 

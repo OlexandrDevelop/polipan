@@ -22,6 +22,8 @@ docker cp pebble:/test/certs/pebble.minica.pem /e2e/pebble.minica.pem
 
 cat > /opt/polipan/.env <<ENV
 POSTGRES_PASSWORD=pw
+VICTORIA_PASSWORD=vpw
+POLIPAN_TELEGRAM_API=http://192.168.78.10:8081
 POLIPAN_SERVER_IMAGE=polipan-server:dev
 POLIPAN_EXTERNAL_URL=http://panel.test
 POLIPAN_AGENT_HOSTS=localhost,panel.test

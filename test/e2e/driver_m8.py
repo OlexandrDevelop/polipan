@@ -371,6 +371,10 @@ def canary():
 def logs():
     p = logged_in()
     st = load_state()
+    _, old = p.call("GET", f"/environments/{st['prod']}/services", expect=200)
+    for o in old if isinstance(old, list) else old.get("items", []):
+        if o["name"] == "logger":  # a repeated run
+            p.call("DELETE", f"/services/{o['id']}?confirm=logger", expect=204)
     svc = create_app(p, st["prod"], "logger", None, {"VERSION": "1", "LOGGER": "1"}, st["project"])
     deploy(p, svc["id"])
     save_state(logger=svc["id"])
@@ -398,15 +402,19 @@ def logs():
     # REQ-OBS-102 and AC-OBS-04: the server is away 50 s, the agent is killed in that time. Nothing is lost or repeated.
     run("docker", "exec", N1, "docker", "stop", "-t", "5", "server")
     time.sleep(20)
-    run("docker", "exec", N1, "docker", "kill", "agent")  # the restart policy starts it again
+    run("docker", "exec", N1, "docker", "kill", "agent")  # SIGKILL: no clean stop. systemd starts it again, so does the test
+    time.sleep(2)
+    run("docker", "exec", N1, "docker", "start", "agent")
     time.sleep(30)
     run("docker", "exec", N1, "docker", "start", "server")
     wait("the server is back", server_up, timeout=120, every=2)
     p = Panel()
     wait("login after the restart", lambda: (p.login() or True), timeout=120, every=3)
     time.sleep(40)  # the spool is sent
-    p.call("POST", f"/services/{svc['id']}/stop", expect=200)
-    time.sleep(25)  # the last lines are shipped
+    p.call("POST", f"/services/{svc['id']}/stop", expect=202)
+    # The app is PID 1 of its container and ignores SIGTERM, so Docker waits for the grace time before it kills it.
+    wait("the logger container has stopped", lambda: not dx("docker", "ps", "--filter", f"label=polipan.service={svc['id']}", "--format", "{{.Names}}"), timeout=120, every=2)
+    time.sleep(20)  # the last lines are shipped
 
     def container_seqs():
         name = dx("docker", "ps", "-a", "--filter", f"label=polipan.service={svc['id']}", "--format", "{{.Names}}").split()[0]
@@ -431,15 +439,23 @@ def logs():
     if dup or missing or extra:
         fail(f"REQ-OBS-102: repeated {dup}, missing {missing[:10]}, extra {extra[:10]}")
     ok("AC-OBS-04, REQ-OBS-102: the logs of the 50 s gap and of the agent kill are all there, none twice")
-    p.call("POST", f"/services/{svc['id']}/start", expect=200)
+    p.call("POST", f"/services/{svc['id']}/start", expect=202)
 
 
 def search():
     p = logged_in()
     st = load_state()
-    _, stg_svc = p.call("POST", f"/environments/{st['stg']}/services", {"name": "stage", "type": "app", "source": {"image": "python:3.12-slim"}, "config": {"image": "python:3.12-slim", "port": 8000}}, expect=201)
-    run("docker", "exec", N1, "docker", "run", "--rm", "--network", "cp", "-v", "/e2e:/e2e", "python:3.12-slim", "python", "/e2e/seed.py",
-        st["org"], st["project"], st["prod"], st["shop"], st["stg"], stg_svc["id"], st["node"], timeout=600)
+    _, existing = p.call("GET", f"/environments/{st['stg']}/services", expect=200)
+    existing = existing if isinstance(existing, list) else existing.get("items", [])
+    stg_svc = next((x for x in existing if x["name"] == "stage"), None)
+    if stg_svc is None:
+        _, stg_svc = p.call("POST", f"/environments/{st['stg']}/services", {"name": "stage", "type": "app", "source": {"image": "python:3.12-slim"},
+                                                                          "config": {"image": "python:3.12-slim", "port": 8000}}, expect=201)
+    _, seeded = p.call("GET", "/logs/search?q=%22calling%20upstream%203%22&limit=1", expect=200)
+    if not seeded["items"]:  # a repeated run does not seed again
+        run("docker", "exec", N1, "docker", "run", "--rm", "--network", "cp", "-v", "/e2e:/e2e", "python:3.12-slim", "python", "/e2e/seed.py",
+            st["org"], st["project"], st["prod"], st["shop"], st["stg"], stg_svc["id"], st["node"], timeout=600)
+        wait("the seeded lines can be searched", lambda: p.call("GET", "/logs/search?q=%22calling%20upstream%203%22&limit=1")[1]["items"], timeout=60, every=2)
     # AC-OBS-06: "timeout" with the production filter: only production lines, newest first.
     _, page = p.call("GET", f"/logs/search?q=timeout&environment_id={st['prod']}&limit=50", expect=200)
     items = page["items"]

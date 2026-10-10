@@ -881,6 +881,34 @@ def m4_check_corrupt():
     print("M4 CORRUPT PASSED")
 
 
+RECEIVER = "http://192.168.78.10:8081"
+
+
+def m4_alert_setup():
+    """T-E2E-09, alert part: a Telegram channel that points to the fake receiver of the test host (REQ-ALERT-001)."""
+    p = m4_panel()
+    # The fake receiver is on a private network: the org allows private targets (REQ-SEC-104).
+    p.call("PATCH", "/org", {"settings": {"allow_private_targets": True}}, expect=200)
+    _, ch = p.call("POST", "/alert-channels", {"kind": "telegram", "name": "telegram", "config": {"chat_id": "7"}, "secret": "123:e2e-bot-token"}, expect=201)
+    _, res = p.call("POST", f"/alert-channels/{ch['id']}/test", expect=200)
+    if not res.get("ok"):
+        fail(f"the test message of the channel: {res}")
+    print("M4 ALERT CHANNEL READY")
+
+
+def m4_alert_check():
+    """T-E2E-09, alert part: the failed restore check reached the fake Telegram server (AC-ALERT-01, REQ-BKP-103)."""
+    def got():
+        raw = urllib.request.urlopen(RECEIVER + "/messages", timeout=10).read()
+        msgs = [m for m in json.loads(raw) if m["kind"] == "telegram" and "estore" in m["body"] and "Test message" not in m["body"]]
+        return msgs or None
+    msgs = wait("the restore check alert in Telegram", got, timeout=90, every=3)
+    if "e2e-bot-token" in msgs[0]["body"]:
+        fail("the bot token is in the message")
+    ok("T-E2E-09: the failed restore check reached the fake Telegram server: " + msgs[0]["body"][:160].replace(chr(10), " "))
+    print("M4 ALERT PASSED")
+
+
 def m4_volume():
     """AC-BKP-09: a volume policy: the restore check restores to a temporary folder and compares file count and size."""
     p = m4_panel()
@@ -996,5 +1024,5 @@ def m4_template():
 if __name__ == "__main__":
     {"flow": flow, "serving": serving, "after": after, "gitflow": gitflow, "rollback": rollback, "zerodowntime": zerodowntime,
      "chaos-start": chaos_start, "chaos-end": chaos_end, "m4-setup": m4_setup, "m4-backup": m4_backup, "m4-restore": m4_restore,
-     "m4-restore-inplace": m4_restore_inplace, "m4-check-corrupt": m4_check_corrupt, "m4-volume": m4_volume,
+     "m4-restore-inplace": m4_restore_inplace, "m4-check-corrupt": m4_check_corrupt, "m4-alert-setup": m4_alert_setup, "m4-alert-check": m4_alert_check, "m4-volume": m4_volume,
      "m4-volume-backup": m4_volume_backup, "m4-controlplane": m4_controlplane, "m4-template": m4_template, "m4-run": m4_run, "m4-redis-start": m4_redis_start, "m4-redis-backup": m4_redis_backup, "m4-redis-restore": m4_redis_restore}[sys.argv[1]]()

@@ -76,6 +76,8 @@ services:
       POLIPAN_STORAGE_METRICS_RETENTION_DAYS: ${POLIPAN_STORAGE_METRICS_RETENTION_DAYS:-365}
       POLIPAN_STORAGE_LOGS_RETENTION_DAYS: ${POLIPAN_STORAGE_LOGS_RETENTION_DAYS:-90}
       POLIPAN_VMAGENT_IMAGE: ${POLIPAN_VMAGENT_IMAGE:-victoriametrics/vmagent:v1.108.1}
+      # Tests set the address of a fake Telegram bot API here. Empty means the real one.
+      POLIPAN_TELEGRAM_API: ${POLIPAN_TELEGRAM_API:-}
     volumes:
       - /etc/polipan/master.key:/etc/polipan/master.key:ro
       - registry-files:/var/lib/polipan/registry

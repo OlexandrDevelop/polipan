@@ -56,13 +56,17 @@ trap cleanup EXIT
 if [ -z "${SKIP_BUILD:-}" ]; then
   step "Build the server and the agent"
   out=$(mktemp -d)
-  docker run --rm -v "$root":/src -v pp-gocache:/root/.cache/go-build -v pp-gomod:/go/pkg/mod -v "$out":/out -w /src \
+  src=$(mktemp -d)
+  # Build the committed code only: other work in the tree must not change the test.
+  git archive HEAD | tar -x -C "$src"
+  docker run --rm -v "$src":/src -v pp-gocache:/root/.cache/go-build -v pp-gomod:/go/pkg/mod -v "$out":/out -w /src \
     -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false golang:1.23 \
     go build -trimpath -ldflags "-s -w" -o /out/polipan-server ./server/cmd/polipan-server
   cp test/e2e/m7/server.Dockerfile "$out/Dockerfile"
   docker build -q -t polipan-server:m7 "$out" >/dev/null
   rm -rf "$out"
-  docker build -q -f deploy/docker/agent.Dockerfile --build-arg VERSION=m7 -t polipan-agent:m7 . >/dev/null
+  docker build -q -f deploy/docker/agent.Dockerfile --build-arg VERSION=m7 -t polipan-agent:m7 "$src" >/dev/null
+  rm -rf "$src"
 fi
 
 step "Start three nodes"

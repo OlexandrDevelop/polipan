@@ -341,10 +341,11 @@ def scenario(n1, n2, n3, ip1, ip2, ip3):
         return n if n["state"] == "draining" and "client" in (n.get("drain_note") or "") else None
     n = wait("the drain reports what it could not move", drain_note, timeout=120)
     ok(f"REQ-NODE-003: the drain of n3 stays draining and says what is left: {n['drain_note'][:120]}")
-    _, cur = p.call("GET", f"/services/{client['id']}", expect=200)
-    cfg = cur["config"]
-    cfg.pop("placement", None)
-    p.call("PATCH", f"/services/{client['id']}", {"config": cfg}, expect=200)
+    for pinned in (client, other_n3):
+        _, cur = p.call("GET", f"/services/{pinned['id']}", expect=200)
+        cfg = cur["config"]
+        cfg.pop("placement", None)
+        p.call("PATCH", f"/services/{pinned['id']}", {"config": cfg}, expect=200)
     wait("n3 ends in maintenance", lambda: (lambda n: n if n["state"] == "maintenance" else None)(node_by_name(p, "n3")), timeout=240, every=3)
     if containers(n3, client["id"], True) or containers(n3, other_n3["id"], True):
         fail("AC-NODE-08: containers are left on the drained node")
