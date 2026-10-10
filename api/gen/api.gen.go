@@ -828,18 +828,29 @@ type BackupTargetWriteKind string
 // ConfigPlan defines model for ConfigPlan.
 type ConfigPlan struct {
 	Changes *[]struct {
-		Action   *ConfigPlanChangesAction `json:"action,omitempty"`
-		Fields   *[]FieldChange           `json:"fields,omitempty"`
-		Name     *string                  `json:"name,omitempty"`
-		Resource *string                  `json:"resource,omitempty"`
+		Action      *ConfigPlanChangesAction `json:"action,omitempty"`
+		Environment *string                  `json:"environment,omitempty"`
+		Fields      *[]FieldChange           `json:"fields,omitempty"`
+		Hint        *string                  `json:"hint,omitempty"`
+		Name        *string                  `json:"name,omitempty"`
+
+		// ProtectedEnvironment The change touches a protected environment. A push holds the plan until an admin applies it.
+		ProtectedEnvironment *bool   `json:"protected_environment,omitempty"`
+		RequiresAdmin        *bool   `json:"requires_admin,omitempty"`
+		Resource             *string `json:"resource,omitempty"`
 	} `json:"changes,omitempty"`
 	Errors *[]struct {
+		Code    *string `json:"code,omitempty"`
 		Line    *int    `json:"line,omitempty"`
 		Message *string `json:"message,omitempty"`
 		Path    *string `json:"path,omitempty"`
 	} `json:"errors,omitempty"`
 	PlanHash *string `json:"plan_hash,omitempty"`
 	Valid    *bool   `json:"valid,omitempty"`
+	Warnings *[]struct {
+		Message *string `json:"message,omitempty"`
+		Path    *string `json:"path,omitempty"`
+	} `json:"warnings,omitempty"`
 }
 
 // ConfigPlanChangesAction defines model for ConfigPlan.Changes.Action.
@@ -16412,10 +16423,19 @@ type ApplyProjectConfigResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON202      *struct {
-		Deployments *[]Deployment `json:"deployments,omitempty"`
+		DeployErrors *[]string     `json:"deploy_errors,omitempty"`
+		Deployments  *[]Deployment `json:"deployments,omitempty"`
+		Items        *[]struct {
+			Action   *string                           `json:"action,omitempty"`
+			Message  *string                           `json:"message,omitempty"`
+			Name     *string                           `json:"name,omitempty"`
+			Resource *string                           `json:"resource,omitempty"`
+			Status   *ApplyProjectConfig202ItemsStatus `json:"status,omitempty"`
+		} `json:"items,omitempty"`
 	}
 	JSON409 *Error
 }
+type ApplyProjectConfig202ItemsStatus string
 
 // Status returns HTTPResponse.Status
 func (r ApplyProjectConfigResponse) Status() string {
@@ -22513,7 +22533,15 @@ func ParseApplyProjectConfigResponse(rsp *http.Response) (*ApplyProjectConfigRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
 		var dest struct {
-			Deployments *[]Deployment `json:"deployments,omitempty"`
+			DeployErrors *[]string     `json:"deploy_errors,omitempty"`
+			Deployments  *[]Deployment `json:"deployments,omitempty"`
+			Items        *[]struct {
+				Action   *string                           `json:"action,omitempty"`
+				Message  *string                           `json:"message,omitempty"`
+				Name     *string                           `json:"name,omitempty"`
+				Resource *string                           `json:"resource,omitempty"`
+				Status   *ApplyProjectConfig202ItemsStatus `json:"status,omitempty"`
+			} `json:"items,omitempty"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err

@@ -738,7 +738,7 @@ paths:
       parameters: [{$ref: '#/components/parameters/ProjectId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [config, plan_hash], properties: {config: {type: string}, plan_hash: {type: string}, prune: {type: boolean}, prune_data: {type: boolean}}}}}}
       responses:
-        '202': {description: Accepted, content: {application/json: {schema: {type: object, properties: {deployments: {type: array, items: {$ref: '#/components/schemas/Deployment'}}}}}}}
+        '202': {description: Accepted, content: {application/json: {schema: {type: object, properties: {deployments: {type: array, items: {$ref: '#/components/schemas/Deployment'}}, items: {type: array, items: {type: object, properties: {action: {type: string}, resource: {type: string}, name: {type: string}, status: {type: string, enum: [applied, skipped, failed]}, message: {type: string}}}}, deploy_errors: {type: array, items: {type: string}}}}}}}
         '409': {$ref: '#/components/responses/Error'}
 
   /projects/{project_id}/variables:
@@ -2030,5 +2030,6 @@ components:
       properties:
         plan_hash: {type: string}
         valid: {type: boolean}
-        errors: {type: array, items: {type: object, properties: {line: {type: integer}, path: {type: string}, message: {type: string}}}}
-        changes: {type: array, items: {type: object, properties: {action: {type: string, enum: [create, update, delete, unmanaged]}, resource: {type: string}, name: {type: string}, fields: {type: array, items: {$ref: '#/components/schemas/FieldChange'}}}}}
+        errors: {type: array, items: {type: object, properties: {line: {type: integer}, path: {type: string}, message: {type: string}, code: {type: string}}}}
+        warnings: {type: array, items: {type: object, properties: {path: {type: string}, message: {type: string}}}}
+        changes: {type: array, items: {type: object, properties: {action: {type: string, enum: [create, update, delete, unmanaged]}, resource: {type: string}, name: {type: string}, environment: {type: string}, protected_environment: {type: boolean, description: "The change touches a protected environment. A push holds the plan until an admin applies it."}, requires_admin: {type: boolean}, hint: {type: string}, fields: {type: array, items: {$ref: '#/components/schemas/FieldChange'}}}}}

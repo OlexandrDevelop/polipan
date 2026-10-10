@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { isManaged } from '@/managed'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
@@ -193,7 +194,9 @@ export function ServiceDomains({
 }) {
   const serviceId = service.id ?? ''
   const queryClient = useQueryClient()
-  const access = useAccess('domain:manage', environmentProtected)
+  const baseAccess = useAccess('domain:manage', environmentProtected)
+  const managed = isManaged(service.git_managed_fields, 'domains')
+  const access = managed ? 'hidden' : baseAccess
   const [adding, setAdding] = useState(false)
   const [removing, setRemoving] = useState<Domain | null>(null)
   const nodes = useNodes()
@@ -233,6 +236,7 @@ export function ServiceDomains({
 
   return (
     <div className="space-y-4">
+      {managed && <Banner>{t('settings.managed')}</Banner>}
       {nodes.isError && (
         <Banner variant="warning" title={t('domains.nodes_failed')}>
           {t('domains.nodes_failed_next')}

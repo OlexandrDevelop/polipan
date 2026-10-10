@@ -71,7 +71,7 @@ All of them write an audit event with `actor_type = system`.
 
 ## Requirements
 
-- **REQ-CLI-100** (MUST) Every command in section 2 exists and maps to the named API operations. A test checks that every `operationId` that is not marked UI-only in [13](13-testing-and-quality.md) is reachable from at least one command.
+- **REQ-CLI-100** (MUST) Every command in section 2 exists and maps to the named API operations. A test checks that every `operationId` that is not marked UI-only in [13](13-testing-and-quality.md) is reachable from at least one command. The inbound webhooks (`receiveGitWebhook`, `receiveDeployHook`) are called by Git and CI systems, not by users: they are the only operations without a command. The two SSO redirect operations are reached by `polipan sso-login <provider>`, which prints the browser address.
 - **REQ-CLI-101** (MUST) Exit codes and the output formats of section 1 are implemented for all commands.
 - **REQ-CLI-102** (MUST) Secret values are read only from stdin, a file or a prompt, never from command arguments, and are never written to the CLI log.
 - **REQ-CLI-103** (MUST) `polipan validate` works offline with the embedded `polipan.schema.json`.

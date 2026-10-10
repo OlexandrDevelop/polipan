@@ -3079,12 +3079,22 @@ export interface components {
                 line?: number;
                 path?: string;
                 message?: string;
+                code?: string;
+            }[];
+            warnings?: {
+                path?: string;
+                message?: string;
             }[];
             changes?: {
                 /** @enum {string} */
                 action?: "create" | "update" | "delete" | "unmanaged";
                 resource?: string;
                 name?: string;
+                environment?: string;
+                /** @description The change touches a protected environment. A push holds the plan until an admin applies it. */
+                protected_environment?: boolean;
+                requires_admin?: boolean;
+                hint?: string;
                 fields?: components["schemas"]["FieldChange"][];
             }[];
         };
@@ -5008,6 +5018,15 @@ export interface operations {
                 content: {
                     "application/json": {
                         deployments?: components["schemas"]["Deployment"][];
+                        items?: {
+                            action?: string;
+                            resource?: string;
+                            name?: string;
+                            /** @enum {string} */
+                            status?: "applied" | "skipped" | "failed";
+                            message?: string;
+                        }[];
+                        deploy_errors?: string[];
                     };
                 };
             };

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { isManaged } from '@/managed'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
@@ -127,7 +128,7 @@ export function ServiceHealth({
     setForm((f) => ({ ...f, ...patch }))
   }
   const errors = submitted ? validate(form) : {}
-  const managed = (service.git_managed_fields ?? []).includes('health')
+  const managed = isManaged(service.git_managed_fields, 'health')
 
   const save = useMutation({
     mutationFn: () =>

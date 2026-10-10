@@ -510,6 +510,15 @@ func (p *Parsed) desireService(eff *Effective, env, where string, live *Live, bc
 	for k, v := range s.Env {
 		ds.Vars[k] = DesiredVar{Value: v.Value, Preview: v.Preview, BuildTime: v.BuildTime}
 	}
+	// A map of settings is managed key by key: a key the file does not set stays free in the UI.
+	for _, k := range []string{"git", "strategy_options", "extra"} {
+		if m, ok := ds.Overlay[k].(map[string]any); ok && managed["config."+k] {
+			delete(managed, "config."+k)
+			for sk := range m {
+				managed["config."+k+"."+sk] = true
+			}
+		}
+	}
 	for k := range managed {
 		ds.Managed = append(ds.Managed, k)
 	}

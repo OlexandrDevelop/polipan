@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { isManaged } from '@/managed'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
@@ -11,6 +12,7 @@ import { DataList } from '@/components/DataList'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { ConfirmDialog, Modal, TypedConfirmDialog } from '@/components/Modal'
 import {
+  Banner,
   Button,
   CheckboxField,
   EmptyState,
@@ -575,9 +577,11 @@ export function ServiceStorage({
   const me = useMe()
   const access = accessFor(me.data?.org_role, 'volume:manage', environmentProtected)
   const orphanAccess = accessFor(me.data?.org_role, 'volume:manage', false)
+  const managed = isManaged(service.git_managed_fields, 'volumes')
   return (
     <div className="space-y-8">
-      <Volumes serviceId={service.id ?? ''} access={access} />
+      {managed && <Banner>{t('settings.managed')}</Banner>}
+      <Volumes serviceId={service.id ?? ''} access={managed ? 'hidden' : access} />
       <FileMounts
         service={service}
         access={accessFor(me.data?.org_role, 'service:update', environmentProtected)}

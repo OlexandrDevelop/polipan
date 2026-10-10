@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -346,31 +347,40 @@ func (h *Handlers) denyManaged(w http.ResponseWriter, r *http.Request, serviceID
 	return false
 }
 
+// valueAt reads a dotted path in a config.
+func valueAt(cfg map[string]any, path string) any {
+	var cur any = cfg
+	for _, part := range strings.Split(path, ".") {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return nil
+		}
+		cur = m[part]
+	}
+	return normJSON(cur)
+}
+
 // changedManaged lists the git managed fields of a service that an update changes.
 func changedManaged(cur *store.Service, newCfg map[string]any, curCfg map[string]any, failover *string, allowLoss *bool) []string {
-	managed := map[string]bool{}
-	for _, f := range cur.GitManaged {
-		managed[f] = true
-	}
 	var out []string
-	keys := map[string]bool{}
-	for k := range curCfg {
-		keys[k] = true
-	}
-	for k := range newCfg {
-		keys[k] = true
-	}
-	for k := range keys {
-		if managed["config."+k] && !reflect.DeepEqual(normJSON(curCfg[k]), normJSON(newCfg[k])) {
-			out = append(out, "config."+k)
+	for _, f := range cur.GitManaged {
+		switch {
+		case strings.HasPrefix(f, "config."):
+			path := strings.TrimPrefix(f, "config.")
+			if !reflect.DeepEqual(valueAt(curCfg, path), valueAt(newCfg, path)) {
+				out = append(out, f)
+			}
+		case f == "failover":
+			if failover != nil && *failover != cur.Failover {
+				out = append(out, f)
+			}
+		case f == "allow_data_loss_failover":
+			if allowLoss != nil && *allowLoss != cur.AllowDataLoss {
+				out = append(out, f)
+			}
 		}
 	}
-	if failover != nil && managed["failover"] && *failover != cur.Failover {
-		out = append(out, "failover")
-	}
-	if allowLoss != nil && managed["allow_data_loss_failover"] && *allowLoss != cur.AllowDataLoss {
-		out = append(out, "allow_data_loss_failover")
-	}
+	sort.Strings(out)
 	return out
 }
 

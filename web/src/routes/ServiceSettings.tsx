@@ -13,6 +13,7 @@ import { obj, str, wholeNumber } from '@/configForm'
 import type { Config } from '@/configForm'
 import { joinCommand, splitCommand } from '@/envText'
 import { t } from '@/i18n'
+import { isManaged } from '@/managed'
 import { accessFor } from '@/permissions'
 import type { Service } from '@/scope'
 
@@ -148,9 +149,9 @@ export function ServiceSettings({
   const [saved, setSaved] = useState(false)
   const dirty = JSON.stringify(form) !== JSON.stringify(initial)
   const guard = useUnsavedGuard(dirty && access === 'allow')
-  const managed = new Set(service.git_managed_fields ?? [])
+  const isManagedField = (field: string) => isManaged(service.git_managed_fields, field)
   const readOnly = access !== 'allow'
-  const lock = (field: string) => readOnly || managed.has(field)
+  const lock = (field: string) => readOnly || isManagedField(field)
   const set = (patch: Partial<Form>) => {
     setSaved(false)
     setForm((f) => ({ ...f, ...patch }))
@@ -180,7 +181,7 @@ export function ServiceSettings({
     if (Object.keys(validate(form, git)).length === 0) save.mutate()
   }
 
-  const managedHint = (field: string) => (managed.has(field) ? t('settings.managed') : undefined)
+  const managedHint = (field: string) => (isManagedField(field) ? t('settings.managed') : undefined)
   const conflict = save.error instanceof ApiError && save.error.code === 'managed_by_git'
 
   return (
