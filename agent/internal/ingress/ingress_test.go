@@ -19,6 +19,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -401,5 +402,18 @@ not json
 	}
 	if s := got["new.example.com"]; s.TlsStatus != "pending" {
 		t.Fatalf("new %v", s)
+	}
+}
+
+// AC-DEPLOY-09: a route with stream_close_delay_seconds keeps open streams for that long after a config load.
+func TestBuildStreamCloseDelay(t *testing.T) {
+	spec := &agentv1.IngressSpec{Routes: []*agentv1.Route{{RouteId: "r", Hosts: []string{"a.test"}, PathPrefix: "/", Https: false,
+		Upstreams: []*agentv1.Upstream{{Address: "pp-x:80", Weight: 100}}, StreamCloseDelaySeconds: 30}}}
+	b, err := BuildConfig(spec, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"stream_close_delay":"30s"`) {
+		t.Fatalf("no stream_close_delay in %s", b)
 	}
 }
