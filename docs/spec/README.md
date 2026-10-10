@@ -30,7 +30,7 @@ This specification is written for **AI build agents**. It is complete and exact:
 | 9 | [05-api](05-api.md) + [openapi.yaml](openapi.yaml) | API conventions and every endpoint | server, web, CLI |
 | 10 | [06-cli](06-cli.md) | CLI commands | CLI |
 | 11 | [07-config-as-code](07-config-as-code.md) + [schemas/polipan.schema.json](schemas/polipan.schema.json) + [schemas/template.schema.json](schemas/template.schema.json) | `polipan.yaml` format, plan/apply | server, CLI, Terraform |
-| 12 | [11-ui](11-ui.md) | Screens and flows | web |
+| 12 | [11-ui](11-ui.md) + [ui/](ui/README.md) | Screens and flows; full UI/UX design: tokens, responsive rules, navigation, screen inventory, Easypanel parity matrix, components, accessibility, tests, wireframes | web |
 | 13 | [12-observability](12-observability.md) | Metrics, logs, events, alert engine | agent, server |
 | 14 | [13-testing-and-quality](13-testing-and-quality.md) | Test levels, CI gates, E2E scenarios | everyone |
 | 15 | [14-roadmap-and-milestones](14-roadmap-and-milestones.md) | Ordered milestones, dependencies, done criteria | everyone |
@@ -84,7 +84,7 @@ Go server, agent, CLI and Terraform provider · React + TypeScript SPA embedded 
 | Cross-feature test | `T-E2E-<NN>` | Listed in [13](13-testing-and-quality.md#4-cross-feature-e2e-scenarios). |
 | Milestone | `M<n>` | In [14](14-roadmap-and-milestones.md). |
 | Open question | `Q-<NN>` | In [15](15-open-questions.md). |
-| Screen | `UI-<NN>` | In [11](11-ui.md). |
+| Screen | `UI-<NN>` | In [11](11-ui.md) (UI-01 to UI-30) and [ui/screens](ui/screens.md) (all). |
 | Work package | `WP<m>.<n>` | In [14](14-roadmap-and-milestones.md). |
 
 **Areas** (fixed list): `CORE` platform and quality · `APP` apps · `DB` databases · `TPL` templates · `DOM` domains · `ENV` variables · `VOL` volumes · `DEPLOY` deploy engine · `REL` releases · `PREV` previews · `PROMO` promotion · `HC` health checks · `NODE` nodes · `AGENT` agent protocol · `AUTH` authentication · `RBAC` roles · `AUDIT` audit · `SSO` single sign-on · `SEC` secrets and security rules · `CAC` config as code · `API` · `CLI` · `TF` Terraform · `ALERT` · `OBS` observability · `BKP` backups · `OSS` open source · `UI`.

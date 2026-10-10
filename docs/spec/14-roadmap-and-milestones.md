@@ -47,19 +47,20 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
 
 - **Goal:** an empty but complete engineering base.
 - **Depends on:** none.
-- **Covers:** REQ-CORE-001, REQ-CORE-002, REQ-CORE-004, REQ-CORE-005, REQ-CORE-009..012, REQ-CORE-020, REQ-CORE-030..035, REQ-API-001, REQ-API-002, REQ-API-004, REQ-API-007, REQ-API-008, REQ-API-100, REQ-API-101, REQ-API-104, REQ-API-105, REQ-OSS-001..003, REQ-OSS-008, REQ-OSS-009.
+- **Covers:** REQ-CORE-001, REQ-CORE-002, REQ-CORE-004, REQ-CORE-005, REQ-CORE-009..012, REQ-CORE-020, REQ-CORE-030..035, REQ-API-001, REQ-API-002, REQ-API-004, REQ-API-007, REQ-API-008, REQ-API-100, REQ-API-101, REQ-API-104, REQ-API-105, REQ-OSS-001..003, REQ-OSS-008, REQ-OSS-009, REQ-UI-014..018, REQ-UI-028.
 - **Work packages:**
   - WP0.1 (T) Monorepo layout of [02](02-architecture.md#3-repository-layout-monorepo-to-be-created-by-m0), `LICENSE`, governance files, CI pipeline with all gates of [13](13-testing-and-quality.md#3-ci-gates-all-must-pass-to-merge) that can run on an empty code base.
   - WP0.2 (S) `polipan-server` skeleton: config loading, PostgreSQL connection, migration runner, baseline migration for the identity tables, job queue, structured logging, request ids, error model, rate limiter, `/healthz`, `/version`.
   - WP0.3 (S) OpenAPI codegen: server stubs, Go client, TypeScript client. Route registration checked against `x-permission` ([REQ-API-101](05-api.md#requirements)).
   - WP0.4 (A) `polipan-agent` skeleton and generated gRPC code from `agent.proto`. `buf` lint and breaking checks.
-  - WP0.5 (W) Web skeleton (Vite, router, API client, layout, theme) embedded in the server binary.
+  - WP0.5 (W) Web skeleton (Vite, router, API client, layout, theme) embedded in the server binary. It includes the [UI foundation](ui/README.md): token file to CSS variables, light, dark and system theme without flash, app shell for four breakpoints (sidebar, rail, bottom bar), i18n layer with the string lint, the base components of [ui/components](ui/components.md) (button, inputs, badge, table and card list, dialog and sheet, toast, banner, skeleton), a mock API generated from `openapi.yaml`, and the Playwright harness for visual tests in both themes at 4 widths. All later UI work packages depend only on WP0.5.
 - **Done criteria:**
   1. `server`, `agent`, `cli`, `web` build in CI and produce binaries and images.
   2. `/healthz` returns ok with the database up.
   3. CI gates 1, 3, 4, 5, 6, 7, 8 run and pass (the ones that apply with no features).
   4. A test fails when an operation has no `x-permission`, and when a route is not in the OpenAPI file.
   5. The first migration applies on an empty database and the schema matches the DDL in [03](03-data-model.md) for the included tables.
+  6. The web skeleton passes the contrast test of REQ-UI-014, the theme tests of REQ-UI-015 (system follow, no flash), the 360 px no-scroll and touch-target tests of REQ-UI-016 and REQ-UI-017, and the table-to-card test of REQ-UI-018.
 
 ### M1 – Single node: agent, Docker, Caddy, app from image with domain and HTTPS
 
@@ -72,7 +73,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
   - WP1.3 (A) Caddy management: container, admin socket, full JSON build from `IngressSpec`, one `POST /load`, ACME, 503 page.
   - WP1.4 (S) Hierarchy API: projects, environments, services (image source), domains. Recreate deployment with simple health (TCP). Docker `logs` tail as the log path until M8.
   - WP1.5 (S) Auth: first-user setup, local login, session cookie, CSRF. Org row, single org.
-  - WP1.6 (W) Screens UI-01, UI-02, project and service pages (basic), domain page.
+  - WP1.6 (W) Screens UI-01, UI-02, UI-03 (basic), UI-04, UI-12, UI-33, UI-43 (profile and theme), UI-47, project and service pages (basic), domain page.
   - WP1.7 (S) Installer script and compose file for the control plane (PostgreSQL, server), install of the local agent.
 - **Done criteria:**
   1. On a clean Ubuntu 24.04 VM the install command works and the first user can log in (AC-AUTH-03).
@@ -86,7 +87,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
 
 - **Goal:** apps from Git with env vars, real secrets and persistent volumes.
 - **Depends on:** M1.
-- **Covers:** REQ-APP-001, REQ-APP-002, REQ-APP-004, REQ-APP-005, REQ-APP-007, REQ-APP-008, REQ-APP-010, REQ-APP-011, REQ-APP-013, REQ-ENV-001..008, REQ-ENV-010, REQ-VOL-001..006, REQ-VOL-009, REQ-DOM-006, REQ-DOM-009, REQ-SEC-001..010, REQ-SEC-101..105, REQ-SEC-107, REQ-SEC-108, REQ-AGENT-006, REQ-CORE-023, REQ-API-102, REQ-UI-005.
+- **Covers:** REQ-APP-001, REQ-APP-002, REQ-APP-004, REQ-APP-005, REQ-APP-007, REQ-APP-008, REQ-APP-010, REQ-APP-011, REQ-APP-013, REQ-ENV-001..008, REQ-ENV-010, REQ-VOL-001..006, REQ-VOL-009, REQ-DOM-006, REQ-DOM-009, REQ-SEC-001..010, REQ-SEC-101..105, REQ-SEC-107, REQ-SEC-108, REQ-AGENT-006, REQ-CORE-023, REQ-API-102, REQ-UI-005, REQ-UI-019, REQ-UI-020, REQ-UI-031.
 - **Work packages:**
   - WP2.1 (S) Git connections (GitHub App, GitLab, Gitea, deploy key), inbound webhooks with signature and replay checks, auto-deploy trigger.
   - WP2.2 (S+A) Build pipeline: BuildKit, Railpack, Dockerfile, build logs, caches, built-in registry, digest capture, image pull auth per node.
@@ -94,7 +95,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
   - WP2.4 (S) Variables: scopes, resolution, references, bulk import, build-time flags, pending changes.
   - WP2.5 (A) Volumes, bind mounts, file mounts, usage reporting.
   - WP2.6 (A) Exec terminal (WebSocket) and its audit hook, SSRF deny list.
-  - WP2.7 (W) Screens UI-05, UI-11, UI-13, UI-30.
+  - WP2.7 (W) Screens UI-05, UI-11, UI-13, UI-30, UI-32 (git and image paths), UI-42 (command palette, context switcher), UI-49, wizard and unsaved-data warning.
 - **Done criteria:**
   1. AC-APP-01 to AC-APP-04, AC-APP-06, AC-APP-07 pass.
   2. AC-ENV-01 to AC-ENV-05 pass.
@@ -106,7 +107,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
 
 - **Goal:** gaps 1, 2 and 5: zero-downtime deploys with health-gated switch and one-click rollback.
 - **Depends on:** M2.
-- **Covers:** REQ-DEPLOY-001..005, REQ-DEPLOY-007..012, REQ-DEPLOY-100..104, REQ-DEPLOY-106..111, REQ-REL-001..012, REQ-HC-001..012, REQ-API-005, REQ-API-006, REQ-API-103, REQ-CORE-021, REQ-CORE-022, REQ-UI-002, REQ-UI-003, REQ-UI-007, REQ-UI-010, REQ-UI-013.
+- **Covers:** REQ-DEPLOY-001..005, REQ-DEPLOY-007..012, REQ-DEPLOY-100..104, REQ-DEPLOY-106..111, REQ-REL-001..012, REQ-HC-001..012, REQ-API-005, REQ-API-006, REQ-API-103, REQ-CORE-021, REQ-CORE-022, REQ-UI-002, REQ-UI-003, REQ-UI-007, REQ-UI-010, REQ-UI-013, REQ-UI-022, REQ-UI-023, REQ-UI-025, REQ-UI-032.
 - **Work packages:**
   - WP3.1 (S) Release creation and immutability, `release_annotations`, retention and pruning, image GC.
   - WP3.2 (S) Deployment state machine, queue, supersede and cancel rules, crash recovery.
@@ -114,7 +115,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
   - WP3.4 (A) Health check runner (`http`, `tcp`, `command`), reports, ingress upstream removal of unhealthy replicas, restart on unhealthy.
   - WP3.5 (S+A) Rollback (fast and normal), release diff, variable and secret version restore.
   - WP3.6 (S) `pre_deploy` and `post_deploy`, forced recreate rules and warnings, deploy plan (`dry_run`), idempotency keys, SSE streams with resume.
-  - WP3.7 (W) Screens UI-06, UI-07, UI-08 (without canary bar), UI-09, UI-14.
+  - WP3.7 (W) Screens UI-06, UI-07, UI-08 (without canary bar), UI-09, UI-14, UI-31 (onboarding checklist, local steps), UI-34, UI-35, UI-46 (deployments part), empty, loading, error and disconnected states on every screen built so far, and the CI check that every `operationId` in [ui/screens](ui/screens.md) exists.
 - **Done criteria:**
   1. AC-DEPLOY-01, 02, 04, 05, 06, 07, 08, 09 pass.
   2. AC-REL-01 to AC-REL-08 pass.
@@ -133,7 +134,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
   - WP4.2 (S) Template engine, manifest validation, safety validator, Compose import, 12 built-in templates in `/templates`.
   - WP4.3 (S+A) Backup targets, policies, runs with restic, per-engine dump, retention, manual run, restore (in place and new service).
   - WP4.4 (S+A) Restore check runner, manifests, per-engine checks, temp container sandbox, results, control-plane DB policy.
-  - WP4.5 (W) Screens UI-17, UI-21.
+  - WP4.5 (W) Screens UI-17, UI-21, UI-38, UI-39, UI-32 (template and database paths).
 - **Done criteria:**
   1. AC-DB-01 to AC-DB-04, AC-TPL-01 to AC-TPL-04 pass.
   2. AC-BKP-01 to AC-BKP-10 pass (with MinIO and SFTP targets). AC-C08-01 passes.
@@ -150,7 +151,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
   - WP5.2 (S) Members, invitations, teams, project role overrides, last-owner rule.
   - WP5.3 (S) Audit log writer (hash chain, advisory lock), search, export, verify job, retention archive.
   - WP5.4 (S) 2FA, recovery codes, API tokens (hash, scopes, project limit), session management, password reset, `polipan-server admin` commands.
-  - WP5.5 (W) Screens UI-23, UI-25, UI-26 and permission-aware UI.
+  - WP5.5 (W) Screens UI-23, UI-25, UI-26, UI-44, UI-45, UI-43 (sessions and 2FA) and permission-aware UI (hide or disable rule of [ui/screens](ui/screens.md#11-roles-and-permission-behavior)).
 - **Done criteria:**
   1. AC-RBAC-01 to AC-RBAC-04, AC-AUTH-01, AC-AUTH-02, AC-AUDIT-01 to AC-AUDIT-03 pass.
   2. The generated matrix test passes for every operation and all four roles (T-E2E-10).
@@ -185,7 +186,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
   - WP7.3 (S) Scheduler (filters, scoring, determinism), placement settings, multi-replica deploys, multi-node ingress and `ingress_node_ids`.
   - WP7.4 (S+A) Move service (stateless and with data copy), drain implemented as moves.
   - WP7.5 (S) Failover controller (policy, backup check, split-brain guard, "no reachable node" guard), audit and events.
-  - WP7.6 (W) Screens UI-19, UI-20.
+  - WP7.6 (W) Screens UI-19, UI-20, UI-40, UI-41, UI-31 (add server step with live join).
 - **Done criteria:**
   1. AC-NODE-01, 03, 04, 05, 06, 07, 08, 09, 10 pass.
   2. T-E2E-07 and T-E2E-08 pass on 3 VMs. The failover time target of AC-NODE-04 is met.
@@ -196,13 +197,13 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
 
 - **Goal:** gap 9 and the canary half of gap 1.
 - **Depends on:** M3 and M1. The canary work package needs the metrics work package.
-- **Covers:** REQ-OBS-001..007, REQ-OBS-010..015, REQ-OBS-100..107, REQ-ALERT-001..009, REQ-DEPLOY-006, REQ-DEPLOY-105, REQ-API-009.
+- **Covers:** REQ-OBS-001..007, REQ-OBS-010..015, REQ-OBS-100..107, REQ-ALERT-001..009, REQ-DEPLOY-006, REQ-DEPLOY-105, REQ-API-009, REQ-UI-026, REQ-UI-033.
 - **Work packages:**
   - WP8.1 (A) vmagent, container/node/volume/health/ingress metrics, log shipper with cursor and buffer.
   - WP8.2 (S) VictoriaMetrics and VictoriaLogs in the installer, query layer, log search with LogsQL mapping, metrics API, retention settings, SSE log tail.
   - WP8.3 (S) Alert engine (rules, instances, dedup, repeat, resolve, mute, child suppression), channels (Telegram, Slack, email, webhook), default rules.
   - WP8.4 (S) Canary: steps, gates from metrics, promote/pause/abort, auto rollback, `canary_gate` events.
-  - WP8.5 (W) Screens UI-15, UI-16, UI-22, canary bar in UI-08.
+  - WP8.5 (W) Screens UI-15, UI-16, UI-22, UI-37, UI-46 (alerts part), UI-48, canary bar in UI-08, log viewer and chart components with their accessible alternatives, restore-verified badge on UI-03 and UI-17.
 - **Done criteria:**
   1. AC-OBS-01 to AC-OBS-07, AC-ALERT-01 to AC-ALERT-05, AC-DEPLOY-03 pass.
   2. T-E2E-04, T-E2E-09 (alert part), T-E2E-15 pass.
@@ -218,7 +219,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
   - WP9.1 (S) PR event handling for GitHub, GitLab, Gitea. PR comments and commit statuses.
   - WP9.2 (S) Preview lifecycle: clone from base environment, naming, URLs, wildcard domain with DNS-01, limits, TTL, cleanup job, fork rules, secret isolation.
   - WP9.3 (S) Promotion: plan (dry run), env-specific field rules, missing variables, plan hash, batch ordering, protected env check.
-  - WP9.4 (W) Screens UI-10 (final), UI-18.
+  - WP9.4 (W) Screens UI-10 (final), UI-18, UI-36.
 - **Done criteria:**
   1. AC-PREV-01 to AC-PREV-08 pass.
   2. AC-PROMO-01 to AC-PROMO-08 pass.
@@ -229,12 +230,12 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
 
 - **Goal:** finish gap 7 (SSO), gap 11 and quality gates. Ship 1.0.
 - **Depends on:** M4, M6, M7, M9.
-- **Covers:** REQ-SSO-001..006, REQ-SSO-100, REQ-OSS-004..007, REQ-API-003, REQ-CORE-003, REQ-UI-001, REQ-UI-008, REQ-UI-009, REQ-UI-011, REQ-UI-012.
+- **Covers:** REQ-SSO-001..006, REQ-SSO-100, REQ-OSS-004..007, REQ-API-003, REQ-CORE-003, REQ-UI-001, REQ-UI-008, REQ-UI-009, REQ-UI-011, REQ-UI-012, REQ-UI-021, REQ-UI-024, REQ-UI-027, REQ-UI-029, REQ-UI-030.
 - **Work packages:**
   - WP10.1 (S) OIDC, Google, GitHub OAuth2, group mapping, `sso_required`, break-glass.
   - WP10.2 (T) Release pipeline: signed binaries and images (cosign), SBOM, checksums, install script verification, upgrade tests.
   - WP10.3 (T) Security pass: threat model table of [10](10-security.md#6-threat-model-stride) walked row by row with a test or a documented reason, fuzzing, dependency scan, performance and chaos suites.
-  - WP10.4 (W) Screens UI-24, UI-27, UI-28, accessibility and responsive pass, CSP, no third-party requests.
+  - WP10.4 (W) Screens UI-24, UI-27, UI-28, keyboard shortcuts and help overlay, accessibility and responsive pass, reduced-motion pass, performance budget gates, full UI test plan of [ui/quality](ui/quality.md#4-ui-test-plan) (visual regression in both themes at 4 widths), parity matrix CI check, CSP, no third-party requests.
   - WP10.5 (T) UI/API parity test, user docs site, upgrade guide, `SECURITY.md` process dry run.
 - **Done criteria:**
   1. AC-SSO-01 to AC-SSO-03, AC-OSS-01 to AC-OSS-06, AC-API-03 pass. T-E2E-11 passes.
@@ -244,6 +245,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
   5. Performance suite targets in [13](13-testing-and-quality.md#2-test-levels) are met.
   6. Upgrade test from the previous pre-release passes.
   7. Version `1.0.0` is tagged and published with signatures and SBOM.
+  8. UI: every screen of [ui/screens](ui/screens.md) is reachable by a stable URL; the parity matrix check ([REQ-UI-024](ui/parity.md#requirements)) passes; the axe tests have zero serious issues in light and dark at 360, 768, 1280 and 1920 px; the performance budgets of [ui/quality](ui/quality.md#3-performance-budget) are met; the keyboard-only deploy and rollback e2e tests pass.
 
 ## 4. After 1.0 (not part of v1)
 

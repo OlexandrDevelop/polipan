@@ -4,7 +4,7 @@ Maps every requirement to its file, milestone and tests. The milestone comes fro
 
 Rebuild this file when a requirement is added or moved (see [README](README.md#consistency-checks)). Do not edit rows by hand.
 
-Totals: 352 requirements, 141 acceptance criteria.
+Totals: 372 requirements, 141 acceptance criteria.
 
 
 ## CORE
@@ -498,3 +498,23 @@ Totals: 352 requirements, 141 acceptance criteria.
 | REQ-UI-011 | MUST | [11-ui.md](11-ui.md) | M10 | unit/component test by REQ id |
 | REQ-UI-012 | MUST | [11-ui.md](11-ui.md) | M10 | unit/component test by REQ id |
 | REQ-UI-013 | SHOULD | [11-ui.md](11-ui.md) | M3 | unit/component test by REQ id |
+| REQ-UI-014 | MUST | [ui/design-system.md](ui/design-system.md) | M0 | unit/component/e2e test by REQ id |
+| REQ-UI-015 | MUST | [ui/design-system.md](ui/design-system.md) | M0 | unit/component/e2e test by REQ id |
+| REQ-UI-016 | MUST | [ui/responsive.md](ui/responsive.md) | M0 | unit/component/e2e test by REQ id |
+| REQ-UI-017 | MUST | [ui/responsive.md](ui/responsive.md) | M0 | unit/component/e2e test by REQ id |
+| REQ-UI-018 | MUST | [ui/responsive.md](ui/responsive.md) | M0 | unit/component/e2e test by REQ id |
+| REQ-UI-019 | MUST | [ui/navigation.md](ui/navigation.md) | M2 | unit/component/e2e test by REQ id |
+| REQ-UI-020 | MUST | [ui/navigation.md](ui/navigation.md) | M2 | unit/component/e2e test by REQ id |
+| REQ-UI-021 | SHOULD | [ui/navigation.md](ui/navigation.md) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-022 | MUST | [ui/screens.md](ui/screens.md) | M3 | unit/component/e2e test by REQ id |
+| REQ-UI-023 | MUST | [ui/screens.md](ui/screens.md) | M3 | unit/component/e2e test by REQ id |
+| REQ-UI-024 | MUST | [ui/parity.md](ui/parity.md) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-025 | MUST | [ui/screens.md](ui/screens.md) | M3 | unit/component/e2e test by REQ id |
+| REQ-UI-026 | MUST | [ui/components.md](ui/components.md) | M8 | unit/component/e2e test by REQ id |
+| REQ-UI-027 | MUST | [ui/quality.md](ui/quality.md) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-028 | SHOULD | [ui/quality.md](ui/quality.md) | M0 | unit/component/e2e test by REQ id |
+| REQ-UI-029 | MUST | [ui/quality.md](ui/quality.md) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-030 | MUST | [ui/quality.md](ui/quality.md) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-031 | MUST | [ui/components.md](ui/components.md) | M2 | unit/component/e2e test by REQ id |
+| REQ-UI-032 | MUST | [ui/components.md](ui/components.md) | M3 | unit/component/e2e test by REQ id |
+| REQ-UI-033 | SHOULD | [ui/screens.md](ui/screens.md) | M8 | unit/component/e2e test by REQ id |

@@ -1,0 +1,32 @@
+{
+  "$description": "Polipan design tokens. Contrast ratios are measured against bg (WCAG 2.1). Text pairs need 4.5:1, UI borders and icons 3:1.",
+  "color": {
+    "light": {
+      "bg": "#ffffff", "surface": "#f6f7f9", "text": "#111827", "muted": "#4b5563",
+      "border-strong": "#6b7280", "border": "#d6dae1",
+      "primary": "#4338ca", "on-primary": "#ffffff",
+      "success": "#15803d", "warning": "#a16207", "danger": "#b91c1c", "info": "#1d4ed8"
+    },
+    "dark": {
+      "bg": "#0b0f19", "surface": "#131a2a", "text": "#e6e9f0", "muted": "#a0a8b8",
+      "border-strong": "#7d8799", "border": "#2a3447",
+      "primary": "#a5b4fc", "on-primary": "#0b0f19",
+      "success": "#4ade80", "warning": "#facc15", "danger": "#f87171", "info": "#7db0ff"
+    }
+  },
+  "contrast_on_bg": {
+    "light": {"text": 17.74, "muted": 7.56, "primary": 7.9, "success": 5.02, "warning": 4.92, "danger": 6.47, "info": 6.7, "border-strong": 4.83, "on-primary_on_primary": 7.9},
+    "dark": {"text": 15.76, "muted": 8.01, "primary": 9.61, "success": 10.99, "warning": 12.5, "danger": 6.92, "info": 8.69, "border-strong": 5.29, "on-primary_on_primary": 9.61}
+  },
+  "space": {"1": "4px", "2": "8px", "3": "12px", "4": "16px", "5": "24px", "6": "32px", "7": "48px"},
+  "radius": {"sm": "6px", "md": "10px", "lg": "14px", "full": "9999px"},
+  "font": {
+    "sans": "Inter Variable, system-ui, sans-serif (self-hosted woff2)",
+    "mono": "JetBrains Mono Variable, ui-monospace, monospace (self-hosted woff2)",
+    "scale": {"xs": "12/16", "sm": "14/20", "base": "16/24", "lg": "18/28", "xl": "24/32", "2xl": "30/36"}
+  },
+  "shadow": {"sm": "0 1px 2px rgb(0 0 0 / .08)", "md": "0 4px 16px rgb(0 0 0 / .12)", "dark-note": "in dark theme use a 1px border plus shadow; shadows alone are too faint"},
+  "motion": {"fast": "120ms", "base": "200ms", "slow": "320ms", "easing": "cubic-bezier(.2,.8,.2,1)", "reduced": "all durations 0ms and no parallax or pulse when prefers-reduced-motion is set"},
+  "breakpoints": {"phone": "0-639", "tablet": "640-1023", "laptop": "1024-1535", "large": "1536+"},
+  "touch": {"min-target": "44px", "desktop-min-target": "32px"}
+}
