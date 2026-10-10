@@ -71,7 +71,7 @@ All defaults below can be changed by the user in the place named in the "Set in"
 | `metrics_retention` | 90 days | server config |
 | `logs_retention` | 30 days | server config |
 | `metrics_scrape_interval` | 15 s | server config |
-| `metrics_raw_retention` | 7 days raw, then downsampled to 5 min until `metrics_retention` | server config |
+| `metrics_resolution` | Raw 15 s samples are kept for the whole `metrics_retention` (no downsampling, open-source VictoriaMetrics has none). Long ranges are queried with a larger `step`. | fixed |
 | `log_buffer_per_node` | 100 MiB on the node disk while the log store is unreachable | agent config |
 | `agent_cert_validity` | 30 days, renewed when less than 10 days remain | server config |
 | `exec_idle_timeout` | 15 min | server config |

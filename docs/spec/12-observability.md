@@ -34,7 +34,7 @@ flowchart LR
 | Agent | `polipan_agent_heartbeat_age_seconds`, `polipan_agent_desired_state_version` | `node` |
 | Platform | `polipan_deployments_total{state}`, `polipan_deploy_duration_seconds`, `polipan_backup_last_success_timestamp`, `polipan_restore_check_last_result` | `service`, `policy` |
 
-- Scrape interval: 15 s. Retention: `metrics_retention`. Raw data 7 days, then downsampled to 5 min.
+- Scrape interval: 15 s. Retention: `metrics_retention`. Raw samples are kept for the whole retention. There is no downsampling (it is an Enterprise-only feature of VictoriaMetrics). Long ranges use a larger query `step`.
 - The `release` label on ingress metrics is what lets canary compare green and blue ([08](08-deploy-engine.md#6-canary)). Caddy gets the `release` label per upstream from the route spec.
 - Series cardinality guard: the agent drops labels beyond the fixed list. Request path is never a label.
 

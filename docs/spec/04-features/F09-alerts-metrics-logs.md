@@ -23,7 +23,7 @@ Polipan sends alerts to Telegram, Slack, email and webhooks. It keeps metrics fo
 - **REQ-ALERT-007** (MUST) Messages contain: severity, what, where (project/env/service/node), since when, a link to the Polipan page, and (for deploys) the failure reason code and last lines.
 - **REQ-ALERT-008** (MUST) Delivery is retried 3 times with back-off. A failing channel raises a UI warning, and never blocks other channels.
 - **REQ-ALERT-009** (SHOULD) Platform events (not metric-based) are produced by the server in the same transaction as the state change (no polling).
-- **REQ-OBS-010** (MUST) Metrics retention is `metrics_retention` (90 days by default) and can be set up to 1 year. Resolution: raw 15 s data kept for 7 days, then downsampled to 5 min for the rest (VictoriaMetrics downsampling).
+- **REQ-OBS-010** (MUST) Metrics retention is `metrics_retention` (90 days by default) and can be set up to 1 year. Raw 15 s samples are kept for the whole retention (no downsampling). Queries for long ranges use a larger `step` (rollups), so charts stay fast.
 - **REQ-OBS-011** (MUST) The UI chart range selector goes up to the configured retention. Charts for services and nodes: CPU, memory, network, disk, requests, 5xx rate, p50/p95/p99 latency.
 - **REQ-OBS-012** (MUST) Log retention is `logs_retention` (30 days by default), configurable per org and optionally per project.
 - **REQ-OBS-013** (MUST) Log search: free text (word, phrase, regex) and filters on project, environment, service, release, node, level, stream, time range. Results are newest first, paginated by cursor, with highlighted matches and context lines. Max range per query is `logs_retention`. Response in 3 s for 1 GB of data in range.
@@ -54,7 +54,7 @@ API: `/alert-channels`, `/alert-rules`, `/alert-instances`, `/services/{id}/logs
 - **AC-ALERT-03** Given a node down with 5 services on it, When alerts are sent, Then there is 1 node alert and no service alerts for those 5. (edge case rule, REQ-ALERT-004)
 - **AC-ALERT-04** Given a failed deployment, When it ends, Then a message with the reason code reaches the channels of the rule. (REQ-ALERT-007)
 - **AC-ALERT-05** Given a channel that returns 500, When an alert fires, Then it is retried 3 times and a UI warning shows. (REQ-ALERT-008)
-- **AC-OBS-05** Given 60 days of data, When the user selects a 60 day range, Then the chart renders with downsampled points. (REQ-OBS-010, REQ-OBS-011)
+- **AC-OBS-05** Given 60 days of data, When the user selects a 60 day range, Then the chart renders the full range with a query step that keeps the point count under 1500. (REQ-OBS-010, REQ-OBS-011)
 - **AC-OBS-06** Given logs from two environments, When the user searches `timeout` with filter `environment=production`, Then only production lines match, newest first, with highlights. (REQ-OBS-013)
 - **AC-OBS-07** Given logs older than `logs_retention`, When searched, Then they are not returned. (REQ-OBS-012)
 

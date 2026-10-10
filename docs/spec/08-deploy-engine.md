@@ -22,17 +22,22 @@ stateDiagram-v2
   building --> failed: build error or build_timeout
   building --> cancelled
   image_ready --> starting
+  image_ready --> cancelled: user cancels
   starting --> health_checking: green containers running
   starting --> failed: pull or start error, pre_deploy failed
+  starting --> cancelled: user cancels
   health_checking --> switching: blue_green or recreate, all green healthy
   health_checking --> shifting: canary, green healthy
-  health_checking --> failed: deploy_timeout
+  health_checking --> failed: deploy_timeout (blue_green, canary)
+  health_checking --> rolled_back: recreate, health failed, old containers restarted
+  health_checking --> cancelled: user cancels
   shifting --> shifting: next step gate passed
   shifting --> switching: last step 100 percent gate passed
   shifting --> rolled_back: gate failed or user aborts
   switching --> draining: Caddy load acked on all ingress nodes
   switching --> rolled_back: load failed, blue restored
   draining --> live: old copies stopped
+  draining --> rolled_back: post-switch check failed, traffic back to blue
   live --> [*]
   failed --> [*]
   rolled_back --> [*]
@@ -43,7 +48,8 @@ stateDiagram-v2
 Rules for states:
 
 - `queued`, `building`, `image_ready` do not touch running containers.
-- From `starting` on, blue (the previous live Release) keeps serving until `switching` is acked.
+- For `blue_green` and `canary`, from `starting` on, blue (the previous live Release) keeps serving until `switching` is acked. For `recreate` blue is stopped first (section 7), so there is a downtime.
+- The post-switch check (section 5.4) runs during the first part of `draining`. If it fails, blue is still not stopped, so the state goes `draining → rolled_back`.
 - `failed` and `rolled_back` always leave the previous Release live and serving. If there is no previous Release, the service has no live Release and the state is shown as "no live release".
 - Terminal states: `live`, `failed`, `rolled_back`, `cancelled`, `superseded`.
 - Every transition writes a `deployment_steps` row and an `events` row, and (for the user actions) an audit event.
@@ -56,7 +62,7 @@ Rules for states:
 3. **Forced recreate** (with a warning in the response and the UI) when any of these is true:
    - the service has a volume with `access_mode = single_writer` (for example every database);
    - the service type is `database`;
-   - the service has no ingress domain and no exposed port (workers and cron use `recreate`, see section 8);
+   - the service has no ingress domain and no exposed port (workers and cron use `recreate`, see section 8), unless it is a worker with `allow_overlap: true`;
    - the service has a host port binding.
 4. `blue_green` and `canary` need: at least one healthy-checkable port (or a `command` health check), and no single-writer volume.
 5. `canary` needs a domain, because the traffic split happens in Caddy. One blue and one green replica are enough: weights are per upstream.
@@ -79,7 +85,7 @@ Rules for states:
 2. **Switch.** The server sends `SwitchTraffic(service, release, weights = {green: 100, blue: 0})` to every ingress node of the service's domains. Each agent builds the complete Caddy JSON from its desired state and sends **one** `POST /load`. Caddy applies a config atomically and without dropping connections. The agent acks with the config hash.
 3. The switch is complete only when **all** ingress nodes acked. If any ingress node does not ack in 30 s: send a `SwitchTraffic` back to blue on the nodes that acked, state `rolled_back`, reason `switch_failed`. Nodes that are `down` are skipped (they get the new config on reconnect, from desired state).
 4. After the ack, the server runs a **post-switch check**: for 15 s the agent probes the public route on each ingress node. If the failure rate is over `canary_max_5xx_rate`, the server rolls back (same as a normal rollback to blue, fast path).
-5. Go to `draining`.
+5. Go to `draining`. The post-switch check runs at the start of `draining`, while blue is still running (blue is stopped only after `drain_seconds`, and the check window is shorter). A failed check sends traffic back to blue: `draining → rolled_back`.
 
 Why this is "pointing to another image address": the Release's `image_ref` is an immutable digest. Green runs that digest. The switch only moves Caddy's upstream from the blue containers to the green ones.
 
@@ -144,7 +150,7 @@ SSE stream `GET /api/v1/deployments/{id}/events` sends each state change, health
 ## Requirements
 
 - **REQ-DEPLOY-100** (MUST) The Deployment state machine in section 2 is the only allowed set of states and transitions.
-- **REQ-DEPLOY-101** (MUST) Blue (the previous live Release) is never stopped before the switch is acked by all reachable ingress nodes.
+- **REQ-DEPLOY-101** (MUST) In `blue_green` and `canary`, blue (the previous live Release) is never stopped before the switch is acked by all reachable ingress nodes. `recreate` stops blue first by design.
 - **REQ-DEPLOY-102** (MUST) The traffic switch is one atomic Caddy `POST /load` per ingress node, generated from the full desired state.
 - **REQ-DEPLOY-103** (MUST) A Release stores an image digest. Rollback and promotion never build.
 - **REQ-DEPLOY-104** (MUST) Forced recreate applies in the cases of section 3.3, and the response contains a `warnings` entry with code `zero_downtime_not_available`.
