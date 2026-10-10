@@ -71,12 +71,12 @@ dx docker run -d --name sftp --net host -v /e2e/sftp:/keys alpine:latest sh -c '
   ssh-keygen -A >/dev/null && exec /usr/sbin/sshd -D -e -p 2222 -o PasswordAuthentication=no -o Subsystem="sftp internal-sftp"' >/dev/null
 i=0
 until dx test -s /e2e/sftp/id_ed25519 && dx docker logs sftp 2>&1 | grep -q "Server listening"; do
-  i=$((i + 1)); [ "$i" -lt 60 ] || { dx docker logs sftp; exit 1; }
+  i=$((i + 1)); [ "$i" -lt 240 ] || { dx docker logs sftp; exit 1; }
   sleep 1
 done
 i=0
 until dx wget -q -O /dev/null http://127.0.0.1:9000/minio/health/live; do
-  i=$((i + 1)); [ "$i" -lt 60 ] || { dx docker logs minio; exit 1; }
+  i=$((i + 1)); [ "$i" -lt 240 ] || { dx docker logs minio; exit 1; }
   sleep 1
 done
 
