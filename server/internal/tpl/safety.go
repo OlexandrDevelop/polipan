@@ -136,7 +136,7 @@ func volumeViolations(where, service string, item any) Problems {
 // hostSourceViolation checks the source of a compose volume. A named volume is fine. A path must
 // be inside the binds folder of the service.
 func hostSourceViolation(service, src string) string {
-	if src == "" || !(strings.HasPrefix(src, "/") || strings.HasPrefix(src, ".") || strings.HasPrefix(src, "~")) {
+	if src == "" || (!strings.HasPrefix(src, "/") && !strings.HasPrefix(src, ".") && !strings.HasPrefix(src, "~")) {
 		return "" // a named volume
 	}
 	clean := path.Clean(src)

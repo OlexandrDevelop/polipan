@@ -13,7 +13,6 @@ import (
 	"github.com/polipan/polipan/server/internal/db"
 	"github.com/polipan/polipan/server/internal/pki"
 	"github.com/polipan/polipan/server/internal/secrets"
-	"github.com/polipan/polipan/server/internal/store"
 )
 
 // PasswordCommand is "polipan-server admin backup-password --policy <id>". It prints the restic repository
@@ -60,7 +59,7 @@ func PasswordCommand(ctx context.Context, cfg config.Config, args []string, gete
 		TargetID: *policy, ProjectID: project, Diff: map[string]any{"via": "polipan-server admin backup-password"}}); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "repository password: %s\n", value)
+	_, _ = fmt.Fprintf(out, "repository password: %s\n", value)
 	for _, id := range targets {
 		t, err := s.GetTarget(ctx, orgID, id)
 		if err != nil {
@@ -70,10 +69,8 @@ func PasswordCommand(ctx context.Context, cfg config.Config, args []string, gete
 		if err != nil {
 			continue
 		}
-		fmt.Fprintf(out, "target %s (%s): restic -r %s snapshots\n", t.Name, t.Kind, spec.Repository)
+		_, _ = fmt.Fprintf(out, "target %s (%s): restic -r %s snapshots\n", t.Name, t.Kind, spec.Repository)
 	}
 	_, err = fmt.Fprintln(out, "Set RESTIC_PASSWORD to the password. The credentials of a remote target are the ones you gave when you added it.")
 	return err
 }
-
-var _ = store.NewID

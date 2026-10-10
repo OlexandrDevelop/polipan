@@ -177,7 +177,7 @@ func (r *Runner) waitFor(ctx context.Context, container, script string, limit ti
 		case <-time.After(time.Second):
 		}
 	}
-	return fmt.Errorf("not ready in %s: %v", limit, last)
+	return fmt.Errorf("not ready in %s: %w", limit, last)
 }
 
 // checkDatabase is the check of REQ-BKP-101 for the dump engines and for redis.

@@ -1039,5 +1039,6 @@
   "delete.volumes": "Delete the volumes (the data) too",
   "delete.volumes_hint": "This cannot be undone. Without it the data stays on the node as an orphan volume.",
   "delete.backup_failed": "The final backup failed.",
-  "delete.backup_timeout": "The final backup did not end in 30 minutes."
+  "delete.backup_timeout": "The final backup did not end in 30 minutes.",
+  "terminal.db_client": "Start the database client after the shell opens:"
 }

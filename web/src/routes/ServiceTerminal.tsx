@@ -9,6 +9,15 @@ import { t } from '@/i18n'
 import { accessFor } from '@/permissions'
 import type { Service } from '@/scope'
 
+// The engine client of a database (REQ-DB-008). The container has DB_USER, DB_NAME and DB_PASSWORD in its environment.
+const DB_CLIENT: Record<string, string> = {
+  postgres: 'PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "$DB_NAME"',
+  mysql: 'MYSQL_PWD="$DB_PASSWORD" mysql -u root "$DB_NAME"',
+  mariadb: 'MYSQL_PWD="$DB_PASSWORD" mariadb -u root "$DB_NAME"',
+  mongo: 'mongosh -u "$DB_USER" -p "$DB_PASSWORD" --authenticationDatabase admin',
+  redis: 'REDISCLI_AUTH="$DB_PASSWORD" redis-cli',
+}
+
 type Status = 'idle' | 'connecting' | 'connected' | 'closed'
 
 // Output is shown as plain text: terminal escape codes are removed.
@@ -101,11 +110,17 @@ export function ServiceTerminal({
   const live = status === 'connected'
   const replicas = service.placements ?? []
 
+  const client = service.type === 'database' ? DB_CLIENT[service.db_engine ?? ''] : undefined
   return (
     <div className="space-y-4">
       <LargerScreenNotice />
       <div className="hidden space-y-4 sm:block">
         <Banner variant="warning">{t('terminal.audited')}</Banner>
+        {client && (
+          <Banner title={t('terminal.db_client')}>
+            <code className="break-all">{client}</code>
+          </Banner>
+        )}
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-48 flex-1">
             <TextField

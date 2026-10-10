@@ -72,9 +72,7 @@ func ImportCompose(data []byte) (*ComposeResult, error) {
 		}
 		entry, warns, perr := convertComposeService(path, name, svc, names)
 		ps = append(ps, perr...)
-		for _, w := range warns {
-			res.Warnings = append(res.Warnings, w)
-		}
+		res.Warnings = append(res.Warnings, warns...)
 		for k := range svc {
 			if !composeKeys[k] && !composeQuiet[k] && k != "build" && k != "privileged" && k != "cap_add" {
 				res.Warnings = append(res.Warnings, fmt.Sprintf("%s.%s is not supported and is ignored", path, k))

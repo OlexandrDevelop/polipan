@@ -430,8 +430,10 @@ func (c *Control) RemoveServiceData(ctx context.Context, serviceID string) error
 		ack, err := c.Sender.Send(cctx, p.node, &pb.Command{CommandId: gateway.NewID("cmd"),
 			Body: &pb.Command_RemoveWorkload{RemoveWorkload: &pb.RemoveWorkload{PlacementId: p.id, RemoveVolumes: true}}})
 		cancel()
-		if err != nil || !ack.GetOk() {
-			errs = append(errs, fmt.Errorf("placement %s: %v %s", p.id, err, ack.GetErrorMessage()))
+		if err != nil {
+			errs = append(errs, fmt.Errorf("placement %s: %w", p.id, err))
+		} else if !ack.GetOk() {
+			errs = append(errs, fmt.Errorf("placement %s: %s", p.id, ack.GetErrorMessage()))
 		}
 	}
 	return errors.Join(errs...)

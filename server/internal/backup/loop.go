@@ -4,7 +4,7 @@ package backup
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/polipan/polipan/server/internal/store"
@@ -274,7 +274,7 @@ func (s *Service) EnsureControlPlane(ctx context.Context) error {
 	}
 	for _, orgID := range ids {
 		t, err := s.GetTargetByName(ctx, orgID, ControlPlaneTargetName)
-		if err == ErrNotFound {
+		if errors.Is(err, ErrNotFound) {
 			t, err = s.CreateTarget(ctx, orgID, TargetInput{Name: ControlPlaneTargetName, Kind: "local",
 				Config: map[string]any{"path": s.LocalRoot + "/control-plane"}, Credentials: map[string]string{}})
 		}
@@ -297,5 +297,3 @@ func (s *Service) EnsureControlPlane(ctx context.Context) error {
 func (s *Service) GetTargetByName(ctx context.Context, orgID, name string) (*Target, error) {
 	return scanTarget(s.DB.QueryRow(ctx, `SELECT `+targetCols+` FROM backup_targets WHERE org_id = $1 AND name = $2`, orgID, name))
 }
-
-var _ = json.Marshal

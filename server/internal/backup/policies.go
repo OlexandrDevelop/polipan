@@ -398,7 +398,7 @@ func (s *Service) deleteSnapshots(ctx context.Context, p *Policy) error {
 	ack, err := s.Sender.Send(cctx, node, &pb.Command{CommandId: gateway.NewID("cmd"),
 		Body: &pb.Command_DeleteSnapshots{DeleteSnapshots: &pb.DeleteSnapshots{PolicyId: p.ID, Targets: specs, RepoPassword: password}}})
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrNoNode, err)
+		return fmt.Errorf("%w: %w", ErrNoNode, err)
 	}
 	if !ack.GetOk() {
 		return fmt.Errorf("the snapshots were not removed: %s", ack.GetErrorMessage())

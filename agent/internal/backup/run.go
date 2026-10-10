@@ -344,7 +344,7 @@ func (r *Runner) backupVolume(ctx context.Context, cmd *pb.RunBackup, repos []*r
 		var out bytes.Buffer
 		if err := r.restic(ctx, rp, nil, &out, append(backupArgs(cmd, host), v.Mountpoint)...); err != nil {
 			var re *resticError
-			if !(errors.As(err, &re) && re.Code == 3) { // 3: some files could not be read, the snapshot exists
+			if !errors.As(err, &re) || re.Code != 3 { // 3: some files could not be read, the snapshot exists
 				res.Snapshots[i].Error = r.scrub(err.Error())
 				continue
 			}
