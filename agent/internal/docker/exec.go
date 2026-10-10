@@ -61,7 +61,7 @@ func (c *HTTPClient) Exec(ctx context.Context, idOrName string, o ExecOptions) (
 		_ = conn.Close()
 		return nil, fmt.Errorf("docker: exec start: status %d: %s", sr.StatusCode, strings.TrimSpace(string(msg)))
 	}
-	x := &execConn{c: c, id: created.ID, conn: conn, br: br, tty: o.Tty}
+	x := &execConn{c: c, id: created.ID, conn: conn, br: br, tty: o.Tty, stderr: o.Stderr}
 	if o.Rows > 0 && o.Cols > 0 {
 		_ = x.Resize(ctx, o.Rows, o.Cols)
 	}
@@ -75,6 +75,9 @@ type execConn struct {
 	br   *bufio.Reader
 	tty  bool
 	left uint32 // bytes left in the current frame (no tty)
+	// stderr, when set, receives the stderr frames. They are not returned by Read.
+	stderr io.Writer
+	stream byte // stream of the current frame
 }
 
 // Read returns output. Without a tty Docker sends frames with an 8 byte header.
@@ -82,22 +85,36 @@ func (x *execConn) Read(p []byte) (int, error) {
 	if x.tty {
 		return x.br.Read(p)
 	}
-	for x.left == 0 {
-		var hdr [8]byte
-		if _, err := io.ReadFull(x.br, hdr[:]); err != nil {
-			if errors.Is(err, io.ErrUnexpectedEOF) {
-				err = io.EOF
+	for {
+		for x.left == 0 {
+			var hdr [8]byte
+			if _, err := io.ReadFull(x.br, hdr[:]); err != nil {
+				if errors.Is(err, io.ErrUnexpectedEOF) {
+					err = io.EOF
+				}
+				return 0, err
 			}
-			return 0, err
+			x.stream = hdr[0]
+			x.left = binary.BigEndian.Uint32(hdr[4:])
 		}
-		x.left = binary.BigEndian.Uint32(hdr[4:])
+		if x.stderr != nil && x.stream == 2 {
+			n, err := io.CopyN(x.stderr, x.br, int64(x.left))
+			x.left -= uint32(n)
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					err = io.EOF
+				}
+				return 0, err
+			}
+			continue
+		}
+		if uint32(len(p)) > x.left {
+			p = p[:x.left]
+		}
+		n, err := x.br.Read(p)
+		x.left -= uint32(n)
+		return n, err
 	}
-	if uint32(len(p)) > x.left {
-		p = p[:x.left]
-	}
-	n, err := x.br.Read(p)
-	x.left -= uint32(n)
-	return n, err
 }
 
 func (x *execConn) Write(p []byte) (int, error) { return x.conn.Write(p) }

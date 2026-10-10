@@ -51,7 +51,7 @@ var Engines = map[string]*Engine{
 	"redis": {Name: "redis", Image: "redis", DefaultTag: "7", Majors: []int{6, 7, 8}, Port: 6379,
 		DataPath: "/data", Scheme: "redis",
 		// The password comes from the secret DB_PASSWORD, which is an environment variable of the container.
-		Command: []string{"sh", "-c", `exec redis-server --requirepass "$DB_PASSWORD" --appendonly yes`}},
+		Command: []string{"sh", "-c", `exec redis-server --requirepass "$DB_PASSWORD" --appendonly no --save 60 1 --save 300 100`}},
 }
 
 // Names lists the engine names.

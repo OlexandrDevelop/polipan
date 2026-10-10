@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/polipan/polipan/agent/internal/backup"
 	"github.com/polipan/polipan/agent/internal/docker"
 	"github.com/polipan/polipan/agent/internal/state"
 	"github.com/polipan/polipan/proto/agentv1"
@@ -58,6 +59,8 @@ type Engine struct {
 	Store    *state.Store
 	Sink     Sink // optional
 	Network  string
+	// Backup runs the backup jobs (F10). Nil means the agent cannot run backups.
+	Backup *backup.Runner
 	// DNSServers are set in the DNS field of the containers.
 	DNSServers []string
 	// Infra runs until it succeeds before containers are touched (network, DNS, Caddy). Optional.

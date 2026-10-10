@@ -17,6 +17,12 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
     -ldflags "-s -w -X github.com/polipan/polipan/agent/internal/version.Version=$VERSION -X github.com/polipan/polipan/agent/internal/version.Commit=$COMMIT" \
     -o /out/polipan-agent ./agent/cmd/polipan-agent
 
-FROM gcr.io/distroless/static-debian12
+# restic (backups) and an ssh client (SFTP targets) are part of the image. On a node without the
+# image, install both packages: see docs/operations/backups.md.
+FROM restic/restic:0.17.3 AS restic
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates openssh-client-default tzdata
+COPY --from=restic /usr/bin/restic /usr/local/bin/restic
 COPY --from=build /out/polipan-agent /polipan-agent
 ENTRYPOINT ["/polipan-agent"]

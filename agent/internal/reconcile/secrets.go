@@ -11,6 +11,9 @@ import (
 	"github.com/polipan/polipan/proto/agentv1"
 )
 
+// PullAuthFor is pullAuth for other packages (the backup runner pulls the image of a restore check).
+func (e *Engine) PullAuthFor(ref string) (string, error) { return e.pullAuth(ref) }
+
 // pullAuth returns the X-Registry-Auth value for a registry_auth_ref, or "" when ref is empty.
 // The value holds the password: it goes only to Docker, never to a log.
 func (e *Engine) pullAuth(ref string) (string, error) {

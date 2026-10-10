@@ -60,6 +60,8 @@ type ExecOptions struct {
 	Cmd        []string
 	Tty        bool
 	Rows, Cols uint32
+	// Stderr, when set, gets the stderr of the command. Read then returns stdout only (no tty).
+	Stderr io.Writer
 }
 
 // ExecConn is an open exec session. Read gives the output (stdout and stderr together),

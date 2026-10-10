@@ -316,6 +316,7 @@ message Command {
     ProbeRoute probe_route = 24;
     RestoreSnapshot restore_snapshot = 25;
     TestBackupTarget test_backup_target = 26;
+    DeleteSnapshots delete_snapshots = 27;
   }
 }
 
@@ -340,14 +341,11 @@ message BackupTargetSpec {
 // BackupSource tells what is backed up and where the data is.
 message BackupSource {
   string engine = 1;                 // postgres | mysql | mariadb | mongo | redis | volume | controlplane
-  string container = 2;              // container name of the database, or label:key=value
-  string db_user = 3;
-  string db_name = 4;
-  string db_password = 5;            // never logged
-  string volume_name = 6;            // Docker volume name (engine volume, and redis data)
+  string container = 2;              // container name of the database, or label:key=value. The user, the database and the
+                                     // password come from the environment of that container (DB_USER, DB_NAME, DB_PASSWORD).
+  string volume_name = 6;            // Docker volume name (volume policies, and the data of redis)
   repeated string pre_hook = 7;      // commands in the container before the dump (REQ-BKP-011)
   repeated string post_hook = 8;
-  string data_path = 9;              // volume engines: path of the data inside the container (redis: /data)
 }
 
 message RunBackup {
@@ -361,6 +359,14 @@ message RunBackup {
   uint32 keep_weekly = 8;
   uint32 keep_monthly = 9;
   string tag = 10;                         // restic tag: schedule | manual | safety
+  int64 snapshot_time_unix_ms = 11;        // 0 = now. For imports of old data.
+}
+
+// DeleteSnapshots removes every snapshot of a policy from the targets (delete_snapshots=true).
+message DeleteSnapshots {
+  string policy_id = 1;
+  repeated BackupTargetSpec targets = 2;
+  string repo_password = 3;
 }
 
 // RunRestoreCheck restores one snapshot into a temporary container (or temporary folder for volumes).

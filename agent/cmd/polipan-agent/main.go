@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/polipan/polipan/agent/internal/backup"
 	"github.com/polipan/polipan/agent/internal/config"
 	"github.com/polipan/polipan/agent/internal/dns"
 	"github.com/polipan/polipan/agent/internal/docker"
@@ -147,6 +148,7 @@ func runAgent(cfg config.Config) error {
 	eng := reconcile.New(d, store, cfg.Network, log)
 	eng.Ingress, eng.DNS, eng.Firewall = ing, dnsSrv, fw
 	eng.FilesDir = filepath.Join(cfg.DataDir, "files")
+	eng.Backup = &backup.Runner{Docker: d, TmpDir: filepath.Join(cfg.DataDir, "tmp"), Log: log, PullAuth: eng.PullAuthFor}
 	dnsStarted := false
 	eng.Infra = func(ctx context.Context) error {
 		gw, err := d.EnsureNetwork(ctx, cfg.Network, cfg.Subnet)

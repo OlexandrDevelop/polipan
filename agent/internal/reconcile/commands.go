@@ -129,6 +129,16 @@ func (e *Engine) run(ctx context.Context, cmd *agentv1.Command) ([]byte, string,
 			e.mu.Unlock()
 		}
 		return jsonBytes(map[string]int{"removed": removed}), "", ""
+	case *agentv1.Command_RunBackup:
+		return e.runBackup(ctx, b.RunBackup)
+	case *agentv1.Command_RunRestoreCheck:
+		return e.runRestoreCheck(ctx, b.RunRestoreCheck)
+	case *agentv1.Command_RestoreSnapshot:
+		return e.restoreSnapshot(ctx, b.RestoreSnapshot)
+	case *agentv1.Command_TestBackupTarget:
+		return e.testBackupTarget(ctx, b.TestBackupTarget)
+	case *agentv1.Command_DeleteSnapshots:
+		return e.deleteSnapshots(ctx, b.DeleteSnapshots)
 	case *agentv1.Command_StreamLogs:
 		return e.streamLogs(ctx, cmd.CommandId, b.StreamLogs)
 	case *agentv1.Command_StopWorkload:
