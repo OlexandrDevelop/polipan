@@ -106,6 +106,7 @@ API: `/auth/*`, `/me`, `/members`, `/teams`, `/tokens`, `/sso-providers`, `/audi
 - **AC-SEC-02** Given a secret with two versions, When a Release is created, Then it records the current version number and a rollback uses that number. (REQ-SEC-003)
 - **AC-SEC-03** Given a secret value in a log line, When stored, Then it is `***`. (REQ-SEC-007)
 - **AC-SEC-04** Given `rotate-kek`, When done, Then all secrets still decrypt and no service restarted. (REQ-SEC-008)
+- **AC-SEC-06** Given a Dockerfile `RUN` step that tries to connect to PostgreSQL, VictoriaLogs, VictoriaMetrics, the registry and a `mesh_cidr` address, When it builds, Then every connection fails and a public internet request works. (REQ-SEC-102, REQ-SEC-108)
 - **AC-SEC-05** Given a database dump of the control-plane DB without `master.key`, When inspected, Then no secret value can be derived. (REQ-SEC-001, REQ-SEC-009)
 
 ## Out of scope

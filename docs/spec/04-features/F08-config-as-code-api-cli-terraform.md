@@ -25,6 +25,9 @@ Everything the UI can do is available through the API. The CLI and the Terraform
 - **REQ-CAC-009** (MUST) Export: `polipan export` / `GET /projects/{id}/config` creates a `polipan.yaml` from existing UI-made state (secrets as names only).
 - **REQ-CAC-010** (SHOULD) Environment-aware: `environments.<name>` blocks override service fields per environment, and `${{env.NAME}}` style references are plain variable references (no code or templating language).
 - **REQ-CAC-011** (MUST) Apply on a protected environment follows its permission rules (`config:apply`, `P`).
+- **REQ-CAC-012** (MUST) Setting or changing `projects.config_source` (and `previews.from_forks`) needs `admin` or higher. `project:update` alone (developer) is refused with 403 for these fields.
+- **REQ-CAC-013** (MUST) A push-triggered sync has `actor_type = system` and the commit author in the audit event. It applies on its own only to changes of non-protected environments and project-level items that are not listed in REQ-CAC-014. Any change that touches a protected environment is stored as a plan with `config_sync_state = plan_pending`. Nothing in the protected environment changes until a user with `config:apply` on that environment (admin or higher) applies the plan.
+- **REQ-CAC-014** (MUST) A change of `protected` (to false), `auto_deploy` on a protected environment, `previews.from_forks`, or a backup target, always needs an apply by `admin` or higher, from a push or a user.
 
 ## API
 
@@ -78,6 +81,8 @@ Config sync state per project: `in_sync`, `drifted` (fields changed by `override
 - **AC-CAC-04** Given a service removed from the file, When applied without `prune`, Then it still exists and the plan marks it `unmanaged`. (REQ-CAC-006)
 - **AC-CAC-05** Given an unknown key in the file, When validated, Then the error has line and field. (REQ-CAC-007)
 - **AC-CAC-06** Given secrets in the UI, When `polipan export` runs, Then the file has only secret names. (REQ-CAC-009)
+- **AC-CAC-07** Given production is protected and a push sets `protected: false` or a new `pre_deploy` for a production service, When the sync runs, Then production is unchanged and the plan is stored as `plan_pending` until an admin applies it. (REQ-CAC-013, REQ-CAC-014)
+- **AC-CAC-08** Given an org developer, When they set `config_source` through `updateProject`, Then 403. (REQ-CAC-012)
 - **AC-API-01** Given the OpenAPI file, When linted, Then every operation has `x-permission` and an `operationId`. (REQ-API-002)
 - **AC-API-02** Given a repeated POST with the same `Idempotency-Key`, When sent twice, Then one deployment exists. (REQ-API-005)
 - **AC-API-03** Given each UI action in the parity list, When tested, Then an API call does the same. (REQ-API-003)

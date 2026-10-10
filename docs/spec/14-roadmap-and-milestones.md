@@ -86,7 +86,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
 
 - **Goal:** apps from Git with env vars, real secrets and persistent volumes.
 - **Depends on:** M1.
-- **Covers:** REQ-APP-001, REQ-APP-002, REQ-APP-004, REQ-APP-005, REQ-APP-007, REQ-APP-008, REQ-APP-010, REQ-APP-011, REQ-APP-013, REQ-ENV-001..008, REQ-ENV-010, REQ-VOL-001..006, REQ-VOL-009, REQ-DOM-006, REQ-DOM-009, REQ-SEC-001..010, REQ-SEC-101..105, REQ-SEC-107, REQ-AGENT-006, REQ-CORE-023, REQ-API-102, REQ-UI-005.
+- **Covers:** REQ-APP-001, REQ-APP-002, REQ-APP-004, REQ-APP-005, REQ-APP-007, REQ-APP-008, REQ-APP-010, REQ-APP-011, REQ-APP-013, REQ-ENV-001..008, REQ-ENV-010, REQ-VOL-001..006, REQ-VOL-009, REQ-DOM-006, REQ-DOM-009, REQ-SEC-001..010, REQ-SEC-101..105, REQ-SEC-107, REQ-SEC-108, REQ-AGENT-006, REQ-CORE-023, REQ-API-102, REQ-UI-005.
 - **Work packages:**
   - WP2.1 (S) Git connections (GitHub App, GitLab, Gitea, deploy key), inbound webhooks with signature and replay checks, auto-deploy trigger.
   - WP2.2 (S+A) Build pipeline: BuildKit, Railpack, Dockerfile, build logs, caches, built-in registry, digest capture, image pull auth per node.
@@ -98,7 +98,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
 - **Done criteria:**
   1. AC-APP-01 to AC-APP-04, AC-APP-06, AC-APP-07 pass.
   2. AC-ENV-01 to AC-ENV-05 pass.
-  3. AC-SEC-01, AC-SEC-02, AC-SEC-03, AC-SEC-04, AC-SEC-05 pass. Secret leak test (CI gate 9) passes.
+  3. AC-SEC-01, AC-SEC-02, AC-SEC-03, AC-SEC-04, AC-SEC-05, AC-SEC-06 pass. Secret leak test (CI gate 9) passes.
   4. AC-VOL-01, AC-VOL-03 pass.
   5. T-E2E-02 passes except the rollback part (M3).
 
@@ -161,7 +161,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
 
 - **Goal:** gap 8.
 - **Depends on:** M3, M5.
-- **Covers:** REQ-CLI-001..004, REQ-CLI-100..104, REQ-CAC-001..011, REQ-CAC-100..104, REQ-TF-001..005, REQ-ENV-009, REQ-UI-006.
+- **Covers:** REQ-CLI-001..004, REQ-CLI-100..104, REQ-CAC-001..014, REQ-CAC-100..104, REQ-TF-001..005, REQ-ENV-009, REQ-UI-006.
 - **Work packages:**
   - WP6.1 (C) CLI core: contexts, auth, output formats, exit codes, completion, commands for all areas that exist (M1–M5).
   - WP6.2 (S) Config engine: parse, validate (schema and semantic), merge, plan (diff), apply (ordered), `git_managed` fields, drift, export, prune rules.
@@ -169,7 +169,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
   - WP6.4 (C) Terraform provider: resources and data sources, import, sensitive handling, docs generation, acceptance tests with a live server.
   - WP6.5 (W) Screen UI-29, read-only "managed by git" fields.
 - **Done criteria:**
-  1. AC-CAC-01 to AC-CAC-06, AC-API-01, AC-API-02, AC-CLI-01, AC-CLI-02, AC-TF-01, AC-TF-02 pass.
+  1. AC-CAC-01 to AC-CAC-08, AC-API-01, AC-API-02, AC-CLI-01, AC-CLI-02, AC-TF-01, AC-TF-02 pass.
   2. Examples in [07](07-config-as-code.md#8-examples) validate and apply.
   3. T-E2E-12 passes.
   4. Every OpenAPI operation of M1–M5 is reachable from a CLI command (REQ-CLI-100).

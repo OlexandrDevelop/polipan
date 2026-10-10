@@ -4,7 +4,7 @@ Maps every requirement to its file, milestone and tests. The milestone comes fro
 
 Rebuild this file when a requirement is added or moved (see [README](README.md#consistency-checks)). Do not edit rows by hand.
 
-Totals: 348 requirements, 138 acceptance criteria.
+Totals: 352 requirements, 141 acceptance criteria.
 
 
 ## CORE
@@ -328,12 +328,13 @@ Totals: 348 requirements, 138 acceptance criteria.
 | REQ-SEC-010 | SHOULD | [04-features/F07-teams-rbac-audit-sso-secrets.md](04-features/F07-teams-rbac-audit-sso-secrets.md) | M2 | unit/component test by REQ id |
 | REQ-SEC-100 | MUST | [10-security.md](10-security.md) | M7 | unit/component test by REQ id |
 | REQ-SEC-101 | MUST | [10-security.md](10-security.md) | M2 | unit/component test by REQ id |
-| REQ-SEC-102 | MUST | [10-security.md](10-security.md) | M2 | unit/component test by REQ id |
+| REQ-SEC-102 | MUST | [10-security.md](10-security.md) | M2 | AC-SEC-06 |
 | REQ-SEC-103 | MUST | [10-security.md](10-security.md) | M2 | unit/component test by REQ id |
 | REQ-SEC-104 | MUST | [10-security.md](10-security.md) | M2 | unit/component test by REQ id |
 | REQ-SEC-105 | MUST | [10-security.md](10-security.md) | M2 | unit/component test by REQ id |
 | REQ-SEC-106 | MUST | [10-security.md](10-security.md) | M7 | unit/component test by REQ id |
 | REQ-SEC-107 | MUST | [10-security.md](10-security.md) | M2 | unit/component test by REQ id |
+| REQ-SEC-108 | MUST | [10-security.md](10-security.md) | M2 | AC-SEC-06 |
 
 ## CAC
 
@@ -350,6 +351,9 @@ Totals: 348 requirements, 138 acceptance criteria.
 | REQ-CAC-009 | MUST | [04-features/F08-config-as-code-api-cli-terraform.md](04-features/F08-config-as-code-api-cli-terraform.md) | M6 | AC-CAC-06 |
 | REQ-CAC-010 | SHOULD | [04-features/F08-config-as-code-api-cli-terraform.md](04-features/F08-config-as-code-api-cli-terraform.md) | M6 | unit/component test by REQ id |
 | REQ-CAC-011 | MUST | [04-features/F08-config-as-code-api-cli-terraform.md](04-features/F08-config-as-code-api-cli-terraform.md) | M6 | unit/component test by REQ id |
+| REQ-CAC-012 | MUST | [04-features/F08-config-as-code-api-cli-terraform.md](04-features/F08-config-as-code-api-cli-terraform.md) | M6 | AC-CAC-08 |
+| REQ-CAC-013 | MUST | [04-features/F08-config-as-code-api-cli-terraform.md](04-features/F08-config-as-code-api-cli-terraform.md) | M6 | AC-CAC-07 |
+| REQ-CAC-014 | MUST | [04-features/F08-config-as-code-api-cli-terraform.md](04-features/F08-config-as-code-api-cli-terraform.md) | M6 | AC-CAC-07 |
 | REQ-CAC-100 | MUST | [07-config-as-code.md](07-config-as-code.md) | M6 | unit/component test by REQ id |
 | REQ-CAC-101 | MUST | [07-config-as-code.md](07-config-as-code.md) | M6 | unit/component test by REQ id |
 | REQ-CAC-102 | MUST | [07-config-as-code.md](07-config-as-code.md) | M6 | unit/component test by REQ id |

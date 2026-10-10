@@ -601,7 +601,7 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Project'}}}}
     patch:
       operationId: updateProject
-      summary: Update project settings (retain_releases, previews, build_timeout, config source)
+      summary: Update project settings (retain_releases, previews, build_timeout). Changing config_source or previews.from_forks needs admin (403 otherwise).
       tags: [projects]
       x-permission: project:update
       parameters: [{$ref: '#/components/parameters/ProjectId'}]
