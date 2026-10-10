@@ -10,6 +10,7 @@ import { useMe } from '@/auth'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Button, Card, Skeleton, StatusBadge, TextField } from '@/components/ui'
 import { t } from '@/i18n'
+import { AddNodeDialog } from '@/routes/Nodes'
 import { useNodes, useProjects } from '@/scope'
 
 // The name the setup gives to a new organization. A different name means step 1 is done.
@@ -50,6 +51,7 @@ export function Onboarding() {
   const [skipped, setSkipped] = useState<StepId[]>(() => readSkipped(userId))
   const [showAll, setShowAll] = useState(false)
   const [name, setName] = useState('')
+  const [addingServer, setAddingServer] = useState(false)
 
   const orgQuery = useQuery({ queryKey: ['org'], queryFn: () => unwrap(api.GET('/org')) })
   const nodes = useNodes()
@@ -167,10 +169,14 @@ export function Onboarding() {
           </form>
         )
       case 'server':
+        // The dialog shows the install command, the time left and the live row pending, then ready (UI-31).
         return (
-          <Link to="/o/$org/nodes" params={{ org }} className="text-primary underline">
-            {t('onboarding.add_server')}
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button onClick={() => setAddingServer(true)}>{t('onboarding.add_server')}</Button>
+            <Link to="/o/$org/nodes" params={{ org }} className="text-primary underline">
+              {t('onboarding.all_servers')}
+            </Link>
+          </div>
         )
       case 'domain':
         return firstService && serviceEnv && serviceProject ? (
@@ -249,6 +255,7 @@ export function Onboarding() {
           )
         })}
       </ol>
+      {addingServer && <AddNodeDialog onClose={() => setAddingServer(false)} />}
     </Card>
   )
 }

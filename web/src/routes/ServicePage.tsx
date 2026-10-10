@@ -8,6 +8,7 @@ import { api } from '@/api/client'
 import { ApiError, unwrap } from '@/api/errors'
 import { DataList } from '@/components/DataList'
 import { DeployDialog } from '@/components/DeployDialog'
+import { MoveDialog } from '@/components/MoveDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { PageHeader } from '@/components/PageHeader'
 import { RollbackDialog } from '@/components/RollbackDialog'
@@ -29,6 +30,7 @@ import { ServiceDomains } from '@/routes/ServiceDomains'
 import { ServiceLogs } from '@/routes/ServiceLogs'
 import { ServiceHealth } from '@/routes/ServiceHealth'
 import { ServiceReleases, useReleases } from '@/routes/ServiceReleases'
+import { ServicePlacement, FailoverBanner } from '@/routes/ServicePlacement'
 import { ServiceSettings } from '@/routes/ServiceSettings'
 import { BackupBadge, ServiceBackups } from '@/routes/ServiceBackups'
 import { ServiceDelete } from '@/routes/ServiceDelete'
@@ -293,7 +295,7 @@ export function ServicePage() {
   const [notice, setNotice] = useState<ReactNode>(null)
   // A change made on this page shows the banner at once, before the server reports it.
   const [localPending, setLocalPending] = useState(false)
-  const [dialog, setDialog] = useState<'deploy' | 'rollback' | null>(null)
+  const [dialog, setDialog] = useState<'deploy' | 'rollback' | 'move' | null>(null)
   const releases = useReleases(serviceId)
 
   const live = useQuery({
@@ -373,6 +375,7 @@ export function ServicePage() {
   const busyReason = t('service.busy')
 
   const rollbackAccess = accessFor(role, 'service:rollback', environment.protected)
+  const moveAccess = accessFor(role, 'service:move', environment.protected)
   const restartAccess = accessFor(role, 'service:restart')
   const previous = releases.data?.items?.find((r) => r.status === 'previous')
   const rollbackReason =
@@ -411,6 +414,17 @@ export function ServicePage() {
           }}
         >
           {t('service.rollback')}
+        </Button>
+      )}
+      {moveAccess !== 'hidden' && (service.placements ?? []).length > 0 && (
+        <Button
+          reason={moveAccess === 'blocked' ? protectedReason : busy ? busyReason : undefined}
+          onClick={() => {
+            setNotice(null)
+            setDialog('move')
+          }}
+        >
+          {t('service.move')}
         </Button>
       )}
       {restartAccess !== 'hidden' && (
@@ -538,7 +552,14 @@ export function ServicePage() {
           ))}
         </ul>
       </nav>
-      {tab === 'overview' && <Overview service={service} serviceId={serviceId} base={base} />}
+      {tab === 'overview' && (
+        <>
+          <div className="mb-4">
+            <FailoverBanner service={service} />
+          </div>
+          <Overview service={service} serviceId={serviceId} base={base} />
+        </>
+      )}
       {tab === 'deployments' && <Deployments serviceId={serviceId} base={base} />}
       {tab === 'releases' && (
         <ServiceReleases
@@ -585,6 +606,12 @@ export function ServicePage() {
             environmentProtected={environment.protected}
             onChanged={changed}
           />
+          <ServicePlacement
+            key={`${service.id}-${service.failover}-${service.allow_data_loss_failover}`}
+            service={service}
+            environmentProtected={environment.protected}
+            onChanged={changed}
+          />
           <ServiceDelete
             service={service}
             environmentProtected={environment.protected}
@@ -600,6 +627,7 @@ export function ServicePage() {
           onDeployed={() => setLocalPending(false)}
         />
       )}
+      {dialog === 'move' && <MoveDialog service={service} onClose={() => setDialog(null)} />}
       {dialog === 'rollback' && previous?.id && (
         <RollbackDialog
           service={service}

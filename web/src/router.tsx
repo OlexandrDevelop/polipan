@@ -25,6 +25,8 @@ import { BackupsPage } from '@/routes/BackupsPage'
 import { BackupTargetsPage } from '@/routes/BackupTargets'
 import { CatalogPage } from '@/routes/Catalog'
 import { NodesPage } from '@/routes/Nodes'
+import { NodeDetailPage } from '@/routes/NodeDetail'
+import { NodeHistoryPage } from '@/routes/NodeHistory'
 import { ProfilePage } from '@/routes/Profile'
 import { ProjectPage } from '@/routes/ProjectPage'
 import { DashboardPage, ProjectsPage } from '@/routes/Projects'
@@ -86,6 +88,16 @@ const nodesRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'nodes',
   component: NodesPage,
+})
+const nodeHistoryRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'nodes/history',
+  component: NodeHistoryPage,
+})
+const nodeRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'nodes/$node',
+  component: NodeDetailPage,
 })
 const deploymentsRoute = createRoute({
   getParentRoute: () => orgRoute,
@@ -208,6 +220,8 @@ const routeTree = rootRoute.addChildren([
     projectsRoute,
     deploymentsRoute,
     nodesRoute,
+    nodeHistoryRoute,
+    nodeRoute,
     catalogRoute,
     backupsRoute,
     backupTargetsRoute,

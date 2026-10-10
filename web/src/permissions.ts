@@ -18,6 +18,7 @@ export type Permission =
   | 'service:delete'
   | 'service:deploy'
   | 'service:rollback'
+  | 'service:move'
   | 'deployment:read'
   | 'deployment:cancel'
   | 'service:restart'
@@ -52,6 +53,7 @@ const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'service:delete': 'p',
   'service:deploy': 'p',
   'service:rollback': 'p',
+  'service:move': 'p',
   'deployment:read': 'all',
   'deployment:cancel': 'p',
   'service:restart': 'dev',
