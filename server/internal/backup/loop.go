@@ -83,7 +83,7 @@ func (s *Service) Tick1(ctx context.Context) {
 
 // schedule queues the runs and checks that are due.
 func (s *Service) schedule(ctx context.Context) {
-	rows, err := s.DB.Query(ctx, `SELECT `+policyCols+` FROM backup_policies WHERE enabled`)
+	rows, err := s.DB.Query(ctx, `SELECT `+policyCols+` FROM backup_policies WHERE enabled AND `+liveService)
 	if err != nil {
 		s.Log.Warn("backup schedule", "error", err)
 		return
@@ -230,7 +230,7 @@ func queryIDs(ctx context.Context, q dbq, sql string, args ...any) ([]string, er
 
 // overdue raises the alert restore_check_overdue once a day for a policy without a passed check in 2 x its check interval (REQ-BKP-103).
 func (s *Service) overdue(ctx context.Context) {
-	rows, err := s.DB.Query(ctx, `SELECT `+policyCols+` FROM backup_policies WHERE enabled AND restore_check_enabled`)
+	rows, err := s.DB.Query(ctx, `SELECT `+policyCols+` FROM backup_policies WHERE enabled AND restore_check_enabled AND `+liveService)
 	if err != nil {
 		return
 	}

@@ -1025,5 +1025,19 @@
   "compose.import": "Import",
   "compose.failed": "The Compose file was refused.",
   "compose.result": "{count} services will be created",
-  "compose.warnings": "Ignored settings"
+  "compose.warnings": "Ignored settings",
+  "delete.title": "Delete this service",
+  "delete.text": "The service stops and its containers are removed. Its data stays in its volumes unless you choose to delete it.",
+  "delete.button": "Delete service",
+  "delete.dialog_title": "Delete {name}",
+  "delete.confirm": "Delete",
+  "delete.failed": "The service was not deleted.",
+  "delete.group": "Delete the whole template group ({count} services)",
+  "delete.final_backup": "Make a final backup first",
+  "delete.final_backup_hint": "Runs the backup policy now. If it fails, nothing is deleted.",
+  "delete.no_backup": "This database has no backup policy. After the delete its data is only in its volume.",
+  "delete.volumes": "Delete the volumes (the data) too",
+  "delete.volumes_hint": "This cannot be undone. Without it the data stays on the node as an orphan volume.",
+  "delete.backup_failed": "The final backup failed.",
+  "delete.backup_timeout": "The final backup did not end in 30 minutes."
 }

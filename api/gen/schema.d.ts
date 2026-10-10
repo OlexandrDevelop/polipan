@@ -1705,6 +1705,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/template-instances/{instance_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete all services of a template instance as a group. Volumes are deleted only with delete_volumes=true. confirm must be the template slug. */
+        delete: operations["deleteTemplateInstance"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/environments/{environment_id}/import-compose": {
         parameters: {
             query?: never;
@@ -2433,6 +2450,8 @@ export interface components {
             db_version?: string;
             backup?: components["schemas"]["ServiceBackup"];
             template_instance_id?: string;
+            /** @description the slug of the template that made the service. The group delete asks for it. */
+            template_slug?: string;
             /** @description for example zero_downtime_not_available (a database always uses recreate) and database_exposed */
             warnings?: components["schemas"]["Warning"][];
             config?: components["schemas"]["ServiceConfig"];
@@ -6410,6 +6429,30 @@ export interface operations {
                 };
             };
             422: components["responses"]["Error"];
+        };
+    };
+    deleteTemplateInstance: {
+        parameters: {
+            query: {
+                confirm: string;
+                delete_volumes?: boolean;
+            };
+            header?: never;
+            path: {
+                instance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
         };
     };
     importCompose: {

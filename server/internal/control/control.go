@@ -401,3 +401,38 @@ func (c *Control) CreateJoinToken(ctx context.Context, orgID, nodeName string, l
 	}
 	return orchestrator.JoinToken{Token: token, ExpiresAt: expires, CAFingerprint: c.CA.Fingerprint()}, nil
 }
+
+// RemoveServiceData removes the containers and the Docker volumes of a service on its nodes. It runs before the
+// service is deleted. A node that is not connected gives an error: the data would stay behind (orchestrator.DataRemover).
+func (c *Control) RemoveServiceData(ctx context.Context, serviceID string) error {
+	rows, err := c.DB.Query(ctx, `SELECT id, node_id FROM placements WHERE service_id = $1 ORDER BY created_at`, serviceID)
+	if err != nil {
+		return err
+	}
+	type pl struct{ id, node string }
+	var list []pl
+	for rows.Next() {
+		var p pl
+		if err := rows.Scan(&p.id, &p.node); err != nil {
+			rows.Close()
+			return err
+		}
+		list = append(list, p)
+	}
+	rows.Close()
+	var errs []error
+	for _, p := range list {
+		if c.Sender == nil || !c.Sender.Connected(p.node) {
+			errs = append(errs, fmt.Errorf("node %s is not connected: its data was not removed", p.node))
+			continue
+		}
+		cctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		ack, err := c.Sender.Send(cctx, p.node, &pb.Command{CommandId: gateway.NewID("cmd"),
+			Body: &pb.Command_RemoveWorkload{RemoveWorkload: &pb.RemoveWorkload{PlacementId: p.id, RemoveVolumes: true}}})
+		cancel()
+		if err != nil || !ack.GetOk() {
+			errs = append(errs, fmt.Errorf("placement %s: %v %s", p.id, err, ack.GetErrorMessage()))
+		}
+	}
+	return errors.Join(errs...)
+}

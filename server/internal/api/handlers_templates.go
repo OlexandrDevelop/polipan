@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/polipan/polipan/api/gen"
+	"github.com/polipan/polipan/server/internal/orchestrator"
 	"github.com/polipan/polipan/server/internal/store"
 	"github.com/polipan/polipan/server/internal/tpl"
 	"github.com/polipan/polipan/server/internal/vars"
@@ -413,4 +414,47 @@ func (h *Handlers) ImportCompose(w http.ResponseWriter, r *http.Request, environ
 		list = append(list, h.decorateService(r.Context(), serviceJSON(s), s))
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"services": list, "warnings": warnings})
+}
+
+// DeleteTemplateInstance deletes all services of an instance as a group (REQ-TPL-008). Volumes go only with delete_volumes=true.
+func (h *Handlers) DeleteTemplateInstance(w http.ResponseWriter, r *http.Request, instanceID string, params gen.DeleteTemplateInstanceParams) {
+	ti, err := h.Store.GetTemplateInstance(r.Context(), h.orgID(r), instanceID)
+	if fail(w, r, err) {
+		return
+	}
+	if denyProtected(w, r, "service:delete", ti.Protected) {
+		return
+	}
+	if params.Confirm != ti.TemplateID {
+		invalid(w, r, "confirm", "confirm must be the slug of the template ("+ti.TemplateID+")")
+		return
+	}
+	if params.DeleteVolumes != nil && *params.DeleteVolumes {
+		if !h.removeData(w, r, ti.ServiceIDs) {
+			return
+		}
+	}
+	ids, err := h.Store.DeleteTemplateInstance(r.Context(), h.orgID(r), instanceID)
+	if fail(w, r, err) {
+		return
+	}
+	h.servicesRemoved(r, ids)
+	h.auditUser(r, ti.OrgID, ti.ProjectID, "template_instance.delete", "template_instance", instanceID,
+		map[string]any{"template": ti.TemplateID, "services": ids, "delete_volumes": params.DeleteVolumes != nil && *params.DeleteVolumes})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// removeData removes the data of services on their nodes before they are deleted. It writes the answer and returns false on a failure.
+func (h *Handlers) removeData(w http.ResponseWriter, r *http.Request, serviceIDs []string) bool {
+	remover, ok := h.Orch.(orchestrator.DataRemover)
+	if !ok {
+		return true
+	}
+	for _, id := range serviceIDs {
+		if err := remover.RemoveServiceData(r.Context(), id); err != nil {
+			WriteError(w, r, http.StatusConflict, CodeConflict, "the data was not removed, nothing was deleted: "+err.Error(), map[string]any{"reason": "node_unavailable"})
+			return false
+		}
+	}
+	return true
 }

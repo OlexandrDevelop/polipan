@@ -9,6 +9,7 @@ import (
 
 	"github.com/polipan/polipan/server/internal/control"
 	"github.com/polipan/polipan/server/internal/git"
+	"github.com/polipan/polipan/server/internal/orchestrator"
 )
 
 // R4: the node pull credential of the built-in registry is for built images of git services only.
@@ -26,6 +27,40 @@ func TestR4_ImageServiceCannotUseBuiltInRegistry(t *testing.T) {
 	}
 	if len(f.pulls) != 0 {
 		t.Fatalf("the node must not pull: %v", f.pulls)
+	}
+}
+
+// R4 (carry-over of M3): the same rule holds for a rollback. A release of a git service has an image of the built-in
+// registry. If the service became an image service, a rollback to that release must not pull it with the node credential.
+func TestR4_RollbackOfImageServiceCannotUseBuiltInRegistry(t *testing.T) {
+	f := gitSetup(t, "dockerfile")
+	ctx := context.Background()
+	for _, commit := range []string{"aaaaaaa1111111", "bbbbbbb2222222"} {
+		if st, reason, detail := f.deploy(t, orchestrator.WithBuildRequest(ctx, orchestrator.BuildRequest{Commit: commit}), "manual"); st != "live" {
+			t.Fatalf("deploy: %s %s %s", st, reason, detail)
+		}
+	}
+	var first string
+	if err := f.env.Pool.QueryRow(ctx, `SELECT id FROM releases WHERE service_id = $1 AND number = 1`, f.serviceID).Scan(&first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.env.Pool.Exec(ctx, `UPDATE services SET source_type = 'image' WHERE id = $1`, f.serviceID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.env.Pool.Exec(ctx, `DELETE FROM placements WHERE release_id = $1`, first); err != nil { // no kept container: a normal rollback
+		t.Fatal(err)
+	}
+	pulls := len(f.pulls)
+	id, _, err := f.ctl.DeployWith(ctx, orchestrator.DeployParams{ServiceID: f.serviceID, RollbackReleaseID: first})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ff := &fixture{env: f.env, ctl: f.ctl, serviceID: f.serviceID}
+	if st, reason := ff.waitDeployment(t, id); st != "failed" || reason != control.ReasonInvalidConfig {
+		t.Fatalf("rollback: %s %s", st, reason)
+	}
+	if len(f.pulls) != pulls {
+		t.Fatalf("the node pulled the image: %v", f.pulls[pulls:])
 	}
 }
 

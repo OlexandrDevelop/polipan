@@ -1345,7 +1345,10 @@ type Service struct {
 	SourceType         *ServiceSourceType   `json:"source_type,omitempty"`
 	Status             *ServiceStatus       `json:"status,omitempty"`
 	TemplateInstanceId *string              `json:"template_instance_id,omitempty"`
-	Type               *ServiceType         `json:"type,omitempty"`
+
+	// TemplateSlug the slug of the template that made the service. The group delete asks for it.
+	TemplateSlug *string      `json:"template_slug,omitempty"`
+	Type         *ServiceType `json:"type,omitempty"`
 
 	// Warnings for example zero_downtime_not_available (a database always uses recreate) and database_exposed
 	Warnings *[]Warning `json:"warnings,omitempty"`
@@ -2086,6 +2089,12 @@ type CreateTeamJSONBody struct {
 // UpdateTeamJSONBody defines parameters for UpdateTeam.
 type UpdateTeamJSONBody struct {
 	Name *string `json:"name,omitempty"`
+}
+
+// DeleteTemplateInstanceParams defines parameters for DeleteTemplateInstance.
+type DeleteTemplateInstanceParams struct {
+	Confirm       string `form:"confirm" json:"confirm"`
+	DeleteVolumes *bool  `form:"delete_volumes,omitempty" json:"delete_volumes,omitempty"`
 }
 
 // CreateTemplateJSONBody defines parameters for CreateTemplate.
@@ -2951,6 +2960,9 @@ type ClientInterface interface {
 
 	// AddTeamMember request
 	AddTeamMember(ctx context.Context, teamId TeamId, userId UserId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteTemplateInstance request
+	DeleteTemplateInstance(ctx context.Context, instanceId string, params *DeleteTemplateInstanceParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListTemplates request
 	ListTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5505,6 +5517,18 @@ func (c *Client) RemoveTeamMember(ctx context.Context, teamId TeamId, userId Use
 
 func (c *Client) AddTeamMember(ctx context.Context, teamId TeamId, userId UserId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAddTeamMemberRequest(c.Server, teamId, userId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteTemplateInstance(ctx context.Context, instanceId string, params *DeleteTemplateInstanceParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteTemplateInstanceRequest(c.Server, instanceId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -12827,6 +12851,74 @@ func NewAddTeamMemberRequest(server string, teamId TeamId, userId UserId) (*http
 	return req, nil
 }
 
+// NewDeleteTemplateInstanceRequest generates requests for DeleteTemplateInstance
+func NewDeleteTemplateInstanceRequest(server string, instanceId string, params *DeleteTemplateInstanceParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "instance_id", runtime.ParamLocationPath, instanceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/template-instances/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "confirm", runtime.ParamLocationQuery, params.Confirm); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if params.DeleteVolumes != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "delete_volumes", runtime.ParamLocationQuery, *params.DeleteVolumes); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListTemplatesRequest generates requests for ListTemplates
 func NewListTemplatesRequest(server string) (*http.Request, error) {
 	var err error
@@ -14020,6 +14112,9 @@ type ClientWithResponsesInterface interface {
 
 	// AddTeamMemberWithResponse request
 	AddTeamMemberWithResponse(ctx context.Context, teamId TeamId, userId UserId, reqEditors ...RequestEditorFn) (*AddTeamMemberResponse, error)
+
+	// DeleteTemplateInstanceWithResponse request
+	DeleteTemplateInstanceWithResponse(ctx context.Context, instanceId string, params *DeleteTemplateInstanceParams, reqEditors ...RequestEditorFn) (*DeleteTemplateInstanceResponse, error)
 
 	// ListTemplatesWithResponse request
 	ListTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListTemplatesResponse, error)
@@ -17567,6 +17662,28 @@ func (r AddTeamMemberResponse) StatusCode() int {
 	return 0
 }
 
+type DeleteTemplateInstanceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON404      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteTemplateInstanceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteTemplateInstanceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListTemplatesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -19703,6 +19820,15 @@ func (c *ClientWithResponses) AddTeamMemberWithResponse(ctx context.Context, tea
 		return nil, err
 	}
 	return ParseAddTeamMemberResponse(rsp)
+}
+
+// DeleteTemplateInstanceWithResponse request returning *DeleteTemplateInstanceResponse
+func (c *ClientWithResponses) DeleteTemplateInstanceWithResponse(ctx context.Context, instanceId string, params *DeleteTemplateInstanceParams, reqEditors ...RequestEditorFn) (*DeleteTemplateInstanceResponse, error) {
+	rsp, err := c.DeleteTemplateInstance(ctx, instanceId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteTemplateInstanceResponse(rsp)
 }
 
 // ListTemplatesWithResponse request returning *ListTemplatesResponse
@@ -23840,6 +23966,32 @@ func ParseAddTeamMemberResponse(rsp *http.Response) (*AddTeamMemberResponse, err
 	return response, nil
 }
 
+// ParseDeleteTemplateInstanceResponse parses an HTTP response from a DeleteTemplateInstanceWithResponse call
+func ParseDeleteTemplateInstanceResponse(rsp *http.Response) (*DeleteTemplateInstanceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteTemplateInstanceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListTemplatesResponse parses an HTTP response from a ListTemplatesWithResponse call
 func ParseListTemplatesResponse(rsp *http.Response) (*ListTemplatesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -24659,6 +24811,9 @@ type ServerInterface interface {
 	// Add a user to a team
 	// (PUT /teams/{team_id}/members/{user_id})
 	AddTeamMember(w http.ResponseWriter, r *http.Request, teamId TeamId, userId UserId)
+	// Delete all services of a template instance as a group. Volumes are deleted only with delete_volumes=true. confirm must be the template slug.
+	// (DELETE /template-instances/{instance_id})
+	DeleteTemplateInstance(w http.ResponseWriter, r *http.Request, instanceId string, params DeleteTemplateInstanceParams)
 	// List built-in and custom templates
 	// (GET /templates)
 	ListTemplates(w http.ResponseWriter, r *http.Request)
@@ -25634,6 +25789,12 @@ func (_ Unimplemented) RemoveTeamMember(w http.ResponseWriter, r *http.Request, 
 // Add a user to a team
 // (PUT /teams/{team_id}/members/{user_id})
 func (_ Unimplemented) AddTeamMember(w http.ResponseWriter, r *http.Request, teamId TeamId, userId UserId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete all services of a template instance as a group. Volumes are deleted only with delete_volumes=true. confirm must be the template slug.
+// (DELETE /template-instances/{instance_id})
+func (_ Unimplemented) DeleteTemplateInstance(w http.ResponseWriter, r *http.Request, instanceId string, params DeleteTemplateInstanceParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -31262,6 +31423,65 @@ func (siw *ServerInterfaceWrapper) AddTeamMember(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteTemplateInstance operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTemplateInstance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "instance_id" -------------
+	var instanceId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "instance_id", chi.URLParam(r, "instance_id"), &instanceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "instance_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerTokenScopes, []string{})
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteTemplateInstanceParams
+
+	// ------------- Required query parameter "confirm" -------------
+
+	if paramValue := r.URL.Query().Get("confirm"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "confirm"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "confirm", r.URL.Query(), &params.Confirm)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "confirm", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "delete_volumes" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "delete_volumes", r.URL.Query(), &params.DeleteVolumes)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "delete_volumes", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTemplateInstance(w, r, instanceId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTemplates operation middleware
 func (siw *ServerInterfaceWrapper) ListTemplates(w http.ResponseWriter, r *http.Request) {
 
@@ -32270,6 +32490,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/teams/{team_id}/members/{user_id}", wrapper.AddTeamMember)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/template-instances/{instance_id}", wrapper.DeleteTemplateInstance)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/templates", wrapper.ListTemplates)

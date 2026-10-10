@@ -57,3 +57,60 @@ func (s *Store) CreateCustomTemplate(ctx context.Context, orgID, slug, version s
 	}
 	return &t, nil
 }
+
+// TemplateInstance is a group of services made by a template.
+type TemplateInstance struct {
+	ID            string
+	TemplateID    string
+	Version       string
+	EnvironmentID string
+	ProjectID     string
+	OrgID         string
+	Protected     bool
+	ServiceIDs    []string
+}
+
+// GetTemplateInstance reads an instance of the org with the ids of its services that are not deleted.
+func (s *Store) GetTemplateInstance(ctx context.Context, orgID, id string) (*TemplateInstance, error) {
+	var ti TemplateInstance
+	err := s.Pool.QueryRow(ctx, `SELECT i.id, i.template_id, i.template_version, i.environment_id, e.project_id, p.org_id, e.protected
+		FROM template_instances i JOIN environments e ON e.id = i.environment_id JOIN projects p ON p.id = e.project_id
+		WHERE i.id = $1 AND p.org_id = $2 AND e.deleted_at IS NULL AND p.deleted_at IS NULL`, id, orgID).
+		Scan(&ti.ID, &ti.TemplateID, &ti.Version, &ti.EnvironmentID, &ti.ProjectID, &ti.OrgID, &ti.Protected)
+	if err != nil {
+		return nil, notFound(err)
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT id FROM services WHERE template_instance_id = $1 AND deleted_at IS NULL ORDER BY created_at, id`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sid string
+		if err := rows.Scan(&sid); err != nil {
+			return nil, err
+		}
+		ti.ServiceIDs = append(ti.ServiceIDs, sid)
+	}
+	return &ti, rows.Err()
+}
+
+// DeleteTemplateInstance soft deletes all services of an instance in one transaction.
+func (s *Store) DeleteTemplateInstance(ctx context.Context, orgID, id string) ([]string, error) {
+	if _, err := s.GetTemplateInstance(ctx, orgID, id); err != nil {
+		return nil, err
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	ids, err := softDeleteServices(ctx, tx, `template_instance_id = $1`, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}

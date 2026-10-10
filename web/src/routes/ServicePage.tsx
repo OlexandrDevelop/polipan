@@ -31,6 +31,7 @@ import { ServiceHealth } from '@/routes/ServiceHealth'
 import { ServiceReleases, useReleases } from '@/routes/ServiceReleases'
 import { ServiceSettings } from '@/routes/ServiceSettings'
 import { BackupBadge, ServiceBackups } from '@/routes/ServiceBackups'
+import { ServiceDelete } from '@/routes/ServiceDelete'
 import { ServiceStorage } from '@/routes/ServiceStorage'
 import { ServiceTerminal } from '@/routes/ServiceTerminal'
 import { ServiceVariables } from '@/routes/ServiceVariables'
@@ -577,12 +578,19 @@ export function ServicePage() {
         <ServiceTerminal service={service} environmentProtected={environment.protected} />
       )}
       {tab === 'settings' && (
-        <ServiceSettings
-          key={service.id}
-          service={service}
-          environmentProtected={environment.protected}
-          onChanged={changed}
-        />
+        <>
+          <ServiceSettings
+            key={service.id}
+            service={service}
+            environmentProtected={environment.protected}
+            onChanged={changed}
+          />
+          <ServiceDelete
+            service={service}
+            environmentProtected={environment.protected}
+            base={base}
+          />
+        </>
       )}
       {dialog === 'deploy' && (
         <DeployDialog

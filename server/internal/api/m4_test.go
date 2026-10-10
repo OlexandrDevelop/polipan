@@ -166,7 +166,7 @@ func TestAC_DB_03_NoPublicPortAndBackupSuggestion(t *testing.T) {
 }
 
 // REQ-DB-001, REQ-DB-005, REQ-DB-007: version rules, host port rules, major upgrade.
-func TestDatabaseVersionAndExposureRules(t *testing.T) {
+func TestREQ_DB_001_REQ_DB_005_REQ_DB_007_VersionAndExposureRules(t *testing.T) {
 	e := newM2Env(t)
 	c := e.owner()
 	_, envs := c.project("Shop")
@@ -210,7 +210,7 @@ func TestDatabaseVersionAndExposureRules(t *testing.T) {
 }
 
 // Exposing a database of a protected environment needs an admin (REQ-DB-005).
-func TestDatabaseExposeNeedsAdminOnProtected(t *testing.T) {
+func TestREQ_DB_005_ExposeNeedsAdminOnProtected(t *testing.T) {
 	e := newM2Env(t)
 	c := e.owner()
 	_, envs := c.project("Shop")
@@ -404,7 +404,7 @@ func TestAC_TPL_04_AllOrNothing(t *testing.T) {
 }
 
 // The 12 built-in templates pass the checks and expand with sample inputs (REQ-TPL-004).
-func TestBuiltinTemplatesAreValid(t *testing.T) {
+func TestREQ_TPL_004_BuiltinTemplatesAreValid(t *testing.T) {
 	list, err := tpl.Builtin()
 	if err != nil || len(list) != 12 {
 		t.Fatalf("builtin: %d %v", len(list), err)

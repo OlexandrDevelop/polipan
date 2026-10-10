@@ -143,6 +143,7 @@ func (h *Handlers) decorateService(ctx context.Context, out gen.Service, s *stor
 		return out
 	}
 	out.TemplateInstanceId = m.TemplateInstance
+	out.TemplateSlug = m.TemplateSlug
 	if s.Type != "database" || s.DBEngine == nil {
 		return out
 	}

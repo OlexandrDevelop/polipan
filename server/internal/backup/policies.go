@@ -72,6 +72,10 @@ type PolicyInput struct {
 	PostHook      *[]string
 }
 
+// liveService keeps the policies of services that are not deleted, and the control-plane policy. The snapshots of a
+// deleted service stay on the targets.
+const liveService = `(service_id IS NULL OR EXISTS (SELECT 1 FROM services s WHERE s.id = service_id AND s.deleted_at IS NULL))`
+
 const policyCols = `id, org_id, service_id, volume_id, schedule, target_ids, retention, repo_password_secret_id, restore_check_schedule,
 	restore_check_enabled, restore_check_mode, hooks, enabled, created_at`
 
@@ -94,7 +98,7 @@ func (s *Service) GetPolicy(ctx context.Context, orgID, id string) (*Policy, err
 
 // ListPolicies lists the policies of the org, or of one service.
 func (s *Service) ListPolicies(ctx context.Context, orgID string, serviceID *string) ([]Policy, error) {
-	rows, err := s.DB.Query(ctx, `SELECT `+policyCols+` FROM backup_policies WHERE org_id = $1 AND ($2::text IS NULL OR service_id = $2)
+	rows, err := s.DB.Query(ctx, `SELECT `+policyCols+` FROM backup_policies WHERE org_id = $1 AND ($2::text IS NULL OR service_id = $2) AND `+liveService+`
 		ORDER BY (service_id IS NULL) DESC, created_at, id`, orgID, serviceID)
 	if err != nil {
 		return nil, err

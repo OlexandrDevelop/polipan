@@ -512,7 +512,7 @@ func TestRestoreStopsWhenSafetyBackupFails(t *testing.T) {
 }
 
 // Targets: validation, 409 when a policy uses it, the test action.
-func TestBackupTargets(t *testing.T) {
+func TestREQ_BKP_002_REQ_BKP_004_BackupTargets(t *testing.T) {
 	e := newM4Env(t)
 	c := e.owner()
 	_, envs := c.project("Shop")
@@ -577,7 +577,7 @@ func (e *m4Env) test(sftp map[string]any) {
 }
 
 // Policies need a database or a volume, valid cron, existing targets (REQ-BKP-001).
-func TestBackupPolicyValidation(t *testing.T) {
+func TestREQ_BKP_001_REQ_BKP_011_BackupPolicyValidation(t *testing.T) {
 	e := newM4Env(t)
 	c := e.owner()
 	_, envs := c.project("Shop")
@@ -639,5 +639,74 @@ func TestBackupPolicyValidation(t *testing.T) {
 	}
 	if len(e.sent(func(c *pb.Command) bool { return c.GetDeleteSnapshots() != nil })) != 1 {
 		t.Fatal("the snapshots were not deleted on the node")
+	}
+}
+
+// REQ-TPL-008: the services of a template instance are deleted as a group, and volumes only on request.
+func TestREQ_TPL_008_DeleteInstanceAsGroup(t *testing.T) {
+	e := newM4Env(t)
+	c := e.owner()
+	_, envs := c.project("Blog")
+	rec := c.do("POST", "/api/v1/templates/wordpress/instantiate", map[string]any{"environment_id": envs["staging"], "inputs": map[string]any{"domain": "blog.example.com"}})
+	var svcs []map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &svcs)
+	if rec.Code != 201 || len(svcs) != 2 {
+		t.Fatalf("instantiate: %d %s", rec.Code, rec.Body)
+	}
+	inst := str(svcs[0], "template_instance_id")
+	if str(svcs[0], "template_slug") != "wordpress" {
+		t.Fatalf("slug: %v", svcs[0])
+	}
+	m2 := &m2Env{testEnv: e.testEnv, gw: e.gw, ctl: e.ctl, sec: e.sec, agent: e.agent}
+	for _, s := range svcs {
+		if _, state, reason := m2.deploy(c, str(s, "id")); state != "live" {
+			t.Fatalf("deploy: %s %s", state, reason)
+		}
+	}
+	path := "/api/v1/template-instances/" + inst
+	if rec := c.do("DELETE", path+"?confirm=wrong", nil); rec.Code != 422 {
+		t.Fatalf("wrong confirm: %d %s", rec.Code, rec.Body)
+	}
+	if e.count(`SELECT count(*) FROM services WHERE deleted_at IS NULL`) != 2 {
+		t.Fatal("a service was deleted without the confirm")
+	}
+	if rec := c.do("DELETE", path+"?confirm=wordpress&delete_volumes=true", nil); rec.Code != 204 {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
+	}
+	if e.count(`SELECT count(*) FROM services WHERE deleted_at IS NULL`) != 0 || e.count(`SELECT count(*) FROM domains`) != 0 {
+		t.Fatal("the group is not gone")
+	}
+	removes := e.sent(func(c *pb.Command) bool { return c.GetRemoveWorkload() != nil && c.GetRemoveWorkload().RemoveVolumes })
+	if len(removes) != 2 {
+		t.Fatalf("remove commands with volumes: %d", len(removes))
+	}
+}
+
+// REQ-DB-009: delete a database with delete_volumes asks the node to remove the data, and its policy stops.
+func TestREQ_DB_009_DeleteDatabase(t *testing.T) {
+	e := newM4Env(t)
+	c := e.owner()
+	_, envs := c.project("Shop")
+	db := e.dbService(c, envs["staging"], "main")
+	pid := str(e.policy(c, db, map[string]any{"target_ids": []string{e.target(c, "minio")}, "schedule": "*/5 * * * *"}), "id")
+	if rec := c.do("DELETE", "/api/v1/services/"+db+"?confirm=nope", nil); rec.Code != 422 {
+		t.Fatalf("wrong name: %d", rec.Code)
+	}
+	if rec := c.do("DELETE", "/api/v1/services/"+db+"?confirm=main&delete_volumes=true", nil); rec.Code != 204 {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
+	}
+	if len(e.sent(func(c *pb.Command) bool { return c.GetRemoveWorkload() != nil && c.GetRemoveWorkload().RemoveVolumes })) != 1 {
+		t.Fatal("the data was not removed")
+	}
+	// The policy of a deleted service is not scheduled any more and is not listed.
+	if _, err := e.pool.Exec(context.Background(), `UPDATE backup_policies SET created_at = now() - interval '1 hour' WHERE id = $1`, pid); err != nil {
+		t.Fatal(err)
+	}
+	e.bk.Tick1(context.Background())
+	if e.count(`SELECT count(*) FROM backup_runs WHERE policy_id = $1`, pid) != 0 {
+		t.Fatal("a run was queued for a deleted service")
+	}
+	if rec := c.do("GET", "/api/v1/backup-policies", nil); strings.Contains(rec.Body.String(), pid) {
+		t.Fatalf("the policy is listed: %s", rec.Body)
 	}
 }

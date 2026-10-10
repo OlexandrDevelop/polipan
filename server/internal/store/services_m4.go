@@ -165,6 +165,7 @@ type ServiceM4 struct {
 	DBVersion         *string
 	BackupSkipped     bool
 	TemplateInstance  *string
+	TemplateSlug      *string
 	HasBackupPolicies bool
 }
 
@@ -172,8 +173,9 @@ type ServiceM4 struct {
 func (s *Store) GetServiceM4(ctx context.Context, serviceID string) (*ServiceM4, error) {
 	var m ServiceM4
 	err := s.Pool.QueryRow(ctx, `SELECT s.db_version, s.backup_skipped, s.template_instance_id,
+		(SELECT i.template_id FROM template_instances i WHERE i.id = s.template_instance_id),
 		EXISTS (SELECT 1 FROM backup_policies bp WHERE bp.service_id = s.id) FROM services s WHERE s.id = $1`, serviceID).
-		Scan(&m.DBVersion, &m.BackupSkipped, &m.TemplateInstance, &m.HasBackupPolicies)
+		Scan(&m.DBVersion, &m.BackupSkipped, &m.TemplateInstance, &m.TemplateSlug, &m.HasBackupPolicies)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

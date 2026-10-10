@@ -514,6 +514,9 @@ func (h *Handlers) DeleteService(w http.ResponseWriter, r *http.Request, service
 		invalid(w, r, "confirm", "confirm must be the name of the service")
 		return
 	}
+	if params.DeleteVolumes != nil && *params.DeleteVolumes && !h.removeData(w, r, []string{serviceID}) {
+		return
+	}
 	if fail(w, r, h.Store.SoftDeleteService(r.Context(), h.orgID(r), serviceID)) {
 		return
 	}

@@ -159,8 +159,15 @@ done
 say "Installing the agent"
 cid=$(docker create "$agent_image")
 docker cp "$cid:/polipan-agent" /usr/local/bin/polipan-agent
+# restic makes the backups (F10). The agent image has a static restic, so no package is needed.
+if ! command -v restic >/dev/null 2>&1; then
+  docker cp "$cid:/usr/local/bin/restic" /usr/local/bin/restic
+  chmod 0755 /usr/local/bin/restic
+fi
 docker rm "$cid" >/dev/null
 chmod 0755 /usr/local/bin/polipan-agent
+mkdir -p /var/lib/polipan/backups
+command -v ssh >/dev/null 2>&1 || say "Note: install an ssh client (openssh-client) to use SFTP backup targets."
 
 if [ ! -f /var/lib/polipan-agent/node.json ]; then
   say "Joining this host to the panel"

@@ -130,3 +130,9 @@ func IsPanelHost(externalURL, host string) bool {
 	}
 	return false
 }
+
+// DataRemover is an optional part of the Orchestrator: it removes the data volumes of a service on its node
+// (delete_volumes=true, REQ-DB-009, REQ-TPL-008). The Control implements it.
+type DataRemover interface {
+	RemoveServiceData(ctx context.Context, serviceID string) error
+}

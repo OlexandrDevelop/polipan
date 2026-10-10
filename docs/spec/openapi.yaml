@@ -1288,6 +1288,16 @@ paths:
       responses:
         '201': {description: Created, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Service'}}}}}
         '422': {$ref: '#/components/responses/Error'}
+  /template-instances/{instance_id}:
+    delete:
+      operationId: deleteTemplateInstance
+      summary: Delete all services of a template instance as a group. Volumes are deleted only with delete_volumes=true. confirm must be the template slug.
+      tags: [templates]
+      x-permission: service:delete
+      parameters: [{name: instance_id, in: path, required: true, schema: {type: string}}, {name: confirm, in: query, required: true, schema: {type: string}}, {name: delete_volumes, in: query, schema: {type: boolean}}]
+      responses:
+        '204': {description: Deleted}
+        '404': {$ref: '#/components/responses/Error'}
   /environments/{environment_id}/import-compose:
     post:
       operationId: importCompose
@@ -1789,6 +1799,7 @@ components:
         db_version: {type: string, description: "database services: the version tag chosen at creation"}
         backup: {$ref: '#/components/schemas/ServiceBackup'}
         template_instance_id: {type: string}
+        template_slug: {type: string, description: "the slug of the template that made the service. The group delete asks for it."}
         warnings: {type: array, items: {$ref: '#/components/schemas/Warning'}, description: "for example zero_downtime_not_available (a database always uses recreate) and database_exposed"}
         config: {$ref: '#/components/schemas/ServiceConfig'}
         git_managed_fields: {type: array, items: {type: string}}

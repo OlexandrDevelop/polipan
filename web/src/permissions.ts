@@ -15,6 +15,7 @@ export type Permission =
   | 'env:create'
   | 'service:create'
   | 'service:update'
+  | 'service:delete'
   | 'service:deploy'
   | 'service:rollback'
   | 'deployment:read'
@@ -38,6 +39,7 @@ const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'env:create': 'dev',
   'service:create': 'p',
   'service:update': 'p',
+  'service:delete': 'p',
   'service:deploy': 'p',
   'service:rollback': 'p',
   'deployment:read': 'all',
