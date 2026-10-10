@@ -101,9 +101,11 @@ func (b *BuildKit) args(ctx context.Context, req Request) (args, env []string, e
 	}
 	env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.TempDir()}
 	names := sortedKeys(req.Secrets)
-	for _, n := range names {
-		args = append(args, "--secret", "id="+n+",env="+n)
-		env = append(env, n+"="+req.Secrets[n])
+	for i, n := range names {
+		// The env name is fixed, so a user secret name can not change the process env.
+		envName := fmt.Sprintf("PP_BUILD_SECRET_%d", i)
+		args = append(args, "--secret", "id="+n+",env="+envName)
+		env = append(env, envName+"="+req.Secrets[n])
 	}
 	for _, k := range sortedKeys(req.BuildArgs) {
 		args = append(args, "--opt", "build-arg:"+k+"="+req.BuildArgs[k])

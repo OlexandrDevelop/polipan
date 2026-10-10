@@ -33,7 +33,7 @@ func TestAC_APP_06_SecretsAreSecretMounts(t *testing.T) {
 	}}
 	var logged []string
 	err := bk.Build(context.Background(), build.Request{ContextDir: dir, Builder: build.Dockerfile, Dockerfile: "Dockerfile",
-		Secrets: map[string]string{"NPM_TOKEN": "very-secret-value"}, BuildArgs: map[string]string{"MODE": "prod"},
+		Secrets: map[string]string{"NPM_TOKEN": "very-secret-value", "PATH": "/evil", "LD_PRELOAD": "/evil.so"}, BuildArgs: map[string]string{"MODE": "prod"},
 		NoCache: true, Output: filepath.Join(dir, "out.tar"), Log: func(l string) { logged = append(logged, l) }})
 	if err != nil {
 		t.Fatal(err)
@@ -42,14 +42,21 @@ func TestAC_APP_06_SecretsAreSecretMounts(t *testing.T) {
 	if strings.Contains(args, "very-secret-value") {
 		t.Fatalf("secret value in the arguments: %s", args)
 	}
-	for _, want := range []string{"--secret id=NPM_TOKEN,env=NPM_TOKEN", "--opt build-arg:MODE=prod", "--no-cache",
+	for _, want := range []string{"--secret id=NPM_TOKEN,env=PP_BUILD_SECRET_1", "--secret id=PATH,env=PP_BUILD_SECRET_2",
+		"--secret id=LD_PRELOAD,env=PP_BUILD_SECRET_0", "--opt build-arg:MODE=prod", "--no-cache",
 		"--output type=oci,dest=", "--frontend dockerfile.v0", "--tlscert /certs/client.crt"} {
 		if !strings.Contains(args, want) {
 			t.Fatalf("missing %q in %s", want, args)
 		}
 	}
-	if !strings.Contains(strings.Join(calls[0].env, "\n"), "NPM_TOKEN=very-secret-value") || len(logged) != 1 {
+	envs := strings.Join(calls[0].env, "\n")
+	if !strings.Contains(envs, "PP_BUILD_SECRET_1=very-secret-value") || len(logged) != 1 {
 		t.Fatalf("env or log: %v %v", calls[0].env, logged)
+	}
+	for _, e := range calls[0].env {
+		if strings.HasPrefix(e, "LD_PRELOAD=") || e == "PATH=/evil" {
+			t.Fatalf("user secret name set in the process env: %s", e)
+		}
 	}
 }
 
