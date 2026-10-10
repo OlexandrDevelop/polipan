@@ -333,6 +333,7 @@ func createBody(spec ContainerSpec) map[string]any {
 		"Memory":       spec.MemoryBytes,
 		"CapAdd":       spec.CapAdd,
 		"Dns":          spec.DNS,
+		"DnsSearch":    dnsSearch(spec.DNS),
 	}
 	if spec.RestartPolicy != "" {
 		host["RestartPolicy"] = map[string]any{"Name": spec.RestartPolicy}
@@ -559,4 +560,13 @@ func (c *HTTPClient) Events(ctx context.Context) (<-chan Event, error) {
 		}
 	}()
 	return ch, nil
+}
+
+// dnsSearch gives a container that uses the agent DNS the search domain of the mesh. Docker does not forward a name
+// with one label (svc-abc) to the agent, but it forwards svc-abc.polipan.internal, which is what the resolver asks next.
+func dnsSearch(servers []string) []string {
+	if len(servers) == 0 {
+		return nil
+	}
+	return []string{"polipan.internal"}
 }
