@@ -68,12 +68,18 @@ func (h *Handlers) DrainNode(w http.ResponseWriter, r *http.Request, nodeID gen.
 
 // SetNodeMaintenance puts a drained node into maintenance, or takes it out.
 func (h *Handlers) SetNodeMaintenance(w http.ResponseWriter, r *http.Request, nodeID gen.NodeId) {
-	var body gen.SetNodeMaintenanceJSONBody
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
+	if body.Enabled == nil {
+		invalid(w, r, "enabled", "enabled is required")
+		return
+	}
 	h.nodeAction(w, r, nodeID, http.StatusOK, func(nm orchestrator.NodeManager, org, actor string) error {
-		return nm.SetMaintenance(r.Context(), org, nodeID, body.Enabled, actor)
+		return nm.SetMaintenance(r.Context(), org, nodeID, *body.Enabled, actor)
 	})
 }
 
