@@ -295,7 +295,12 @@ func (m *Manifest) planService(name string, s ServiceEntry, path string, expand 
 	if len(s.Files) > 0 {
 		var files []any
 		for i, f := range s.Files {
-			content, _ := expand(fmt.Sprintf("%s.files[%d]", path, i), f.Content)
+			fpath := fmt.Sprintf("%s.files[%d]", path, i)
+			content, usedSecret := expand(fpath, f.Content)
+			if usedSecret {
+				// A file is stored in the plain config. A secret input must not go there (REQ-TPL-002).
+				add(fpath, "a secret input cannot be used in the content of a file: use it in env")
+			}
 			files = append(files, map[string]any{"path": f.Path, "content": content})
 		}
 		cfg["files"] = files

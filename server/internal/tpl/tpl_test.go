@@ -183,3 +183,24 @@ services:
 		t.Fatalf("db %+v", db)
 	}
 }
+
+// REQ-TPL-002: a secret input never goes into the plain config of a file.
+func TestREQ_TPL_002_SecretNotInFileContent(t *testing.T) {
+	m, err := tpl.ParseManifest([]byte(`
+slug: t
+version: 1.0.0
+name: T
+inputs:
+  - { name: pw, type: secret, generate: true }
+services:
+  app:
+    source: { image: { name: "x:1" } }
+    files: [{ path: /etc/app.conf, content: "pw=${{inputs.pw}}" }]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Expand(nil, tpl.Options{ServiceIDs: map[string]string{"app": "svc_1"}}); err == nil || !strings.Contains(err.Error(), "secret input cannot be used in the content of a file") {
+		t.Fatalf("got %v", err)
+	}
+}

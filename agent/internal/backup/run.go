@@ -113,9 +113,10 @@ func (r *Runner) Run(ctx context.Context, cmd *pb.RunBackup) (*RunResult, error)
 			}
 		}
 	}
-	// Retention on every target that has the new snapshot (REQ-BKP-005).
+	// Retention on every target that has the new snapshot (REQ-BKP-005). A safety backup (before a restore)
+	// never prunes: it could remove the snapshot that is being restored. The next scheduled run prunes.
 	for i, rp := range repos {
-		if rp == nil || !res.Snapshots[i].OK {
+		if rp == nil || !res.Snapshots[i].OK || cmd.Tag == "safety" {
 			continue
 		}
 		if err := r.forget(ctx, rp, host, cmd.KeepDaily, cmd.KeepWeekly, cmd.KeepMonthly); err != nil {

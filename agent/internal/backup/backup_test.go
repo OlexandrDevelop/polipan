@@ -347,3 +347,34 @@ func TestDeleteSnapshots(t *testing.T) {
 		t.Fatalf("%d snapshots left", len(list))
 	}
 }
+
+// A safety backup (before a restore) does not prune: it must not remove the snapshot to restore.
+func TestSafetyRunDoesNotPrune(t *testing.T) {
+	needRestic(t)
+	f := &fakeDocker{dump: "data", manifest: "tables=1\nrows=1\n"}
+	r := newRunner(f, t)
+	dir := t.TempDir()
+	for days := 3; days >= 1; days-- {
+		job := pgJob(target("bkp_a", dir))
+		job.KeepDaily, job.KeepWeekly, job.KeepMonthly = 3, 0, 0
+		job.SnapshotTimeUnixMs = time.Now().Add(-time.Duration(days)*24*time.Hour - time.Hour).UnixMilli()
+		if _, err := r.Run(context.Background(), job); err != nil {
+			t.Fatal(err)
+		}
+	}
+	job := pgJob(target("bkp_a", dir))
+	job.KeepDaily, job.KeepWeekly, job.KeepMonthly, job.Tag = 3, 0, 0, "safety"
+	if _, err := r.Run(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(resticSnapshots(t, dir, "pw-secret-1")); n != 4 {
+		t.Fatalf("%d snapshots after a safety run, want 4 (nothing pruned)", n)
+	}
+	job.Tag = "manual"
+	if _, err := r.Run(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(resticSnapshots(t, dir, "pw-secret-1")); n != 3 {
+		t.Fatalf("%d snapshots after a normal run, want 3", n)
+	}
+}
