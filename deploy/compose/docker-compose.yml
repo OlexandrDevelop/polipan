@@ -68,6 +68,14 @@ services:
       POLIPAN_BUILDKIT_HOST: 172.31.250.2
       POLIPAN_BUILDKIT_CERTS: /var/lib/polipan/buildkit-certs
       POLIPAN_BUILD_DIR: /var/lib/polipan/build
+      # M8: metrics and logs. Only the server talks to the two stores (internal network, basic auth).
+      POLIPAN_VM_URL: http://172.31.251.20:8428
+      POLIPAN_VL_URL: http://172.31.251.21:9428
+      POLIPAN_VICTORIA_USER: polipan
+      POLIPAN_VICTORIA_PASSWORD: ${VICTORIA_PASSWORD:?set in .env}
+      POLIPAN_STORAGE_METRICS_RETENTION_DAYS: ${POLIPAN_STORAGE_METRICS_RETENTION_DAYS:-365}
+      POLIPAN_STORAGE_LOGS_RETENTION_DAYS: ${POLIPAN_STORAGE_LOGS_RETENTION_DAYS:-90}
+      POLIPAN_VMAGENT_IMAGE: ${POLIPAN_VMAGENT_IMAGE:-victoriametrics/vmagent:v1.108.1}
     volumes:
       - /etc/polipan/master.key:/etc/polipan/master.key:ro
       - registry-files:/var/lib/polipan/registry
@@ -76,6 +84,8 @@ services:
     ports:
       # Only the agent on this host uses the gateway in M1 and M2.
       - "127.0.0.1:9443:9443"
+      # The ingest of metrics and logs (mTLS with the certificate of a node, REQ-OBS-100).
+      - "9444:9444"
     networks:
       default:
         ipv4_address: 172.31.251.3
@@ -84,6 +94,38 @@ services:
       polipan:
         # The Caddy of the node reaches the panel with this name.
         aliases: [polipan-server]
+
+  # VictoriaMetrics keeps the metrics (REQ-OBS-004). No host port: only the server reaches it, with basic auth.
+  victoria-metrics:
+    image: ${POLIPAN_VM_IMAGE:-victoriametrics/victoria-metrics:v1.108.1}
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=${POLIPAN_STORAGE_METRICS_RETENTION_DAYS:-365}d
+      - -httpListenAddr=:8428
+      - -httpAuth.username=polipan
+      - -httpAuth.password=${VICTORIA_PASSWORD:?set in .env}
+    volumes:
+      - vm-data:/storage
+    networks:
+      default:
+        ipv4_address: 172.31.251.20
+
+  # VictoriaLogs keeps the logs (REQ-OBS-005).
+  victoria-logs:
+    image: ${POLIPAN_VL_IMAGE:-victoriametrics/victoria-logs:v1.53.0}
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=${POLIPAN_STORAGE_LOGS_RETENTION_DAYS:-90}d
+      - -httpListenAddr=:9428
+      - -httpAuth.username=polipan
+      - -httpAuth.password=${VICTORIA_PASSWORD:?set in .env}
+    volumes:
+      - vl-data:/storage
+    networks:
+      default:
+        ipv4_address: 172.31.251.21
 
   # CNCF distribution. htpasswd auth (the server writes the file and reloads nothing: the registry
   # reads it again when it changes) and TLS with a certificate of the server CA. No host port.
@@ -143,6 +185,8 @@ volumes:
   buildkit-certs: {}
   buildkit-state: {}
   build-work: {}
+  vm-data: {}
+  vl-data: {}
 
 networks:
   default:

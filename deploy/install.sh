@@ -104,11 +104,15 @@ chmod 0400 /etc/polipan/master.key
 
 if [ -f "$dir/.env" ]; then
   pg_password=$(sed -n 's/^POSTGRES_PASSWORD=//p' "$dir/.env")
+  victoria_password=$(sed -n 's/^VICTORIA_PASSWORD=//p' "$dir/.env")
 else
   pg_password=$(head -c 24 /dev/urandom | base64 | tr -d '/+=\n')
+  victoria_password=""
 fi
+[ -n "$victoria_password" ] || victoria_password=$(head -c 24 /dev/urandom | base64 | tr -d '/+=\n')
 cat > "$dir/.env" <<ENV
 POSTGRES_PASSWORD=$pg_password
+VICTORIA_PASSWORD=$victoria_password
 POLIPAN_SERVER_IMAGE=$server_image
 POLIPAN_EXTERNAL_URL=$external_url
 POLIPAN_AGENT_HOSTS=$host,localhost
@@ -154,7 +158,7 @@ if ! docker network inspect polipan >/dev/null 2>&1; then
   # The first node of the panel gets the subnet 10.210.1.0/24 of mesh_cidr: the network of the node is its mesh subnet.
   docker network create --subnet 10.210.1.0/24 --ip-range 10.210.1.128/25 --gateway 10.210.1.1 polipan >/dev/null
 fi
-say "Starting PostgreSQL and the server"
+say "Starting PostgreSQL, the metric and log stores and the server"
 (cd "$dir" && docker compose pull --quiet 2>/dev/null || true)
 (cd "$dir" && docker compose up -d)
 
