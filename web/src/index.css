@@ -1,0 +1,50 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tokens of docs/spec/ui/design-tokens.json */
+:root,
+:root[data-theme='light'] {
+  --color-bg: #ffffff;
+  --color-surface: #f6f7f9;
+  --color-text: #111827;
+  --color-muted: #4b5563;
+  --color-border-strong: #6b7280;
+  --color-border: #d6dae1;
+  --color-primary: #4338ca;
+  --color-on-primary: #ffffff;
+  --color-success: #15803d;
+  --color-warning: #a16207;
+  --color-danger: #b91c1c;
+  --color-info: #1d4ed8;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #0b0f19;
+  --color-surface: #131a2a;
+  --color-text: #e6e9f0;
+  --color-muted: #a0a8b8;
+  --color-border-strong: #7d8799;
+  --color-border: #2a3447;
+  --color-primary: #a5b4fc;
+  --color-on-primary: #0b0f19;
+  --color-success: #4ade80;
+  --color-warning: #facc15;
+  --color-danger: #f87171;
+  --color-info: #7db0ff;
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-bg font-sans text-base text-text antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0ms !important;
+    transition-duration: 0ms !important;
+  }
+}
