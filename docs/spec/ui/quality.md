@@ -75,6 +75,7 @@ Target: WCAG 2.1 AA for everything, and WCAG 2.2 AA for target size and focus wh
 | Reduced motion | Playwright with `reducedMotion` | No running animation ([REQ-UI-027](#requirements)) | Merge |
 | Theme | Playwright with `colorScheme` | System mode follows the emulated scheme live; choice persists; no flash on reload | Merge |
 | Performance | Lighthouse CI, bundle gate | Budgets of section 3 | Merge |
+| CSP | Playwright with console and CSP report | No CSP violation on any screen; built `index.html` has no inline script; `script-src` has no `'unsafe-inline'` ([REQ-UI-015](design-system.md#requirements)) | Merge |
 | No third-party | Playwright network log | No foreign host ([REQ-UI-012](../11-ui.md#4-rules-and-requirements)) | Merge |
 | Live behavior | Playwright with the server paused | Disconnected banner appears and clears; no manual refresh needed ([REQ-UI-002](../11-ui.md#4-rules-and-requirements)) | Merge |
 
