@@ -83,7 +83,7 @@ Always an icon and a word ([REQ-UI-013](../11-ui.md#4-rules-and-requirements)). 
 | Stopped, cancelled, superseded, cordoned, maintenance | square | Stopped, Cordoned | `muted` |
 | Fast rollback, info | bolt | Fast rollback | `info` |
 
-Environment badge: `Production` (chip with `danger` border, red top border on pages), `Staging`, `Preview`, `Custom`. A protected environment adds a lock icon and the word "Protected".
+Environment badge: `Production` (chip with `danger` border), `Staging`, `Preview`, `Custom`. Kind `production` also gets a red top border on pages. A protected environment of any kind adds a lock icon and a "Protected" chip and also gets the red top border. A protected production environment shows both chips.
 
 ## 5. Elevation, density, iconography
 

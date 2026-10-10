@@ -69,7 +69,7 @@ Names in the URL are slugs. Unknown or forbidden ids show UI-47 (404 or 403) wit
 
 <a id="context-switcher"></a>
 
-- **REQ-UI-020** (MUST) A context switcher selects organization, project and environment. It is searchable, works with the keyboard, shows the environment kind badge, and remembers the last choice per user. A production or protected environment is marked on every page that belongs to it: a red top border and a "Production" chip. The mark cannot be hidden.
+- **REQ-UI-020** (MUST) A context switcher selects organization, project and environment. It is searchable, works with the keyboard, shows the environment kind badge, and remembers the last choice per user. An environment of kind `production` is marked on every page that belongs to it with a red top border and a "Production" chip. A protected environment of any kind is marked with a red top border, a lock icon and a "Protected" chip. A protected production environment shows both chips. The mark cannot be hidden.
 
 | Part | Behavior |
 |---|---|

@@ -25,7 +25,7 @@ Base: shadcn/ui (Radix primitives) wrapped in a Polipan `ui/` package. Screens u
 | SecretInput | new, replace | "Set, v3" (read), editing | Write-only ([REQ-UI-005](../11-ui.md#4-rules-and-requirements)). Never has a reveal button. Value cleared after save. Autocomplete off. |
 | KeyValueEditor | rows, bulk paste (not on phone) | row error, duplicate key | Each row labeled "Name, row 3". Add and remove by buttons. Paste of `.env` text. |
 | StatusBadge | per state of [design-system](design-system.md#4-status-vocabulary), sizes sm, md | live (updates with polite announcement) | Icon plus word. Color is never alone. |
-| EnvironmentBadge | production, staging, preview, custom, protected | - | Text "Production" and lock for protected. |
+| EnvironmentBadge | production, staging, preview, custom, protected | - | Text "Production" for the kind; lock and text "Protected" for the protected flag (any kind). Same rule as [design-system](design-system.md#4-status-vocabulary). |
 | Tabs | line, scroll, with overflow menu | selected, disabled | ARIA tabs. Arrow keys. `[` and `]` shortcuts. Scroll buttons are real buttons. |
 | DataTable | sortable, filterable, selectable, column hide, sticky header, row actions | loading skeleton rows, empty, error, selection bar | Real `table` markup, `scope` on headers, `aria-sort`. Row action menu is a button per row. Virtualized above 200 rows keeps `aria-rowcount`. Becomes CardList on phone ([REQ-UI-018](responsive.md#requirements)). |
 | CardList | service card, node card, release card | as DataTable | `ul` of `article`. Whole card is not a link when it has inner actions; the title is the link. |

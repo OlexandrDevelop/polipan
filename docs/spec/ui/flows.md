@@ -109,8 +109,8 @@ flowchart TD
   D -- no --> F[Confirm]
   E --> G[Progress: live steps]
   F --> G
-  G --> H[Restore check result: passed or failed with steps]
-  H --> I[Badge: Restore verified today]
+  G --> H[Restore result: passed or failed with steps]
+  H --> I[Offer: Run a restore check. Only a check updates the badge]
 ```
 
 A failed restore shows the reason and keeps the original data untouched where the engine allows it (the text says which case applies).
