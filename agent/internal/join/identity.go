@@ -114,3 +114,9 @@ func SaveCert(dir string, certPEM []byte) error {
 	}
 	return os.Rename(tmp, p)
 }
+
+// Files returns the paths of the client certificate, the private key and the server CA in dir.
+// Other programs of the node (vmagent) use them for mTLS with the server.
+func Files(dir string) (cert, key, ca string) {
+	return filepath.Join(dir, fileCert), filepath.Join(dir, fileTLSKey), filepath.Join(dir, fileCA)
+}
