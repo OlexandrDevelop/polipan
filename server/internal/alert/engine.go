@@ -331,6 +331,9 @@ func (e *Engine) apply(ctx context.Context, tx pgx.Tx, ev alertEvent) error {
 	if state == "" {
 		state = "firing"
 	}
+	if strings.HasPrefix(rtype, "node_") && detailStr(ev.payload, "node_id") == "" {
+		ev.payload = withKey(ev.payload, "node_id", ev.object) // the object of a node alert is the node
+	}
 	sc, err := e.scopeOf(ctx, tx, rtype, ev.object, ev.payload)
 	if err != nil {
 		return err

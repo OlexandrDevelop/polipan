@@ -54,13 +54,14 @@ func (e *Engine) buildMessage(ctx context.Context, instanceID, kind string) (*Me
 	base := strings.TrimRight(e.ExternalURL, "/")
 	m.Link = base + "/o/" + orgSlug
 	if sid := detailStr(m.Details, "service_id"); sid != "" {
-		var sname, ename, eslug, pname, pslug, sslug string
-		err := e.DB.QueryRow(ctx, `SELECT s.name, s.slug, en.name, en.slug, p.name, p.slug FROM services s
+		var sname, ename, eslug, pname, pslug string
+		err := e.DB.QueryRow(ctx, `SELECT s.name, en.name, en.slug, p.name, p.slug FROM services s
 			JOIN environments en ON en.id = s.environment_id JOIN projects p ON p.id = en.project_id WHERE s.id = $1`, sid).
-			Scan(&sname, &sslug, &ename, &eslug, &pname, &pslug)
+			Scan(&sname, &ename, &eslug, &pname, &pslug)
 		if err == nil {
 			m.Where["service"], m.Where["environment"], m.Where["project"] = sname, ename, pname
-			m.Link = fmt.Sprintf("%s/o/%s/p/%s/e/%s/s/%s", base, orgSlug, pslug, eslug, sslug)
+			// The service is named in the address of the web app, not given by id.
+			m.Link = fmt.Sprintf("%s/o/%s/p/%s/e/%s/s/%s", base, orgSlug, pslug, eslug, sname)
 			if dep := detailStr(m.Details, "deployment_id"); dep != "" {
 				m.Link += "/deployments/" + dep
 			}

@@ -312,6 +312,10 @@ func cleanConfig(kind string, in map[string]any, hasSecret bool) (map[string]any
 					rcpt = append(rcpt, strings.TrimSpace(a))
 				}
 			}
+		case []string:
+			for _, a := range v {
+				rcpt = append(rcpt, strings.TrimSpace(a))
+			}
 		case string:
 			for _, a := range strings.Split(v, ",") {
 				rcpt = append(rcpt, strings.TrimSpace(a))
