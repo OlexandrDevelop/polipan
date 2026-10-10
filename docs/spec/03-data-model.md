@@ -230,6 +230,8 @@ CREATE TABLE services (
   git_managed_fields text[] NOT NULL DEFAULT '{}',  -- field paths set by polipan.yaml
   template_instance_id text REFERENCES template_instances(id),
   db_engine text CHECK (db_engine IN ('postgres','mysql','mariadb','mongo','redis')),
+  db_version text,                           -- database services: the image tag chosen at creation
+  backup_skipped boolean NOT NULL DEFAULT false,  -- database services: the user skipped the backup suggestion (REQ-DB-006)
   live_release_id text,                      -- FK added after releases (deferred)
   desired_state text NOT NULL DEFAULT 'running' CHECK (desired_state IN ('running','stopped')),
   failover text NOT NULL DEFAULT 'none' CHECK (failover IN ('none','auto')),
@@ -508,8 +510,11 @@ CREATE TABLE backup_policies (
   restore_check_enabled boolean NOT NULL DEFAULT true,
   restore_check_mode text NOT NULL DEFAULT 'full' CHECK (restore_check_mode IN ('full','sample')),
   hooks jsonb NOT NULL DEFAULT '{}',         -- {pre: [...], post: [...]}
-  enabled boolean NOT NULL DEFAULT true
+  enabled boolean NOT NULL DEFAULT true,
+  org_id text NOT NULL REFERENCES orgs(id),
+  created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX backup_policies_control_plane ON backup_policies (org_id) WHERE service_id IS NULL;
 
 CREATE TABLE backup_runs (
   id text PRIMARY KEY,                       -- bkr_
@@ -518,7 +523,10 @@ CREATE TABLE backup_runs (
   snapshots jsonb,                           -- [{target_id, restic_snapshot_id, size_bytes}]
   error text,
   started_at timestamptz, finished_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  trigger text NOT NULL DEFAULT 'schedule' CHECK (trigger IN ('schedule','manual','safety')),
+  manifest jsonb,                            -- table count, row estimates, file count, size (REQ-BKP-102)
+  node_id text
 );
 
 CREATE TABLE restore_checks (
@@ -531,7 +539,22 @@ CREATE TABLE restore_checks (
   checks jsonb,                              -- [{name, ok, detail}]
   duration_ms int,
   started_at timestamptz, finished_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  trigger text NOT NULL DEFAULT 'schedule' CHECK (trigger IN ('schedule','manual','first_backup'))
+);
+
+-- A restore of a snapshot into the service or into a new service (REQ-BKP-007).
+CREATE TABLE backup_restores (
+  id text PRIMARY KEY,                       -- brs_
+  run_id text NOT NULL REFERENCES backup_runs(id) ON DELETE CASCADE,
+  target_id text NOT NULL REFERENCES backup_targets(id),
+  mode text NOT NULL CHECK (mode IN ('in_place','new_service')),
+  service_id text REFERENCES services(id) ON DELETE SET NULL,      -- the restored service (the new one for new_service)
+  state text NOT NULL CHECK (state IN ('queued','running','succeeded','failed')),
+  error text,
+  created_by text REFERENCES users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz
 );
 ```
 

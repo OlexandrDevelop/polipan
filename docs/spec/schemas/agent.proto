@@ -314,6 +314,8 @@ message Command {
     ExecInput exec_input = 22;
     ProbeHealth probe_health = 23;
     ProbeRoute probe_route = 24;
+    RestoreSnapshot restore_snapshot = 25;
+    TestBackupTarget test_backup_target = 26;
   }
 }
 
@@ -324,8 +326,69 @@ message RemoveWorkload { string placement_id = 1; bool remove_volumes = 2; }
 message RunOneOff { WorkloadSpec workload = 1; uint32 timeout_seconds = 2; }  // pre_deploy, restore checks
 message CheckHealth { string placement_id = 1; uint32 timeout_seconds = 2; }   // waits until healthy or timeout
 message SwitchTraffic { IngressSpec ingress = 1; int64 desired_state_version = 2; }
-message RunBackup { string policy_id = 1; BackupJobSpec job = 2; }
-message RunRestoreCheck { string policy_id = 1; string backup_run_id = 2; string target_id = 3; }
+// BackupTargetSpec is one restic repository of a policy. env and ssh_key hold credentials: never log them.
+message BackupTargetSpec {
+  string target_id = 1;
+  string kind = 2;                   // s3 | b2 | sftp | local | azure | gcs
+  string repository = 3;             // restic repository string, for example s3:https://host/bucket/path
+  map<string, string> env = 4;       // credentials and options as environment variables of restic
+  bytes ssh_key = 5;                 // sftp: private key (PEM)
+  string ssh_known_host = 6;         // sftp: known_hosts line of the server. Empty means trust on first use.
+  string sftp_command = 7;           // reserved
+}
+
+// BackupSource tells what is backed up and where the data is.
+message BackupSource {
+  string engine = 1;                 // postgres | mysql | mariadb | mongo | redis | volume | controlplane
+  string container = 2;              // container name of the database, or label:key=value
+  string db_user = 3;
+  string db_name = 4;
+  string db_password = 5;            // never logged
+  string volume_name = 6;            // Docker volume name (engine volume, and redis data)
+  repeated string pre_hook = 7;      // commands in the container before the dump (REQ-BKP-011)
+  repeated string post_hook = 8;
+  string data_path = 9;              // volume engines: path of the data inside the container (redis: /data)
+}
+
+message RunBackup {
+  string policy_id = 1;
+  BackupJobSpec job = 2;
+  string run_id = 3;
+  BackupSource source = 4;
+  repeated BackupTargetSpec targets = 5;   // the same data goes to every target
+  string repo_password = 6;                // restic repository password, never logged
+  uint32 keep_daily = 7;
+  uint32 keep_weekly = 8;
+  uint32 keep_monthly = 9;
+  string tag = 10;                         // restic tag: schedule | manual | safety
+}
+
+// RunRestoreCheck restores one snapshot into a temporary container (or temporary folder for volumes).
+message RunRestoreCheck {
+  string policy_id = 1;
+  string backup_run_id = 2;
+  string target_id = 3;
+  string check_id = 4;
+  BackupSource source = 5;
+  BackupTargetSpec target = 6;
+  string repo_password = 7;
+  string snapshot_id = 8;
+  string image_ref = 9;                    // image of the temporary database container
+  bytes manifest_json = 10;                // manifest of the backup run
+  string mode = 11;                        // full | sample
+  uint32 memory_limit_mb = 12;
+  uint32 cpu_limit_millis = 13;
+  string registry_auth_ref = 14;
+}
+
+// RestoreSnapshot restores a snapshot into a running database container or into a volume.
+message RestoreSnapshot {
+  string restore_id = 1;
+  BackupSource source = 2;                 // container and credentials of the TARGET service
+  BackupTargetSpec target = 3;
+  string repo_password = 4;
+  string snapshot_id = 5;
+}
 message ExecSession { string placement_id = 1; repeated string command = 2; bool tty = 3; uint32 rows = 4; uint32 cols = 5; }
 // ExecInput goes to a running exec session (command_id of the ExecSession): keys, a resize or the end.
 message ExecInput { string session_command_id = 1; bytes data = 2; uint32 rows = 3; uint32 cols = 4; bool eof = 5; }
@@ -336,3 +399,6 @@ message ProbeHealth { string placement_id = 1; }
 // ProbeRoute sends requests to the local ingress for a host for duration_seconds (post-switch check).
 // Result: {total, failed}. A 5xx answer or a connection error counts as failed.
 message ProbeRoute { string host = 1; string path = 2; bool https = 3; uint32 duration_seconds = 4; }
+
+// TestBackupTarget writes and reads a small test repository on the target (REQ-BKP-002).
+message TestBackupTarget { BackupTargetSpec target = 1; string repo_password = 2; }

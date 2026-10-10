@@ -200,3 +200,22 @@ func diff(a, b []string) string {
 	}
 	return strings.Join(out, "\n")
 }
+
+// The M4 migration makes the backup tables of 03-data-model section 3.6 exactly as the spec DDL.
+func TestM4_MigrationMatchesSpecDDL(t *testing.T) {
+	m4Tables := []string{"backup_targets", "backup_policies", "backup_runs", "restore_checks", "backup_restores"}
+	m4Base := []string{"orgs", "users", "projects", "environments", "template_instances", "services", "nodes", "volumes", "secrets"}
+	admin := dbtest.Admin(t)
+	migrated := dbtest.NewDatabase(t, admin)
+	if _, err := db.Migrate(context.Background(), migrated); err != nil {
+		t.Fatal(err)
+	}
+	reference := specDatabase(t, admin, append(append([]string{}, m4Base...), m4Tables...))
+	got, want := describe(t, migrated, m4Tables), describe(t, reference, m4Tables)
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("schema differs from the spec DDL\nmigration only:\n%s\nspec only:\n%s", diff(got, want), diff(want, got))
+	}
+	if len(want) < 60 {
+		t.Fatalf("schema description has only %d lines, the comparison is too weak", len(want))
+	}
+}
