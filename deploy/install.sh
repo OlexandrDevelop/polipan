@@ -78,6 +78,18 @@ if ! command -v nft >/dev/null 2>&1; then
     fail "install nftables and run this script again"
   fi
 fi
+# The WireGuard mesh and the forwarding rules of the agent (M7).
+for c in wg iptables ip; do
+  if ! command -v "$c" >/dev/null 2>&1; then
+    if command -v apt-get >/dev/null 2>&1; then
+      say "Installing wireguard-tools, iptables and iproute2"
+      DEBIAN_FRONTEND=noninteractive apt-get install -y wireguard-tools iptables iproute2
+      break
+    fi
+    fail "install wireguard-tools, iptables and iproute2, then run this script again"
+  fi
+done
+modprobe wireguard 2>/dev/null || true
 
 # ---- Files ----
 umask 077
@@ -139,7 +151,8 @@ systemctl restart polipan-build-firewall || fail "could not load the build netwo
 
 # ---- Control plane ----
 if ! docker network inspect polipan >/dev/null 2>&1; then
-  docker network create --subnet 172.30.0.0/24 polipan >/dev/null
+  # The first node of the panel gets the subnet 10.210.1.0/24 of mesh_cidr: the network of the node is its mesh subnet.
+  docker network create --subnet 10.210.1.0/24 polipan >/dev/null
 fi
 say "Starting PostgreSQL and the server"
 (cd "$dir" && docker compose pull --quiet 2>/dev/null || true)

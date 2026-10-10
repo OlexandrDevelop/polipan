@@ -140,6 +140,7 @@ func NewRouter(d Deps) (http.Handler, error) {
 		_, _ = w.Write(spec)
 	})
 	r.Handle("/api/docs", docsHandler(ops))
+	r.Get("/install-agent.sh", installAgentScript)
 
 	notFound := func(w http.ResponseWriter, req *http.Request) {
 		if d.Web != nil && !strings.HasPrefix(req.URL.Path, "/api/") && req.Method == http.MethodGet {

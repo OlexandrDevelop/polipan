@@ -255,7 +255,7 @@ func (c *Control) addRemoteEndpoints(ctx context.Context, q dbq, nodeID string, 
 	rows, err := q.Query(ctx,
 		`SELECT p.id, p.service_id, s.environment_id, host(p.ip)
 		   FROM placements p JOIN services s ON s.id = p.service_id AND s.deleted_at IS NULL JOIN nodes n ON n.id = p.node_id
-		  WHERE p.node_id <> $1 AND p.ip IS NOT NULL AND p.role IN ('live','candidate','draining') AND n.state <> 'down'
+		  WHERE p.node_id <> $1 AND p.ip IS NOT NULL AND p.role = 'live' AND n.state NOT IN ('down','pending','maintenance')
 		    AND s.environment_id IN (SELECT s2.environment_id FROM placements p2 JOIN services s2 ON s2.id = p2.service_id WHERE p2.node_id = $1)
 		  ORDER BY p.created_at, p.id`, nodeID)
 	if err != nil {
