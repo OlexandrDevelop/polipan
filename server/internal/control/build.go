@@ -173,8 +173,12 @@ func (c *Control) buildIfGit(ctx context.Context, depID, serviceID string) (stri
 	// Build.
 	cacheKey := strings.ToLower(serviceID)
 	out := filepath.Join(work, "image.tar")
+	contextDir, err := build.ResolveInside(srcDir, src.Path)
+	if err != nil {
+		return fail(ReasonBuildFailed, "build path: %v", err)
+	}
 	breq := build.Request{
-		ContextDir: filepath.Join(srcDir, filepath.Clean("/"+src.Path)),
+		ContextDir: contextDir,
 		Builder:    src.Builder, Dockerfile: src.Dockerfile,
 		Secrets: buildSecrets, BuildArgs: buildArgs,
 		CacheKey: cacheKey, NoCache: req.NoCache, Timeout: timeout, Output: out, Log: logLine,

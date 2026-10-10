@@ -117,8 +117,8 @@ func (b *BuildKit) args(ctx context.Context, req Request) (args, env []string, e
 		if file == "" {
 			file = "Dockerfile"
 		}
-		full := filepath.Join(req.ContextDir, filepath.Clean("/"+file))
-		if _, err := os.Stat(full); err != nil {
+		full, err := ResolveInside(req.ContextDir, file)
+		if err != nil {
 			return nil, nil, &DetectError{Msg: "no " + file + " in the build path"}
 		}
 		args = append(args, "--frontend", "dockerfile.v0",
