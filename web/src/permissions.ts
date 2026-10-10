@@ -44,6 +44,7 @@ export type Permission =
   | 'audit:export'
   | 'config:apply'
   | 'config:source'
+  | 'alert:manage'
 
 const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'project:create': 'dev',
@@ -79,6 +80,7 @@ const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'audit:export': 'admin',
   'config:apply': 'p',
   'config:source': 'admin',
+  'alert:manage': 'admin',
 }
 
 // hidden: the role can never do it. blocked: shown but disabled. allow: enabled.

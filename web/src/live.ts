@@ -78,6 +78,8 @@ interface PlatformEvent {
 }
 
 const DEPLOYMENT_KEYS = ['deployments', 'deployment', 'service', 'services', 'releases']
+// An alert event refreshes the alert lists and the bell (UI-46).
+const ALERT_KEYS = ['alert-instances', 'alert-rules', 'alert-channels']
 const BAD_ENDINGS = new Set(['failed', 'rolled_back'])
 
 // One stream for the whole signed-in app (streamEvents). Each event refreshes the lists it
@@ -133,6 +135,7 @@ export function useLiveEvents(enabled: boolean) {
         }
         const topic = event.topic ?? ''
         if (topic.startsWith('node')) refresh(['nodes'])
+        if (topic.startsWith('alert')) refresh(ALERT_KEYS)
         if (topic.startsWith('deployment')) {
           refresh(DEPLOYMENT_KEYS)
           const state = event.payload?.state
@@ -141,7 +144,7 @@ export function useLiveEvents(enabled: boolean) {
           }
         }
       },
-      onReconnect: () => refresh([...DEPLOYMENT_KEYS, 'nodes']),
+      onReconnect: () => refresh([...DEPLOYMENT_KEYS, ...ALERT_KEYS, 'nodes']),
       onLost: setDisconnected,
     })
     return () => {
