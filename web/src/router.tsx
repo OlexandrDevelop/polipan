@@ -7,7 +7,10 @@ import { AppShell, RootLayout } from '@/routes/Layout'
 import { DeploymentPage } from '@/routes/DeploymentPage'
 import { DeploymentsPage } from '@/routes/DeploymentsPage'
 import { NewServicePage } from '@/routes/NewService'
-import type { SourceKind } from '@/routes/NewService'
+import type { StartPath } from '@/routes/NewService'
+import { BackupsPage } from '@/routes/BackupsPage'
+import { BackupTargetsPage } from '@/routes/BackupTargets'
+import { CatalogPage } from '@/routes/Catalog'
 import { NodesPage } from '@/routes/Nodes'
 import { ProfilePage } from '@/routes/Profile'
 import { ProjectPage } from '@/routes/ProjectPage'
@@ -70,6 +73,21 @@ const deploymentsRoute = createRoute({
     ...(typeof search.service === 'string' && search.service ? { service: search.service } : {}),
   }),
 })
+const catalogRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'catalog',
+  component: CatalogPage,
+})
+const backupsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'backups',
+  component: BackupsPage,
+})
+const backupTargetsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'settings/backup-targets',
+  component: BackupTargetsPage,
+})
 const profileRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'settings/profile',
@@ -90,8 +108,14 @@ const newServiceRoute = createRoute({
   path: 'p/$project/e/$env/new',
   component: NewServicePage,
   // The chosen start path of the wizard stays in the URL (UI-32).
-  validateSearch: (search: Record<string, unknown>): { source?: SourceKind } =>
-    search.source === 'git' || search.source === 'image' ? { source: search.source } : {},
+  validateSearch: (search: Record<string, unknown>): { source?: StartPath } =>
+    search.source === 'git' ||
+    search.source === 'image' ||
+    search.source === 'template' ||
+    search.source === 'database' ||
+    search.source === 'compose'
+      ? { source: search.source }
+      : {},
 })
 const deploymentRoute = createRoute({
   getParentRoute: () => orgRoute,
@@ -123,6 +147,9 @@ const routeTree = rootRoute.addChildren([
     projectsRoute,
     deploymentsRoute,
     nodesRoute,
+    catalogRoute,
+    backupsRoute,
+    backupTargetsRoute,
     profileRoute,
     projectRoute,
     environmentRoute,

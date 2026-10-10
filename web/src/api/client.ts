@@ -3,6 +3,7 @@
 import createClient from 'openapi-fetch'
 import type { Middleware } from 'openapi-fetch'
 import type { paths } from '@api/schema'
+import { ApiError } from '@/api/errors'
 import { queryClient } from '@/queryClient'
 
 // The only way the web app talks to the server: the public API (REQ-CORE-009).
@@ -14,6 +15,36 @@ let csrfToken = ''
 
 export function setCsrfToken(token: string): void {
   csrfToken = token
+}
+
+// POST with a YAML body (custom templates, Compose import). openapi-fetch sends JSON only.
+export async function postYaml<T>(path: string, text: string): Promise<T> {
+  let res: Response
+  try {
+    res = await fetch('/api/v1' + path, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/yaml', 'X-CSRF-Token': csrfToken },
+      body: text,
+    })
+  } catch {
+    throw new ApiError(0, 'network', 'The server did not answer.')
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as {
+      code?: string
+      message?: string
+      request_id?: string
+    }
+    throw new ApiError(
+      res.status,
+      body.code ?? 'unknown',
+      body.message ?? res.statusText,
+      undefined,
+      body.request_id,
+    )
+  }
+  return (await res.json()) as T
 }
 
 const changesState = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])

@@ -117,6 +117,16 @@ export function AppShell() {
               {t('nav.nodes')}
             </Link>
           </li>
+          <li className="flex-1 max-sm:hidden sm:flex-none">
+            <Link to="/o/$org/catalog" params={{ org }} className={navLink}>
+              {t('nav.catalog')}
+            </Link>
+          </li>
+          <li className="flex-1 max-sm:hidden sm:flex-none">
+            <Link to="/o/$org/backups" params={{ org }} className={navLink}>
+              {t('nav.backups')}
+            </Link>
+          </li>
           <li className="flex-1 sm:flex-none">
             <Link to="/o/$org/settings/profile" params={{ org }} className={navLink}>
               {t('nav.profile')}

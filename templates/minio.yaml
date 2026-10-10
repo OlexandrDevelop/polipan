@@ -11,7 +11,7 @@ inputs:
   - { name: root_password, label: Root password (at least 8 characters), type: secret, required: true }
 services:
   minio:
-    source: { image: { name: "minio/minio:RELEASE.2024-12-18T13-15-44Z" } }
+    source: { image: { name: "quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z" } }
     command: ["server", "/data", "--console-address", ":9001"]
     ports: [9000]
     env:

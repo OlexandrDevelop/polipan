@@ -30,6 +30,7 @@ import { ServiceLogs } from '@/routes/ServiceLogs'
 import { ServiceHealth } from '@/routes/ServiceHealth'
 import { ServiceReleases, useReleases } from '@/routes/ServiceReleases'
 import { ServiceSettings } from '@/routes/ServiceSettings'
+import { BackupBadge, ServiceBackups } from '@/routes/ServiceBackups'
 import { ServiceStorage } from '@/routes/ServiceStorage'
 import { ServiceTerminal } from '@/routes/ServiceTerminal'
 import { ServiceVariables } from '@/routes/ServiceVariables'
@@ -45,6 +46,7 @@ const tabs = [
   'env',
   'volumes',
   'health',
+  'backups',
   'logs',
   'terminal',
   'settings',
@@ -480,6 +482,7 @@ export function ServicePage() {
               label={tState('status.service', service.status)}
             />
             <EnvironmentBadges kind={environment.kind} isProtected={environment.protected} />
+            <BackupBadge service={service} />
           </>
         }
         actions={actions}
@@ -565,6 +568,9 @@ export function ServicePage() {
           environmentProtected={environment.protected}
           onChanged={changed}
         />
+      )}
+      {tab === 'backups' && (
+        <ServiceBackups service={service} environmentProtected={environment.protected} />
       )}
       {tab === 'logs' && <ServiceLogs serviceId={serviceId} />}
       {tab === 'terminal' && (

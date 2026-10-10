@@ -47,7 +47,7 @@ for img in polipan-server:dev polipan-agent:dev python:3.12-slim postgres:16-alp
   docker pull -q "$img" >/dev/null 2>&1 || true
   docker save "$img" | docker exec -i "$host" docker load >/dev/null
 done
-dx sh -c 'for i in caddy:2.10.2 nginx:alpine ghcr.io/letsencrypt/pebble:latest ghcr.io/letsencrypt/pebble-challtestsrv:latest minio/minio:RELEASE.2024-12-18T13-15-44Z postgres:16; do docker pull -q $i >/dev/null; done'
+dx sh -c 'for i in caddy:2.10.2 nginx:alpine ghcr.io/letsencrypt/pebble:latest ghcr.io/letsencrypt/pebble-challtestsrv:latest chainguard/minio:latest postgres:16; do docker pull -q $i >/dev/null; done'
 dx mkdir -p /e2e/sftp
 docker cp test/e2e/. "$host:/e2e/"
 docker cp deploy/compose/docker-compose.yml "$host:/e2e/docker-compose.yml"
@@ -56,8 +56,10 @@ step "Install the control plane and the agent"
 dx sh /e2e/setup.sh
 
 step "Start MinIO and an SFTP server"
-dx docker run -d --name minio --net host -e MINIO_ROOT_USER=minio -e MINIO_ROOT_PASSWORD=minio-secret-123 \
-  minio/minio:RELEASE.2024-12-18T13-15-44Z server /data --address 127.0.0.1:9000 --console-address 127.0.0.1:9001 >/dev/null
+# The MinIO images moved away from Docker Hub and Quay is not always reachable: Chainguard builds MinIO from source.
+dx mkdir -p /minio-data && dx chmod 777 /minio-data
+dx docker run -d --name minio --net host -v /minio-data:/data -e MINIO_ROOT_USER=minio -e MINIO_ROOT_PASSWORD=minio-secret-123 \
+  chainguard/minio:latest server /data --address 127.0.0.1:9000 --console-address 127.0.0.1:9001 >/dev/null
 dx docker run -d --name sftp --net host -v /e2e/sftp:/keys alpine:latest sh -c '
   apk add --no-cache openssh >/dev/null &&
   ssh-keygen -q -t ed25519 -N "" -f /keys/id_ed25519 &&

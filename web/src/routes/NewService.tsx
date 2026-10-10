@@ -29,12 +29,15 @@ import { splitCommand } from '@/envText'
 import { t } from '@/i18n'
 import { useAccess } from '@/permissions'
 import { NotFoundPage } from '@/routes/ErrorPages'
+import { ExtraWizard } from '@/routes/NewServiceExtra'
+import type { ExtraSource } from '@/routes/NewServiceExtra'
 import { useScope } from '@/scope'
 import type { Environment, Project, Service } from '@/scope'
 
 type GitConnection = components['schemas']['GitConnection']
 type Deployment = components['schemas']['Deployment']
 export type SourceKind = 'git' | 'image'
+export type StartPath = SourceKind | ExtraSource
 
 const NAME_PATTERN = /^[a-z0-9-]{1,40}$/
 const CPU_PATTERN = /^[0-9]+m?$|^[0-9]+\.[0-9]+$/
@@ -748,12 +751,19 @@ function SourceChooser({ base }: { base: { org: string; project: string; env: st
           </Link>
         </li>
       ))}
-      {(['template', 'database'] as const).map((source) => (
+      {(['template', 'database', 'compose'] as const).map((source) => (
         <li key={source}>
-          <div aria-disabled="true" className={`${card} cursor-not-allowed opacity-60`}>
-            <span className="block text-lg font-semibold">{t(`wizard.source.${source}`)}</span>
-            <span className="mt-1 block text-muted">{t('wizard.source.later')}</span>
-          </div>
+          <Link
+            to="/o/$org/p/$project/e/$env/new"
+            params={base}
+            search={{ source }}
+            className={card}
+          >
+            <span className="block text-lg font-semibold text-primary underline">
+              {t(`wizard.source.${source}`)}
+            </span>
+            <span className="mt-1 block text-muted">{t(`wizard.source.${source}_text`)}</span>
+          </Link>
         </li>
       ))}
     </ul>
@@ -905,6 +915,22 @@ export function NewServicePage() {
         {header}
         <h2 className="mb-4 text-lg font-semibold">{t('wizard.choose')}</h2>
         <SourceChooser base={base} />
+      </section>
+    )
+  }
+
+  if (source === 'template' || source === 'database' || source === 'compose') {
+    return (
+      <section className="max-w-5xl">
+        {header}
+        {scope.project && scope.environment && (
+          <ExtraWizard
+            source={source}
+            base={base}
+            project={scope.project}
+            environment={scope.environment}
+          />
+        )}
       </section>
     )
   }

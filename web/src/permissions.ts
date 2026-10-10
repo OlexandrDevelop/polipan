@@ -29,6 +29,9 @@ export type Permission =
   | 'secret:destroy'
   | 'volume:manage'
   | 'git:manage'
+  | 'backup:manage'
+  | 'backup:restore'
+  | 'template:manage'
 
 const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'project:create': 'dev',
@@ -49,6 +52,9 @@ const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'secret:destroy': 'admin',
   'volume:manage': 'p',
   'git:manage': 'admin',
+  'backup:manage': 'p',
+  'backup:restore': 'admin',
+  'template:manage': 'dev',
 }
 
 // hidden: the role can never do it. blocked: shown but disabled. allow: enabled.
