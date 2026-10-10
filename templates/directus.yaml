@@ -10,7 +10,7 @@ inputs:
   - { name: admin_password, label: Admin password, type: secret, required: true }
   - { name: secret, label: App secret, type: secret, generate: true }
 services:
-  postgres:
+  directus-db:
     type: database
     db: { engine: postgres, version: "16" }
   directus:
@@ -18,11 +18,11 @@ services:
     ports: [8055]
     env:
       DB_CLIENT: pg
-      DB_HOST: "${{db.postgres.HOST}}"
-      DB_PORT: "${{db.postgres.PORT}}"
-      DB_DATABASE: "${{db.postgres.NAME}}"
-      DB_USER: "${{db.postgres.USER}}"
-      DB_PASSWORD: "${{db.postgres.PASSWORD}}"
+      DB_HOST: "${{db.directus-db.HOST}}"
+      DB_PORT: "${{db.directus-db.PORT}}"
+      DB_DATABASE: "${{db.directus-db.NAME}}"
+      DB_USER: "${{db.directus-db.USER}}"
+      DB_PASSWORD: "${{db.directus-db.PASSWORD}}"
       ADMIN_EMAIL: "${{inputs.admin_email}}"
       ADMIN_PASSWORD: "${{inputs.admin_password}}"
       PUBLIC_URL: "https://${{inputs.domain}}"
@@ -32,4 +32,4 @@ services:
     domains:
       - { host: "${{inputs.domain}}", port: 8055 }
     healthcheck: { type: tcp, port: 8055, start_period: 60s }
-    depends_on: [postgres]
+    depends_on: [directus-db]

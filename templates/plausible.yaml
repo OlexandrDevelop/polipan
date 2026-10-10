@@ -8,10 +8,10 @@ inputs:
   - { name: domain, label: Domain, type: domain, required: true }
   - { name: secret_key_base, label: Secret key base, type: secret, generate: true }
 services:
-  postgres:
+  plausible-db:
     type: database
     db: { engine: postgres, version: "16" }
-  clickhouse:
+  plausible-clickhouse:
     source: { image: { name: "clickhouse/clickhouse-server:24.3-alpine" } }
     ports: [8123]
     volumes:
@@ -24,11 +24,11 @@ services:
     command: ["sh", "-c", "/entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run"]
     env:
       BASE_URL: "https://${{inputs.domain}}"
-      DATABASE_URL: "${{db.postgres.URL}}"
-      CLICKHOUSE_DATABASE_URL: "http://${{services.clickhouse.host}}:8123/plausible_events_db"
+      DATABASE_URL: "${{db.plausible-db.URL}}"
+      CLICKHOUSE_DATABASE_URL: "http://${{services.plausible-clickhouse.host}}:8123/plausible_events_db"
       DISABLE_REGISTRATION: "invite_only"
     secrets: [SECRET_KEY_BASE]
     domains:
       - { host: "${{inputs.domain}}", port: 8000 }
     healthcheck: { type: tcp, port: 8000, start_period: 90s }
-    depends_on: [postgres, clickhouse]
+    depends_on: [plausible-db, plausible-clickhouse]

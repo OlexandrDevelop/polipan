@@ -6,6 +6,7 @@ package schemas_test
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -117,5 +118,35 @@ func TestGate5_UnknownKeyFails(t *testing.T) {
 	fixed := strings.ReplaceAll(string(raw), "    not_a_real_key: true\n", "")
 	if err := schema.Validate(yamlToValue(t, fixed)); err != nil {
 		t.Fatalf("the fixture without the unknown key is invalid: %v", err)
+	}
+}
+
+// Gate 5 and AC-TPL: the 12 built-in templates in /templates validate against the template schema,
+// and every service entry validates against the service shape of polipan.schema.json.
+func TestGate5_BuiltinTemplatesValidate(t *testing.T) {
+	tplSchema := compile(t, templateSchema)
+	cfgSchema := compile(t, polipanSchema)
+	files, err := filepath.Glob("../../templates/*.yaml")
+	if err != nil || len(files) != 12 {
+		t.Fatalf("templates: %d files, %v", len(files), err)
+	}
+	for _, f := range files {
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := tplSchema.Validate(yamlToValue(t, string(raw))); err != nil {
+			t.Errorf("%s does not match the template schema: %v", f, err)
+		}
+		var doc struct {
+			Services map[string]any `yaml:"services"`
+		}
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			t.Fatal(err)
+		}
+		wrapped, _ := yaml.Marshal(map[string]any{"version": 1, "project": "template-check", "services": doc.Services})
+		if err := cfgSchema.Validate(yamlToValue(t, string(wrapped))); err != nil {
+			t.Errorf("%s: a service does not match polipan.schema.json: %v", f, err)
+		}
 	}
 }

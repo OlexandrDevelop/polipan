@@ -84,12 +84,45 @@ const (
 	BackupPolicyHealthVerified   BackupPolicyHealth = "verified"
 )
 
+// Defines values for BackupPolicyRestoreCheckMode.
+const (
+	BackupPolicyRestoreCheckModeFull   BackupPolicyRestoreCheckMode = "full"
+	BackupPolicyRestoreCheckModeSample BackupPolicyRestoreCheckMode = "sample"
+)
+
+// Defines values for BackupPolicyWriteRestoreCheckMode.
+const (
+	BackupPolicyWriteRestoreCheckModeFull   BackupPolicyWriteRestoreCheckMode = "full"
+	BackupPolicyWriteRestoreCheckModeSample BackupPolicyWriteRestoreCheckMode = "sample"
+)
+
+// Defines values for BackupRestoreMode.
+const (
+	BackupRestoreModeInPlace    BackupRestoreMode = "in_place"
+	BackupRestoreModeNewService BackupRestoreMode = "new_service"
+)
+
+// Defines values for BackupRestoreState.
+const (
+	BackupRestoreStateFailed    BackupRestoreState = "failed"
+	BackupRestoreStateQueued    BackupRestoreState = "queued"
+	BackupRestoreStateRunning   BackupRestoreState = "running"
+	BackupRestoreStateSucceeded BackupRestoreState = "succeeded"
+)
+
 // Defines values for BackupRunState.
 const (
 	BackupRunStateFailed    BackupRunState = "failed"
 	BackupRunStateQueued    BackupRunState = "queued"
 	BackupRunStateRunning   BackupRunState = "running"
 	BackupRunStateSucceeded BackupRunState = "succeeded"
+)
+
+// Defines values for BackupRunTrigger.
+const (
+	BackupRunTriggerManual   BackupRunTrigger = "manual"
+	BackupRunTriggerSafety   BackupRunTrigger = "safety"
+	BackupRunTriggerSchedule BackupRunTrigger = "schedule"
 )
 
 // Defines values for BackupTargetKind.
@@ -128,16 +161,16 @@ const (
 
 // Defines values for DeploymentTrigger.
 const (
-	Api         DeploymentTrigger = "api"
-	ConfigApply DeploymentTrigger = "config_apply"
-	Failover    DeploymentTrigger = "failover"
-	GitPush     DeploymentTrigger = "git_push"
-	Manual      DeploymentTrigger = "manual"
-	Move        DeploymentTrigger = "move"
-	Promotion   DeploymentTrigger = "promotion"
-	PullRequest DeploymentTrigger = "pull_request"
-	Rollback    DeploymentTrigger = "rollback"
-	Schedule    DeploymentTrigger = "schedule"
+	DeploymentTriggerApi         DeploymentTrigger = "api"
+	DeploymentTriggerConfigApply DeploymentTrigger = "config_apply"
+	DeploymentTriggerFailover    DeploymentTrigger = "failover"
+	DeploymentTriggerGitPush     DeploymentTrigger = "git_push"
+	DeploymentTriggerManual      DeploymentTrigger = "manual"
+	DeploymentTriggerMove        DeploymentTrigger = "move"
+	DeploymentTriggerPromotion   DeploymentTrigger = "promotion"
+	DeploymentTriggerPullRequest DeploymentTrigger = "pull_request"
+	DeploymentTriggerRollback    DeploymentTrigger = "rollback"
+	DeploymentTriggerSchedule    DeploymentTrigger = "schedule"
 )
 
 // Defines values for DeploymentEventType.
@@ -283,10 +316,10 @@ const (
 
 // Defines values for ReleaseStatus.
 const (
-	ReleaseStatusAvailable ReleaseStatus = "available"
-	ReleaseStatusLive      ReleaseStatus = "live"
-	ReleaseStatusPrevious  ReleaseStatus = "previous"
-	ReleaseStatusPruned    ReleaseStatus = "pruned"
+	Available ReleaseStatus = "available"
+	Live      ReleaseStatus = "live"
+	Previous  ReleaseStatus = "previous"
+	Pruned    ReleaseStatus = "pruned"
 )
 
 // Defines values for RestoreCheckState.
@@ -295,6 +328,13 @@ const (
 	RestoreCheckStatePassed  RestoreCheckState = "passed"
 	RestoreCheckStateQueued  RestoreCheckState = "queued"
 	RestoreCheckStateRunning RestoreCheckState = "running"
+)
+
+// Defines values for RestoreCheckTrigger.
+const (
+	FirstBackup RestoreCheckTrigger = "first_backup"
+	Manual      RestoreCheckTrigger = "manual"
+	Schedule    RestoreCheckTrigger = "schedule"
 )
 
 // Defines values for Role.
@@ -350,6 +390,13 @@ const (
 	ServiceTypeWorker   ServiceType = "worker"
 )
 
+// Defines values for ServiceBackupStatus.
+const (
+	ServiceBackupStatusConfigured ServiceBackupStatus = "configured"
+	ServiceBackupStatusNone       ServiceBackupStatus = "none"
+	ServiceBackupStatusSkipped    ServiceBackupStatus = "skipped"
+)
+
 // Defines values for ServiceCreateDbEngine.
 const (
 	ServiceCreateDbEngineMariadb  ServiceCreateDbEngine = "mariadb"
@@ -369,8 +416,8 @@ const (
 
 // Defines values for ServiceUpdateFailover.
 const (
-	Auto ServiceUpdateFailover = "auto"
-	None ServiceUpdateFailover = "none"
+	ServiceUpdateFailoverAuto ServiceUpdateFailover = "auto"
+	ServiceUpdateFailoverNone ServiceUpdateFailover = "none"
 )
 
 // Defines values for SsoProviderKind.
@@ -428,8 +475,8 @@ const (
 
 // Defines values for RestoreBackupJSONBodyMode.
 const (
-	InPlace    RestoreBackupJSONBodyMode = "in_place"
-	NewService RestoreBackupJSONBodyMode = "new_service"
+	RestoreBackupJSONBodyModeInPlace    RestoreBackupJSONBodyMode = "in_place"
+	RestoreBackupJSONBodyModeNewService RestoreBackupJSONBodyMode = "new_service"
 )
 
 // Defines values for SearchLogsParamsLevel.
@@ -627,13 +674,29 @@ type AuditEventActorType string
 
 // BackupPolicy defines model for BackupPolicy.
 type BackupPolicy struct {
-	Enabled              *bool               `json:"enabled,omitempty"`
-	Health               *BackupPolicyHealth `json:"health,omitempty"`
-	Id                   *string             `json:"id,omitempty"`
-	LastRestoreCheck     *RestoreCheck       `json:"last_restore_check,omitempty"`
-	LastRun              *BackupRun          `json:"last_run,omitempty"`
-	RestoreCheckEnabled  *bool               `json:"restore_check_enabled,omitempty"`
-	RestoreCheckSchedule *string             `json:"restore_check_schedule,omitempty"`
+	// CheckOverdue no passed restore check in 2 x the check interval (REQ-BKP-103)
+	CheckOverdue *bool `json:"check_overdue,omitempty"`
+
+	// ControlPlane true for the built-in policy of the control-plane database
+	ControlPlane *bool `json:"control_plane,omitempty"`
+	Enabled      *bool `json:"enabled,omitempty"`
+
+	// Engine postgres, mysql, mariadb, mongo, redis, volume or controlplane
+	Engine *string             `json:"engine,omitempty"`
+	Health *BackupPolicyHealth `json:"health,omitempty"`
+	Hooks  *struct {
+		Post *[]string `json:"post,omitempty"`
+		Pre  *[]string `json:"pre,omitempty"`
+	} `json:"hooks,omitempty"`
+	Id               *string       `json:"id,omitempty"`
+	LastRestoreCheck *RestoreCheck `json:"last_restore_check,omitempty"`
+	LastRun          *BackupRun    `json:"last_run,omitempty"`
+
+	// LocalOnly every target is a local path on a node: the UI warns until a remote target is added
+	LocalOnly            *bool                         `json:"local_only,omitempty"`
+	RestoreCheckEnabled  *bool                         `json:"restore_check_enabled,omitempty"`
+	RestoreCheckMode     *BackupPolicyRestoreCheckMode `json:"restore_check_mode,omitempty"`
+	RestoreCheckSchedule *string                       `json:"restore_check_schedule,omitempty"`
 	Retention            *struct {
 		KeepDaily   *int `json:"keep_daily,omitempty"`
 		KeepMonthly *int `json:"keep_monthly,omitempty"`
@@ -648,25 +711,54 @@ type BackupPolicy struct {
 // BackupPolicyHealth defines model for BackupPolicy.Health.
 type BackupPolicyHealth string
 
+// BackupPolicyRestoreCheckMode defines model for BackupPolicy.RestoreCheckMode.
+type BackupPolicyRestoreCheckMode string
+
 // BackupPolicyWrite defines model for BackupPolicyWrite.
 type BackupPolicyWrite struct {
-	Enabled              *bool           `json:"enabled,omitempty"`
-	PostHook             *[]string       `json:"post_hook,omitempty"`
-	PreHook              *[]string       `json:"pre_hook,omitempty"`
-	RestoreCheckEnabled  *bool           `json:"restore_check_enabled,omitempty"`
-	RestoreCheckSchedule *string         `json:"restore_check_schedule,omitempty"`
-	Retention            *map[string]int `json:"retention,omitempty"`
-	Schedule             *string         `json:"schedule,omitempty"`
-	TargetIds            *[]string       `json:"target_ids,omitempty"`
-	VolumeId             *string         `json:"volume_id,omitempty"`
+	Enabled              *bool                              `json:"enabled,omitempty"`
+	PostHook             *[]string                          `json:"post_hook,omitempty"`
+	PreHook              *[]string                          `json:"pre_hook,omitempty"`
+	RestoreCheckEnabled  *bool                              `json:"restore_check_enabled,omitempty"`
+	RestoreCheckMode     *BackupPolicyWriteRestoreCheckMode `json:"restore_check_mode,omitempty"`
+	RestoreCheckSchedule *string                            `json:"restore_check_schedule,omitempty"`
+	Retention            *map[string]int                    `json:"retention,omitempty"`
+	Schedule             *string                            `json:"schedule,omitempty"`
+	TargetIds            *[]string                          `json:"target_ids,omitempty"`
+	VolumeId             *string                            `json:"volume_id,omitempty"`
 }
+
+// BackupPolicyWriteRestoreCheckMode defines model for BackupPolicyWrite.RestoreCheckMode.
+type BackupPolicyWriteRestoreCheckMode string
+
+// BackupRestore defines model for BackupRestore.
+type BackupRestore struct {
+	CreatedAt  *time.Time          `json:"created_at,omitempty"`
+	Error      *string             `json:"error,omitempty"`
+	FinishedAt *time.Time          `json:"finished_at,omitempty"`
+	Id         *string             `json:"id,omitempty"`
+	Mode       *BackupRestoreMode  `json:"mode,omitempty"`
+	RunId      *string             `json:"run_id,omitempty"`
+	ServiceId  *string             `json:"service_id,omitempty"`
+	State      *BackupRestoreState `json:"state,omitempty"`
+	TargetId   *string             `json:"target_id,omitempty"`
+}
+
+// BackupRestoreMode defines model for BackupRestore.Mode.
+type BackupRestoreMode string
+
+// BackupRestoreState defines model for BackupRestore.State.
+type BackupRestoreState string
 
 // BackupRun defines model for BackupRun.
 type BackupRun struct {
-	Error      *string    `json:"error,omitempty"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
-	Id         *string    `json:"id,omitempty"`
-	PolicyId   *string    `json:"policy_id,omitempty"`
+	DurationMs *int                    `json:"duration_ms,omitempty"`
+	Error      *string                 `json:"error,omitempty"`
+	FinishedAt *time.Time              `json:"finished_at,omitempty"`
+	Id         *string                 `json:"id,omitempty"`
+	Manifest   *map[string]interface{} `json:"manifest,omitempty"`
+	NodeId     *string                 `json:"node_id,omitempty"`
+	PolicyId   *string                 `json:"policy_id,omitempty"`
 	Snapshots  *[]struct {
 		Error      *string `json:"error,omitempty"`
 		Ok         *bool   `json:"ok,omitempty"`
@@ -674,12 +766,16 @@ type BackupRun struct {
 		SnapshotId *string `json:"snapshot_id,omitempty"`
 		TargetId   *string `json:"target_id,omitempty"`
 	} `json:"snapshots,omitempty"`
-	StartedAt *time.Time      `json:"started_at,omitempty"`
-	State     *BackupRunState `json:"state,omitempty"`
+	StartedAt *time.Time        `json:"started_at,omitempty"`
+	State     *BackupRunState   `json:"state,omitempty"`
+	Trigger   *BackupRunTrigger `json:"trigger,omitempty"`
 }
 
 // BackupRunState defines model for BackupRun.State.
 type BackupRunState string
+
+// BackupRunTrigger defines model for BackupRun.Trigger.
+type BackupRunTrigger string
 
 // BackupTarget defines model for BackupTarget.
 type BackupTarget struct {
@@ -1171,18 +1267,22 @@ type RestoreCheck struct {
 		Name   *string `json:"name,omitempty"`
 		Ok     *bool   `json:"ok,omitempty"`
 	} `json:"checks,omitempty"`
-	DurationMs *int               `json:"duration_ms,omitempty"`
-	FinishedAt *time.Time         `json:"finished_at,omitempty"`
-	Id         *string            `json:"id,omitempty"`
-	NodeId     *string            `json:"node_id,omitempty"`
-	PolicyId   *string            `json:"policy_id,omitempty"`
-	StartedAt  *time.Time         `json:"started_at,omitempty"`
-	State      *RestoreCheckState `json:"state,omitempty"`
-	TargetId   *string            `json:"target_id,omitempty"`
+	DurationMs *int                 `json:"duration_ms,omitempty"`
+	FinishedAt *time.Time           `json:"finished_at,omitempty"`
+	Id         *string              `json:"id,omitempty"`
+	NodeId     *string              `json:"node_id,omitempty"`
+	PolicyId   *string              `json:"policy_id,omitempty"`
+	StartedAt  *time.Time           `json:"started_at,omitempty"`
+	State      *RestoreCheckState   `json:"state,omitempty"`
+	TargetId   *string              `json:"target_id,omitempty"`
+	Trigger    *RestoreCheckTrigger `json:"trigger,omitempty"`
 }
 
 // RestoreCheckState defines model for RestoreCheck.State.
 type RestoreCheckState string
+
+// RestoreCheckTrigger defines model for RestoreCheck.Trigger.
+type RestoreCheckTrigger string
 
 // Role defines model for Role.
 type Role string
@@ -1224,21 +1324,31 @@ type SecretWrite struct {
 type Service struct {
 	AllowDataLossFailover *bool `json:"allow_data_loss_failover,omitempty"`
 
+	// Backup Database services only. none: no policy and not skipped (the UI shows the suggestion). skipped: the user skipped the suggestion. configured: a policy exists.
+	Backup *ServiceBackup `json:"backup,omitempty"`
+
 	// Config Same shape as one entry of services in polipan.yaml, after defaults. See docs/spec/07-config-as-code.md.
-	Config           *ServiceConfig       `json:"config,omitempty"`
-	DbEngine         *ServiceDbEngine     `json:"db_engine,omitempty"`
-	DesiredState     *ServiceDesiredState `json:"desired_state,omitempty"`
-	EnvironmentId    *string              `json:"environment_id,omitempty"`
-	Failover         *ServiceFailover     `json:"failover,omitempty"`
-	GitManagedFields *[]string            `json:"git_managed_fields,omitempty"`
-	Id               *string              `json:"id,omitempty"`
-	LiveReleaseId    *string              `json:"live_release_id,omitempty"`
-	Name             *string              `json:"name,omitempty"`
-	PendingChanges   *bool                `json:"pending_changes,omitempty"`
-	Placements       *[]Placement         `json:"placements,omitempty"`
-	SourceType       *ServiceSourceType   `json:"source_type,omitempty"`
-	Status           *ServiceStatus       `json:"status,omitempty"`
-	Type             *ServiceType         `json:"type,omitempty"`
+	Config   *ServiceConfig   `json:"config,omitempty"`
+	DbEngine *ServiceDbEngine `json:"db_engine,omitempty"`
+
+	// DbVersion database services: the version tag chosen at creation
+	DbVersion          *string              `json:"db_version,omitempty"`
+	DesiredState       *ServiceDesiredState `json:"desired_state,omitempty"`
+	EnvironmentId      *string              `json:"environment_id,omitempty"`
+	Failover           *ServiceFailover     `json:"failover,omitempty"`
+	GitManagedFields   *[]string            `json:"git_managed_fields,omitempty"`
+	Id                 *string              `json:"id,omitempty"`
+	LiveReleaseId      *string              `json:"live_release_id,omitempty"`
+	Name               *string              `json:"name,omitempty"`
+	PendingChanges     *bool                `json:"pending_changes,omitempty"`
+	Placements         *[]Placement         `json:"placements,omitempty"`
+	SourceType         *ServiceSourceType   `json:"source_type,omitempty"`
+	Status             *ServiceStatus       `json:"status,omitempty"`
+	TemplateInstanceId *string              `json:"template_instance_id,omitempty"`
+	Type               *ServiceType         `json:"type,omitempty"`
+
+	// Warnings for example zero_downtime_not_available (a database always uses recreate) and database_exposed
+	Warnings *[]Warning `json:"warnings,omitempty"`
 }
 
 // ServiceDbEngine defines model for Service.DbEngine.
@@ -1258,6 +1368,19 @@ type ServiceStatus string
 
 // ServiceType defines model for Service.Type.
 type ServiceType string
+
+// ServiceBackup Database services only. none: no policy and not skipped (the UI shows the suggestion). skipped: the user skipped the suggestion. configured: a policy exists.
+type ServiceBackup struct {
+	Status     *ServiceBackupStatus `json:"status,omitempty"`
+	Suggestion *struct {
+		RestoreCheckSchedule *string         `json:"restore_check_schedule,omitempty"`
+		Retention            *map[string]int `json:"retention,omitempty"`
+		Schedule             *string         `json:"schedule,omitempty"`
+	} `json:"suggestion,omitempty"`
+}
+
+// ServiceBackupStatus defines model for ServiceBackup.Status.
+type ServiceBackupStatus string
 
 // ServiceConfig Same shape as one entry of services in polipan.yaml, after defaults. See docs/spec/07-config-as-code.md.
 type ServiceConfig map[string]interface{}
@@ -1284,6 +1407,9 @@ type ServiceCreateType string
 // ServiceUpdate defines model for ServiceUpdate.
 type ServiceUpdate struct {
 	AllowDataLossFailover *bool `json:"allow_data_loss_failover,omitempty"`
+
+	// BackupSkipped Database services: record that the backup suggestion was skipped.
+	BackupSkipped *bool `json:"backup_skipped,omitempty"`
 
 	// Config Same shape as one entry of services in polipan.yaml, after defaults. See docs/spec/07-config-as-code.md.
 	Config      *ServiceConfig         `json:"config,omitempty"`
@@ -2350,6 +2476,9 @@ type ClientInterface interface {
 
 	VerifyTotp(ctx context.Context, body VerifyTotpJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAllBackupPolicies request
+	ListAllBackupPolicies(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DeleteBackupPolicy request
 	DeleteBackupPolicy(ctx context.Context, policyId PolicyId, params *DeleteBackupPolicyParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -2369,6 +2498,9 @@ type ClientInterface interface {
 
 	// ListBackupRuns request
 	ListBackupRuns(ctx context.Context, policyId PolicyId, params *ListBackupRunsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetBackupRestore request
+	GetBackupRestore(ctx context.Context, restoreId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RestoreBackupWithBody request with any body
 	RestoreBackupWithBody(ctx context.Context, runId string, params *RestoreBackupParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3307,6 +3439,18 @@ func (c *Client) VerifyTotp(ctx context.Context, body VerifyTotpJSONRequestBody,
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListAllBackupPolicies(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAllBackupPoliciesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) DeleteBackupPolicy(ctx context.Context, policyId PolicyId, params *DeleteBackupPolicyParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteBackupPolicyRequest(c.Server, policyId, params)
 	if err != nil {
@@ -3381,6 +3525,18 @@ func (c *Client) RunBackup(ctx context.Context, policyId PolicyId, params *RunBa
 
 func (c *Client) ListBackupRuns(ctx context.Context, policyId PolicyId, params *ListBackupRunsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListBackupRunsRequest(c.Server, policyId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetBackupRestore(ctx context.Context, restoreId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetBackupRestoreRequest(c.Server, restoreId)
 	if err != nil {
 		return nil, err
 	}
@@ -6745,6 +6901,33 @@ func NewVerifyTotpRequestWithBody(server string, contentType string, body io.Rea
 	return req, nil
 }
 
+// NewListAllBackupPoliciesRequest generates requests for ListAllBackupPolicies
+func NewListAllBackupPoliciesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/backup-policies")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewDeleteBackupPolicyRequest generates requests for DeleteBackupPolicy
 func NewDeleteBackupPolicyRequest(server string, policyId PolicyId, params *DeleteBackupPolicyParams) (*http.Request, error) {
 	var err error
@@ -7042,6 +7225,40 @@ func NewListBackupRunsRequest(server string, policyId PolicyId, params *ListBack
 		}
 
 		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetBackupRestoreRequest generates requests for GetBackupRestore
+func NewGetBackupRestoreRequest(server string, restoreId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "restore_id", runtime.ParamLocationPath, restoreId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/backup-restores/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -13328,6 +13545,9 @@ type ClientWithResponsesInterface interface {
 
 	VerifyTotpWithResponse(ctx context.Context, body VerifyTotpJSONRequestBody, reqEditors ...RequestEditorFn) (*VerifyTotpResponse, error)
 
+	// ListAllBackupPoliciesWithResponse request
+	ListAllBackupPoliciesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAllBackupPoliciesResponse, error)
+
 	// DeleteBackupPolicyWithResponse request
 	DeleteBackupPolicyWithResponse(ctx context.Context, policyId PolicyId, params *DeleteBackupPolicyParams, reqEditors ...RequestEditorFn) (*DeleteBackupPolicyResponse, error)
 
@@ -13347,6 +13567,9 @@ type ClientWithResponsesInterface interface {
 
 	// ListBackupRunsWithResponse request
 	ListBackupRunsWithResponse(ctx context.Context, policyId PolicyId, params *ListBackupRunsParams, reqEditors ...RequestEditorFn) (*ListBackupRunsResponse, error)
+
+	// GetBackupRestoreWithResponse request
+	GetBackupRestoreWithResponse(ctx context.Context, restoreId string, reqEditors ...RequestEditorFn) (*GetBackupRestoreResponse, error)
 
 	// RestoreBackupWithBodyWithResponse request with any body
 	RestoreBackupWithBodyWithResponse(ctx context.Context, runId string, params *RestoreBackupParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RestoreBackupResponse, error)
@@ -14417,6 +14640,28 @@ func (r VerifyTotpResponse) StatusCode() int {
 	return 0
 }
 
+type ListAllBackupPoliciesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]BackupPolicy
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAllBackupPoliciesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAllBackupPoliciesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type DeleteBackupPolicyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -14545,6 +14790,28 @@ func (r ListBackupRunsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListBackupRunsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetBackupRestoreResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *BackupRestore
+}
+
+// Status returns HTTPResponse.Status
+func (r GetBackupRestoreResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetBackupRestoreResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -17924,6 +18191,15 @@ func (c *ClientWithResponses) VerifyTotpWithResponse(ctx context.Context, body V
 	return ParseVerifyTotpResponse(rsp)
 }
 
+// ListAllBackupPoliciesWithResponse request returning *ListAllBackupPoliciesResponse
+func (c *ClientWithResponses) ListAllBackupPoliciesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAllBackupPoliciesResponse, error) {
+	rsp, err := c.ListAllBackupPolicies(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAllBackupPoliciesResponse(rsp)
+}
+
 // DeleteBackupPolicyWithResponse request returning *DeleteBackupPolicyResponse
 func (c *ClientWithResponses) DeleteBackupPolicyWithResponse(ctx context.Context, policyId PolicyId, params *DeleteBackupPolicyParams, reqEditors ...RequestEditorFn) (*DeleteBackupPolicyResponse, error) {
 	rsp, err := c.DeleteBackupPolicy(ctx, policyId, params, reqEditors...)
@@ -17984,6 +18260,15 @@ func (c *ClientWithResponses) ListBackupRunsWithResponse(ctx context.Context, po
 		return nil, err
 	}
 	return ParseListBackupRunsResponse(rsp)
+}
+
+// GetBackupRestoreWithResponse request returning *GetBackupRestoreResponse
+func (c *ClientWithResponses) GetBackupRestoreWithResponse(ctx context.Context, restoreId string, reqEditors ...RequestEditorFn) (*GetBackupRestoreResponse, error) {
+	rsp, err := c.GetBackupRestore(ctx, restoreId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetBackupRestoreResponse(rsp)
 }
 
 // RestoreBackupWithBodyWithResponse request with arbitrary body returning *RestoreBackupResponse
@@ -20189,6 +20474,32 @@ func ParseVerifyTotpResponse(rsp *http.Response) (*VerifyTotpResponse, error) {
 	return response, nil
 }
 
+// ParseListAllBackupPoliciesResponse parses an HTTP response from a ListAllBackupPoliciesWithResponse call
+func ParseListAllBackupPoliciesResponse(rsp *http.Response) (*ListAllBackupPoliciesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAllBackupPoliciesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []BackupPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseDeleteBackupPolicyResponse parses an HTTP response from a DeleteBackupPolicyWithResponse call
 func ParseDeleteBackupPolicyResponse(rsp *http.Response) (*DeleteBackupPolicyResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -20328,6 +20639,32 @@ func ParseListBackupRunsResponse(rsp *http.Response) (*ListBackupRunsResponse, e
 			Items      *[]BackupRun `json:"items,omitempty"`
 			NextCursor *string      `json:"next_cursor"`
 		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetBackupRestoreResponse parses an HTTP response from a GetBackupRestoreWithResponse call
+func ParseGetBackupRestoreResponse(rsp *http.Response) (*GetBackupRestoreResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetBackupRestoreResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest BackupRestore
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -23932,6 +24269,9 @@ type ServerInterface interface {
 	// Confirm TOTP enrollment. Returns recovery codes once.
 	// (POST /auth/totp/verify)
 	VerifyTotp(w http.ResponseWriter, r *http.Request)
+	// List the backup policies of the org (all services and the control-plane database)
+	// (GET /backup-policies)
+	ListAllBackupPolicies(w http.ResponseWriter, r *http.Request)
 	// Delete a policy (snapshots on targets are kept unless delete_snapshots=true)
 	// (DELETE /backup-policies/{policy_id})
 	DeleteBackupPolicy(w http.ResponseWriter, r *http.Request, policyId PolicyId, params DeleteBackupPolicyParams)
@@ -23950,6 +24290,9 @@ type ServerInterface interface {
 	// List backup runs
 	// (GET /backup-policies/{policy_id}/runs)
 	ListBackupRuns(w http.ResponseWriter, r *http.Request, policyId PolicyId, params ListBackupRunsParams)
+	// Get a restore job (state, error, the new service)
+	// (GET /backup-restores/{restore_id})
+	GetBackupRestore(w http.ResponseWriter, r *http.Request, restoreId string)
 	// Restore a snapshot into the service or into a new service (clone)
 	// (POST /backup-runs/{run_id}/restore)
 	RestoreBackup(w http.ResponseWriter, r *http.Request, runId string, params RestoreBackupParams)
@@ -24514,6 +24857,12 @@ func (_ Unimplemented) VerifyTotp(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// List the backup policies of the org (all services and the control-plane database)
+// (GET /backup-policies)
+func (_ Unimplemented) ListAllBackupPolicies(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Delete a policy (snapshots on targets are kept unless delete_snapshots=true)
 // (DELETE /backup-policies/{policy_id})
 func (_ Unimplemented) DeleteBackupPolicy(w http.ResponseWriter, r *http.Request, policyId PolicyId, params DeleteBackupPolicyParams) {
@@ -24547,6 +24896,12 @@ func (_ Unimplemented) RunBackup(w http.ResponseWriter, r *http.Request, policyI
 // List backup runs
 // (GET /backup-policies/{policy_id}/runs)
 func (_ Unimplemented) ListBackupRuns(w http.ResponseWriter, r *http.Request, policyId PolicyId, params ListBackupRunsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get a restore job (state, error, the new service)
+// (GET /backup-restores/{restore_id})
+func (_ Unimplemented) GetBackupRestore(w http.ResponseWriter, r *http.Request, restoreId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -26117,6 +26472,28 @@ func (siw *ServerInterfaceWrapper) VerifyTotp(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ListAllBackupPolicies operation middleware
+func (siw *ServerInterfaceWrapper) ListAllBackupPolicies(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerTokenScopes, []string{})
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAllBackupPolicies(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteBackupPolicy operation middleware
 func (siw *ServerInterfaceWrapper) DeleteBackupPolicy(w http.ResponseWriter, r *http.Request) {
 
@@ -26384,6 +26761,39 @@ func (siw *ServerInterfaceWrapper) ListBackupRuns(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListBackupRuns(w, r, policyId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBackupRestore operation middleware
+func (siw *ServerInterfaceWrapper) GetBackupRestore(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "restore_id" -------------
+	var restoreId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "restore_id", chi.URLParam(r, "restore_id"), &restoreId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "restore_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerTokenScopes, []string{})
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBackupRestore(w, r, restoreId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -31472,6 +31882,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/auth/totp/verify", wrapper.VerifyTotp)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/backup-policies", wrapper.ListAllBackupPolicies)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/backup-policies/{policy_id}", wrapper.DeleteBackupPolicy)
 	})
 	r.Group(func(r chi.Router) {
@@ -31488,6 +31901,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/backup-policies/{policy_id}/runs", wrapper.ListBackupRuns)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/backup-restores/{restore_id}", wrapper.GetBackupRestore)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/backup-runs/{run_id}/restore", wrapper.RestoreBackup)

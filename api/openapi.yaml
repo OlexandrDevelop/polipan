@@ -1429,6 +1429,14 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BackupPolicyWrite'}}}}
       responses:
         '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/BackupPolicy'}}}}
+  /backup-policies:
+    get:
+      operationId: listAllBackupPolicies
+      summary: List the backup policies of the org (all services and the control-plane database)
+      tags: [backups]
+      x-permission: backup:read
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/BackupPolicy'}}}}}
   /backup-policies/{policy_id}:
     get:
       operationId: getBackupPolicy
@@ -1482,8 +1490,17 @@ paths:
       parameters: [{name: run_id, in: path, required: true, schema: {type: string}}, {$ref: '#/components/parameters/IdempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [target_id, mode], properties: {target_id: {type: string}, mode: {type: string, enum: [in_place, new_service]}, new_service_name: {type: string}, confirm: {type: string}}}}}}
       responses:
-        '202': {description: Accepted, content: {application/json: {schema: {type: object, properties: {job_id: {type: string}, service_id: {type: string}}}}}}
+        '202': {description: 'Accepted. job_id is the id of the restore (see getBackupRestore). For a new service, service_id is the new service.', content: {application/json: {schema: {type: object, properties: {job_id: {type: string}, service_id: {type: string}}}}}}
         '409': {$ref: '#/components/responses/Error'}
+  /backup-restores/{restore_id}:
+    get:
+      operationId: getBackupRestore
+      summary: Get a restore job (state, error, the new service)
+      tags: [backups]
+      x-permission: backup:read
+      parameters: [{name: restore_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BackupRestore'}}}}
   /backup-policies/{policy_id}/restore-checks:
     post:
       operationId: runRestoreCheck
@@ -1769,6 +1786,10 @@ components:
         type: {type: string, enum: [app, database, worker, cron]}
         source_type: {type: string, enum: [git, image]}
         db_engine: {type: string, enum: [postgres, mysql, mariadb, mongo, redis]}
+        db_version: {type: string, description: "database services: the version tag chosen at creation"}
+        backup: {$ref: '#/components/schemas/ServiceBackup'}
+        template_instance_id: {type: string}
+        warnings: {type: array, items: {$ref: '#/components/schemas/Warning'}, description: "for example zero_downtime_not_available (a database always uses recreate) and database_exposed"}
         config: {$ref: '#/components/schemas/ServiceConfig'}
         git_managed_fields: {type: array, items: {type: string}}
         status: {type: string, enum: [no_release, deploying, running, degraded, stopped, failed]}
@@ -1778,6 +1799,12 @@ components:
         live_release_id: {type: string}
         placements: {type: array, items: {$ref: '#/components/schemas/Placement'}}
         pending_changes: {type: boolean}
+    ServiceBackup:
+      type: object
+      description: "Database services only. none: no policy and not skipped (the UI shows the suggestion). skipped: the user skipped the suggestion. configured: a policy exists."
+      properties:
+        status: {type: string, enum: [none, skipped, configured]}
+        suggestion: {type: object, properties: {schedule: {type: string}, retention: {type: object, additionalProperties: {type: integer}}, restore_check_schedule: {type: string}}}
     Placement:
       type: object
       properties: {id: {type: string}, node_id: {type: string}, release_id: {type: string}, replica_index: {type: integer}, color: {type: string, enum: [blue, green]}, role: {type: string, enum: [live, candidate, draining, stopped]}, weight: {type: integer}, health: {type: string, enum: [unknown, starting, healthy, unhealthy]}}
@@ -1798,6 +1825,7 @@ components:
         failover: {type: string, enum: [none, auto]}
         allow_data_loss_failover: {type: boolean}
         override_git: {type: boolean}
+        backup_skipped: {type: boolean, description: "Database services: record that the backup suggestion was skipped."}
     DeployRequest:
       type: object
       properties:
@@ -1944,16 +1972,19 @@ components:
       properties: {name: {type: string}, kind: {type: string, enum: [s3, b2, sftp, local, azure, gcs]}, config: {type: object, additionalProperties: true}, credentials: {type: object, writeOnly: true, additionalProperties: {type: string}}}
     BackupPolicy:
       type: object
-      properties: {id: {type: string}, service_id: {type: string}, volume_id: {type: string}, schedule: {type: string}, target_ids: {type: array, items: {type: string}}, retention: {type: object, properties: {keep_daily: {type: integer, default: 7}, keep_weekly: {type: integer, default: 4}, keep_monthly: {type: integer, default: 6}}}, restore_check_schedule: {type: string, default: '0 3 * * 0'}, restore_check_enabled: {type: boolean, default: true}, enabled: {type: boolean}, health: {type: string, enum: [verified, unverified, failing]}, last_run: {$ref: '#/components/schemas/BackupRun'}, last_restore_check: {$ref: '#/components/schemas/RestoreCheck'}}
+      properties: {id: {type: string}, service_id: {type: string}, volume_id: {type: string}, schedule: {type: string}, target_ids: {type: array, items: {type: string}}, retention: {type: object, properties: {keep_daily: {type: integer, default: 7}, keep_weekly: {type: integer, default: 4}, keep_monthly: {type: integer, default: 6}}}, restore_check_schedule: {type: string, default: '0 3 * * 0'}, restore_check_enabled: {type: boolean, default: true}, restore_check_mode: {type: string, enum: [full, sample]}, enabled: {type: boolean}, control_plane: {type: boolean, description: "true for the built-in policy of the control-plane database"}, engine: {type: string, description: "postgres, mysql, mariadb, mongo, redis, volume or controlplane"}, check_overdue: {type: boolean, description: "no passed restore check in 2 x the check interval (REQ-BKP-103)"}, local_only: {type: boolean, description: "every target is a local path on a node: the UI warns until a remote target is added"}, hooks: {type: object, properties: {pre: {type: array, items: {type: string}}, post: {type: array, items: {type: string}}}}, health: {type: string, enum: [verified, unverified, failing]}, last_run: {$ref: '#/components/schemas/BackupRun'}, last_restore_check: {$ref: '#/components/schemas/RestoreCheck'}}
     BackupPolicyWrite:
       type: object
-      properties: {volume_id: {type: string}, schedule: {type: string}, target_ids: {type: array, items: {type: string}}, retention: {type: object, additionalProperties: {type: integer}}, restore_check_schedule: {type: string}, restore_check_enabled: {type: boolean}, enabled: {type: boolean}, pre_hook: {type: array, items: {type: string}}, post_hook: {type: array, items: {type: string}}}
+      properties: {volume_id: {type: string}, schedule: {type: string}, target_ids: {type: array, items: {type: string}}, retention: {type: object, additionalProperties: {type: integer}}, restore_check_schedule: {type: string}, restore_check_enabled: {type: boolean}, restore_check_mode: {type: string, enum: [full, sample]}, enabled: {type: boolean}, pre_hook: {type: array, items: {type: string}}, post_hook: {type: array, items: {type: string}}}
     BackupRun:
       type: object
-      properties: {id: {type: string}, policy_id: {type: string}, state: {type: string, enum: [queued, running, succeeded, failed]}, snapshots: {type: array, items: {type: object, properties: {target_id: {type: string}, snapshot_id: {type: string}, size_bytes: {type: integer}, ok: {type: boolean}, error: {type: string}}}}, error: {type: string}, started_at: {type: string, format: date-time}, finished_at: {type: string, format: date-time}}
+      properties: {id: {type: string}, policy_id: {type: string}, trigger: {type: string, enum: [schedule, manual, safety]}, manifest: {type: object, additionalProperties: true}, duration_ms: {type: integer}, node_id: {type: string}, state: {type: string, enum: [queued, running, succeeded, failed]}, snapshots: {type: array, items: {type: object, properties: {target_id: {type: string}, snapshot_id: {type: string}, size_bytes: {type: integer}, ok: {type: boolean}, error: {type: string}}}}, error: {type: string}, started_at: {type: string, format: date-time}, finished_at: {type: string, format: date-time}}
+    BackupRestore:
+      type: object
+      properties: {id: {type: string}, run_id: {type: string}, target_id: {type: string}, mode: {type: string, enum: [in_place, new_service]}, service_id: {type: string}, state: {type: string, enum: [queued, running, succeeded, failed]}, error: {type: string}, created_at: {type: string, format: date-time}, finished_at: {type: string, format: date-time}}
     RestoreCheck:
       type: object
-      properties: {id: {type: string}, policy_id: {type: string}, backup_run_id: {type: string}, target_id: {type: string}, node_id: {type: string}, state: {type: string, enum: [queued, running, passed, failed]}, checks: {type: array, items: {type: object, properties: {name: {type: string}, ok: {type: boolean}, detail: {type: string}}}}, duration_ms: {type: integer}, started_at: {type: string, format: date-time}, finished_at: {type: string, format: date-time}}
+      properties: {id: {type: string}, trigger: {type: string, enum: [schedule, manual, first_backup]}, policy_id: {type: string}, backup_run_id: {type: string}, target_id: {type: string}, node_id: {type: string}, state: {type: string, enum: [queued, running, passed, failed]}, checks: {type: array, items: {type: object, properties: {name: {type: string}, ok: {type: boolean}, detail: {type: string}}}}, duration_ms: {type: integer}, started_at: {type: string, format: date-time}, finished_at: {type: string, format: date-time}}
     AlertChannel:
       type: object
       properties: {id: {type: string}, kind: {type: string, enum: [telegram, slack, email, webhook]}, name: {type: string}, config: {type: object, additionalProperties: true}, enabled: {type: boolean}, state: {type: string, enum: [ok, failing]}}

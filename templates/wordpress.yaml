@@ -7,20 +7,20 @@ tags: [cms, blog]
 inputs:
   - { name: domain, label: Domain, type: domain, required: true }
 services:
-  mysql:
+  wordpress-db:
     type: database
     db: { engine: mysql, version: "8.4" }
   wordpress:
     source: { image: { name: "wordpress:6.7-apache" } }
     ports: [80]
     env:
-      WORDPRESS_DB_HOST: "${{db.mysql.HOST}}:${{db.mysql.PORT}}"
-      WORDPRESS_DB_USER: "${{db.mysql.USER}}"
-      WORDPRESS_DB_PASSWORD: "${{db.mysql.PASSWORD}}"
-      WORDPRESS_DB_NAME: "${{db.mysql.NAME}}"
+      WORDPRESS_DB_HOST: "${{db.wordpress-db.HOST}}:${{db.wordpress-db.PORT}}"
+      WORDPRESS_DB_USER: "${{db.wordpress-db.USER}}"
+      WORDPRESS_DB_PASSWORD: "${{db.wordpress-db.PASSWORD}}"
+      WORDPRESS_DB_NAME: "${{db.wordpress-db.NAME}}"
     volumes:
       - { name: content, path: /var/www/html }
     domains:
       - { host: "${{inputs.domain}}", port: 80 }
     healthcheck: { type: tcp, port: 80, start_period: 60s }
-    depends_on: [mysql]
+    depends_on: [wordpress-db]

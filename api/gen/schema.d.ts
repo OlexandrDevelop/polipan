@@ -1896,6 +1896,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/backup-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the backup policies of the org (all services and the control-plane database) */
+        get: operations["listAllBackupPolicies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/backup-policies/{policy_id}": {
         parameters: {
             query?: never;
@@ -1960,6 +1977,23 @@ export interface paths {
         put?: never;
         /** Restore a snapshot into the service or into a new service (clone) */
         post: operations["restoreBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backup-restores/{restore_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a restore job (state, error, the new service) */
+        get: operations["getBackupRestore"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2395,6 +2429,12 @@ export interface components {
             source_type?: "git" | "image";
             /** @enum {string} */
             db_engine?: "postgres" | "mysql" | "mariadb" | "mongo" | "redis";
+            /** @description database services: the version tag chosen at creation */
+            db_version?: string;
+            backup?: components["schemas"]["ServiceBackup"];
+            template_instance_id?: string;
+            /** @description for example zero_downtime_not_available (a database always uses recreate) and database_exposed */
+            warnings?: components["schemas"]["Warning"][];
             config?: components["schemas"]["ServiceConfig"];
             git_managed_fields?: string[];
             /** @enum {string} */
@@ -2407,6 +2447,18 @@ export interface components {
             live_release_id?: string;
             placements?: components["schemas"]["Placement"][];
             pending_changes?: boolean;
+        };
+        /** @description Database services only. none: no policy and not skipped (the UI shows the suggestion). skipped: the user skipped the suggestion. configured: a policy exists. */
+        ServiceBackup: {
+            /** @enum {string} */
+            status?: "none" | "skipped" | "configured";
+            suggestion?: {
+                schedule?: string;
+                retention?: {
+                    [key: string]: number;
+                };
+                restore_check_schedule?: string;
+            };
         };
         Placement: {
             id?: string;
@@ -2440,6 +2492,8 @@ export interface components {
             failover?: "none" | "auto";
             allow_data_loss_failover?: boolean;
             override_git?: boolean;
+            /** @description Database services: record that the backup suggestion was skipped. */
+            backup_skipped?: boolean;
         };
         DeployRequest: {
             strategy?: components["schemas"]["Strategy"];
@@ -2792,7 +2846,21 @@ export interface components {
             restore_check_schedule: string;
             /** @default true */
             restore_check_enabled: boolean;
+            /** @enum {string} */
+            restore_check_mode?: "full" | "sample";
             enabled?: boolean;
+            /** @description true for the built-in policy of the control-plane database */
+            control_plane?: boolean;
+            /** @description postgres, mysql, mariadb, mongo, redis, volume or controlplane */
+            engine?: string;
+            /** @description no passed restore check in 2 x the check interval (REQ-BKP-103) */
+            check_overdue?: boolean;
+            /** @description every target is a local path on a node: the UI warns until a remote target is added */
+            local_only?: boolean;
+            hooks?: {
+                pre?: string[];
+                post?: string[];
+            };
             /** @enum {string} */
             health?: "verified" | "unverified" | "failing";
             last_run?: components["schemas"]["BackupRun"];
@@ -2807,6 +2875,8 @@ export interface components {
             };
             restore_check_schedule?: string;
             restore_check_enabled?: boolean;
+            /** @enum {string} */
+            restore_check_mode?: "full" | "sample";
             enabled?: boolean;
             pre_hook?: string[];
             post_hook?: string[];
@@ -2814,6 +2884,13 @@ export interface components {
         BackupRun: {
             id?: string;
             policy_id?: string;
+            /** @enum {string} */
+            trigger?: "schedule" | "manual" | "safety";
+            manifest?: {
+                [key: string]: unknown;
+            };
+            duration_ms?: number;
+            node_id?: string;
             /** @enum {string} */
             state?: "queued" | "running" | "succeeded" | "failed";
             snapshots?: {
@@ -2829,8 +2906,25 @@ export interface components {
             /** Format: date-time */
             finished_at?: string;
         };
+        BackupRestore: {
+            id?: string;
+            run_id?: string;
+            target_id?: string;
+            /** @enum {string} */
+            mode?: "in_place" | "new_service";
+            service_id?: string;
+            /** @enum {string} */
+            state?: "queued" | "running" | "succeeded" | "failed";
+            error?: string;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            finished_at?: string;
+        };
         RestoreCheck: {
             id?: string;
+            /** @enum {string} */
+            trigger?: "schedule" | "manual" | "first_backup";
             policy_id?: string;
             backup_run_id?: string;
             target_id?: string;
@@ -6678,6 +6772,26 @@ export interface operations {
             };
         };
     };
+    listAllBackupPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupPolicy"][];
+                };
+            };
+        };
+    };
     getBackupPolicy: {
         parameters: {
             query?: never;
@@ -6823,7 +6937,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Accepted */
+            /** @description Accepted. job_id is the id of the restore (see getBackupRestore). For a new service, service_id is the new service. */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -6836,6 +6950,28 @@ export interface operations {
                 };
             };
             409: components["responses"]["Error"];
+        };
+    };
+    getBackupRestore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                restore_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupRestore"];
+                };
+            };
         };
     };
     runRestoreCheck: {

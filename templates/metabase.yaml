@@ -7,7 +7,7 @@ tags: [analytics, bi]
 inputs:
   - { name: domain, label: Domain, type: domain, required: true }
 services:
-  postgres:
+  metabase-db:
     type: database
     db: { engine: postgres, version: "16" }
   metabase:
@@ -15,13 +15,13 @@ services:
     ports: [3000]
     env:
       MB_DB_TYPE: postgres
-      MB_DB_HOST: "${{db.postgres.HOST}}"
-      MB_DB_PORT: "${{db.postgres.PORT}}"
-      MB_DB_DBNAME: "${{db.postgres.NAME}}"
-      MB_DB_USER: "${{db.postgres.USER}}"
-      MB_DB_PASS: "${{db.postgres.PASSWORD}}"
+      MB_DB_HOST: "${{db.metabase-db.HOST}}"
+      MB_DB_PORT: "${{db.metabase-db.PORT}}"
+      MB_DB_DBNAME: "${{db.metabase-db.NAME}}"
+      MB_DB_USER: "${{db.metabase-db.USER}}"
+      MB_DB_PASS: "${{db.metabase-db.PASSWORD}}"
     domains:
       - { host: "${{inputs.domain}}", port: 3000 }
     healthcheck: { type: tcp, port: 3000, start_period: 120s }
     resources: { memory: 1Gi }
-    depends_on: [postgres]
+    depends_on: [metabase-db]

@@ -349,7 +349,7 @@ func (h *Handlers) ListServices(w http.ResponseWriter, r *http.Request, environm
 	}
 	out := make([]gen.Service, len(list))
 	for i := range list {
-		out[i] = serviceJSON(&list[i])
+		out[i] = h.decorateService(r.Context(), serviceJSON(&list[i]), &list[i])
 		out[i].PendingChanges = ptr(h.pendingChanges(r.Context(), &list[i]))
 	}
 	WriteJSON(w, http.StatusOK, out)
@@ -372,11 +372,15 @@ func (h *Handlers) CreateService(w http.ResponseWriter, r *http.Request, environ
 	case !serviceNameRe.MatchString(body.Name):
 		invalid(w, r, "name", "name must use lower case letters, digits and dashes (1 to 40 characters)")
 		return
-	case body.Type != "app":
-		invalid(w, r, "type", "only app services can be created in this version")
+	case body.Type != "app" && body.Type != "database":
+		invalid(w, r, "type", "only app and database services can be created in this version")
 		return
-	case body.DbEngine != nil || body.DbVersion != nil:
-		invalid(w, r, "db_engine", "databases are not available in this version")
+	case body.Type == "app" && (body.DbEngine != nil || body.DbVersion != nil):
+		invalid(w, r, "db_engine", "db_engine is only for a database service")
+		return
+	}
+	if body.Type == "database" {
+		h.createDatabase(w, r, env, body)
 		return
 	}
 	var cfg, src map[string]any
@@ -411,7 +415,7 @@ func (h *Handlers) CreateService(w http.ResponseWriter, r *http.Request, environ
 	if fail(w, r, err) {
 		return
 	}
-	WriteJSON(w, http.StatusCreated, serviceJSON(s))
+	WriteJSON(w, http.StatusCreated, h.decorateService(r.Context(), serviceJSON(s), s))
 }
 
 // GetService returns a service with its placements.
@@ -420,7 +424,7 @@ func (h *Handlers) GetService(w http.ResponseWriter, r *http.Request, serviceID 
 	if fail(w, r, err) {
 		return
 	}
-	out := serviceJSON(s)
+	out := h.decorateService(r.Context(), serviceJSON(s), s)
 	out.PendingChanges = ptr(h.pendingChanges(r.Context(), s))
 	WriteJSON(w, http.StatusOK, out)
 }
@@ -439,7 +443,33 @@ func (h *Handlers) UpdateService(w http.ResponseWriter, r *http.Request, service
 		return
 	}
 	var cfg json.RawMessage
-	if body.Config != nil && cur.SourceType == "git" { // handlers_git.go
+	var dbWarnings []gen.Warning
+	if body.BackupSkipped != nil {
+		if cur.Type != "database" {
+			invalid(w, r, "backup_skipped", "only a database service has a backup suggestion")
+			return
+		}
+		if fail(w, r, h.Store.SetBackupSkipped(r.Context(), h.orgID(r), serviceID, *body.BackupSkipped)) {
+			return
+		}
+	}
+	if body.Config != nil && cur.Type == "database" {
+		merged := map[string]any{}
+		_ = json.Unmarshal(cur.Config, &merged)
+		for k, v := range *body.Config {
+			merged[k] = v
+		}
+		var ok bool
+		if dbWarnings, ok = h.checkDatabaseUpdate(w, r, cur, merged); !ok {
+			return
+		}
+		raw, err := checkImageConfig(merged)
+		if err != nil {
+			invalid(w, r, "config", err.Error())
+			return
+		}
+		cfg = raw
+	} else if body.Config != nil && cur.SourceType == "git" { // handlers_git.go
 		current, _ := git.SourceOf(cur.Config)
 		if cfg, err = h.buildGitConfig(r, cur.EnvProtected, map[string]any(*body.Config), nil, current); err != nil {
 			writeGitConfigError(w, r, err)
@@ -464,7 +494,11 @@ func (h *Handlers) UpdateService(w http.ResponseWriter, r *http.Request, service
 	if fail(w, r, err) {
 		return
 	}
-	WriteJSON(w, http.StatusOK, serviceJSON(s))
+	out := h.decorateService(r.Context(), serviceJSON(s), s)
+	if len(dbWarnings) > 0 {
+		out.Warnings = &dbWarnings
+	}
+	WriteJSON(w, http.StatusOK, out)
 }
 
 // DeleteService soft deletes a service. confirm must be its name.

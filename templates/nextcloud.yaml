@@ -9,17 +9,17 @@ inputs:
   - { name: admin_user, label: Admin user, type: string, default: admin }
   - { name: admin_password, label: Admin password, type: secret, required: true }
 services:
-  mariadb:
+  nextcloud-db:
     type: database
     db: { engine: mariadb, version: "11" }
   nextcloud:
     source: { image: { name: "nextcloud:30-apache" } }
     ports: [80]
     env:
-      MYSQL_HOST: "${{db.mariadb.HOST}}"
-      MYSQL_DATABASE: "${{db.mariadb.NAME}}"
-      MYSQL_USER: "${{db.mariadb.USER}}"
-      MYSQL_PASSWORD: "${{db.mariadb.PASSWORD}}"
+      MYSQL_HOST: "${{db.nextcloud-db.HOST}}"
+      MYSQL_DATABASE: "${{db.nextcloud-db.NAME}}"
+      MYSQL_USER: "${{db.nextcloud-db.USER}}"
+      MYSQL_PASSWORD: "${{db.nextcloud-db.PASSWORD}}"
       NEXTCLOUD_ADMIN_USER: "${{inputs.admin_user}}"
       NEXTCLOUD_ADMIN_PASSWORD: "${{inputs.admin_password}}"
       NEXTCLOUD_TRUSTED_DOMAINS: "${{inputs.domain}}"
@@ -29,4 +29,4 @@ services:
     domains:
       - { host: "${{inputs.domain}}", port: 80 }
     healthcheck: { type: tcp, port: 80, start_period: 120s }
-    depends_on: [mariadb]
+    depends_on: [nextcloud-db]

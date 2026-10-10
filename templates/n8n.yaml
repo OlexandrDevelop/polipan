@@ -8,7 +8,7 @@ inputs:
   - { name: domain, label: Domain, type: domain, required: true }
   - { name: n8n_encryption_key, label: Encryption key, type: secret, generate: true }
 services:
-  postgres:
+  n8n-db:
     type: database
     db: { engine: postgres, version: "16" }
   n8n:
@@ -16,11 +16,11 @@ services:
     ports: [5678]
     env:
       DB_TYPE: postgresdb
-      DB_POSTGRESDB_HOST: "${{db.postgres.HOST}}"
-      DB_POSTGRESDB_PORT: "${{db.postgres.PORT}}"
-      DB_POSTGRESDB_DATABASE: "${{db.postgres.NAME}}"
-      DB_POSTGRESDB_USER: "${{db.postgres.USER}}"
-      DB_POSTGRESDB_PASSWORD: "${{db.postgres.PASSWORD}}"
+      DB_POSTGRESDB_HOST: "${{db.n8n-db.HOST}}"
+      DB_POSTGRESDB_PORT: "${{db.n8n-db.PORT}}"
+      DB_POSTGRESDB_DATABASE: "${{db.n8n-db.NAME}}"
+      DB_POSTGRESDB_USER: "${{db.n8n-db.USER}}"
+      DB_POSTGRESDB_PASSWORD: "${{db.n8n-db.PASSWORD}}"
       N8N_HOST: "${{inputs.domain}}"
       N8N_PROTOCOL: https
       WEBHOOK_URL: "https://${{inputs.domain}}/"
@@ -30,4 +30,4 @@ services:
     domains:
       - { host: "${{inputs.domain}}", port: 5678 }
     healthcheck: { type: tcp, port: 5678, start_period: 60s }
-    depends_on: [postgres]
+    depends_on: [n8n-db]

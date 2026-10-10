@@ -7,7 +7,7 @@ tags: [cms, blog]
 inputs:
   - { name: domain, label: Domain, type: domain, required: true }
 services:
-  mysql:
+  ghost-db:
     type: database
     db: { engine: mysql, version: "8.4" }
   ghost:
@@ -16,14 +16,14 @@ services:
     env:
       url: "https://${{inputs.domain}}"
       database__client: mysql
-      database__connection__host: "${{db.mysql.HOST}}"
-      database__connection__port: "${{db.mysql.PORT}}"
-      database__connection__user: "${{db.mysql.USER}}"
-      database__connection__password: "${{db.mysql.PASSWORD}}"
-      database__connection__database: "${{db.mysql.NAME}}"
+      database__connection__host: "${{db.ghost-db.HOST}}"
+      database__connection__port: "${{db.ghost-db.PORT}}"
+      database__connection__user: "${{db.ghost-db.USER}}"
+      database__connection__password: "${{db.ghost-db.PASSWORD}}"
+      database__connection__database: "${{db.ghost-db.NAME}}"
     volumes:
       - { name: content, path: /var/lib/ghost/content }
     domains:
       - { host: "${{inputs.domain}}", port: 2368 }
     healthcheck: { type: tcp, port: 2368, start_period: 60s }
-    depends_on: [mysql]
+    depends_on: [ghost-db]
