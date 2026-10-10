@@ -1,0 +1,20 @@
+slug: vaultwarden
+version: 1.0.0
+name: Vaultwarden
+description: A small Bitwarden compatible password manager server.
+icon: https://raw.githubusercontent.com/dani-garcia/vaultwarden/main/resources/vaultwarden-icon.svg
+tags: [security, passwords]
+inputs:
+  - { name: domain, label: Domain, type: domain, required: true }
+services:
+  vaultwarden:
+    source: { image: { name: "vaultwarden/server:1.32.5" } }
+    ports: [80]
+    env:
+      DOMAIN: "https://${{inputs.domain}}"
+      SIGNUPS_ALLOWED: "true"
+    volumes:
+      - { name: data, path: /data }
+    domains:
+      - { host: "${{inputs.domain}}", port: 80 }
+    healthcheck: { type: tcp, port: 80, start_period: 30s }

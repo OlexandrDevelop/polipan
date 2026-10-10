@@ -1,0 +1,29 @@
+slug: gitea
+version: 1.0.0
+name: Gitea
+description: A lightweight self-hosted Git service with a PostgreSQL database.
+icon: https://about.gitea.com/gitea-text-logo.svg
+tags: [git, devtools]
+inputs:
+  - { name: domain, label: Domain, type: domain, required: true }
+services:
+  postgres:
+    type: database
+    db: { engine: postgres, version: "16" }
+  gitea:
+    source: { image: { name: "gitea/gitea:1.22" } }
+    ports: [3000]
+    env:
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: "${{db.postgres.HOST}}:${{db.postgres.PORT}}"
+      GITEA__database__NAME: "${{db.postgres.NAME}}"
+      GITEA__database__USER: "${{db.postgres.USER}}"
+      GITEA__database__PASSWD: "${{db.postgres.PASSWORD}}"
+      GITEA__server__ROOT_URL: "https://${{inputs.domain}}/"
+      GITEA__server__DOMAIN: "${{inputs.domain}}"
+    volumes:
+      - { name: data, path: /data }
+    domains:
+      - { host: "${{inputs.domain}}", port: 3000 }
+    healthcheck: { type: tcp, port: 3000, start_period: 60s }
+    depends_on: [postgres]

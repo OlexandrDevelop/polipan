@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	pb "github.com/polipan/polipan/proto/agentv1"
+	"github.com/polipan/polipan/server/internal/dbengine"
 	"github.com/polipan/polipan/server/internal/orchestrator"
 )
 
@@ -70,7 +71,7 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 			Health:           cfg.healthSpec(),
 			StopGraceSeconds: uint32(cfg.stopGraceSeconds()),
 			RestartPolicy:    cfg.RestartPolicy,
-			NetworkAliases:   []string{name},
+			NetworkAliases:   []string{name, dbengine.Alias(sid)},
 			Resources:        cfg.resourceSpec(),
 			Labels: map[string]string{
 				"polipan.service": sid, "polipan.placement": pid, "polipan.release": rid, "polipan.managed": "true",

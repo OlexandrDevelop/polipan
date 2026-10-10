@@ -91,6 +91,9 @@ type Entry struct {
 	ServiceID     string
 	Preview       bool
 	BuildTime     bool
+	// Ref marks an entry that exists only to be referenced, like db.main.URL (C02). It is
+	// never an environment variable of its own.
+	Ref bool
 }
 
 // level is the scope rank: project 0, environment 1, service 2.
@@ -210,6 +213,7 @@ func Resolve(view map[string]Entry) (*Result, error) {
 	}
 	res := &Result{Plain: map[string]string{}, Secrets: map[string]Entry{}, Templates: map[string]string{}, BuildTime: map[string]bool{}}
 	missing := map[string]bool{}
+	refSecrets := map[string]Entry{} // secrets of referenced databases that the view uses
 	type done struct {
 		value      string
 		usesSecret bool
@@ -222,6 +226,9 @@ func Resolve(view map[string]Entry) (*Result, error) {
 		}
 		e := view[name]
 		if e.Secret {
+			if e.Ref {
+				refSecrets[name] = e
+			}
 			return done{"${{" + name + "}}", true}
 		}
 		uses := false
@@ -240,6 +247,9 @@ func Resolve(view map[string]Entry) (*Result, error) {
 	}
 	for _, name := range sortedNames(view) {
 		e := view[name]
+		if e.Ref {
+			continue // only used when another value points to it
+		}
 		if e.BuildTime {
 			res.BuildTime[name] = true
 		}
@@ -253,6 +263,9 @@ func Resolve(view map[string]Entry) (*Result, error) {
 		} else {
 			res.Plain[name] = d.value
 		}
+	}
+	for name, e := range refSecrets {
+		res.Secrets[name] = e
 	}
 	if len(missing) > 0 {
 		names := make([]string, 0, len(missing))

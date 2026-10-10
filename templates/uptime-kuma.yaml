@@ -1,0 +1,17 @@
+slug: uptime-kuma
+version: 1.0.0
+name: Uptime Kuma
+description: A self-hosted monitoring tool with status pages.
+icon: https://uptime.kuma.pet/img/icon.svg
+tags: [monitoring]
+inputs:
+  - { name: domain, label: Domain, type: domain, required: true }
+services:
+  uptime-kuma:
+    source: { image: { name: "louislam/uptime-kuma:1" } }
+    ports: [3001]
+    volumes:
+      - { name: data, path: /app/data }
+    domains:
+      - { host: "${{inputs.domain}}", port: 3001 }
+    healthcheck: { type: tcp, port: 3001, start_period: 60s }

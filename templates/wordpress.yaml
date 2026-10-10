@@ -1,0 +1,26 @@
+slug: wordpress
+version: 1.0.0
+name: WordPress
+description: The WordPress blog and site engine with a MySQL database.
+icon: https://s.w.org/style/images/about/WordPress-logotype-simplified.png
+tags: [cms, blog]
+inputs:
+  - { name: domain, label: Domain, type: domain, required: true }
+services:
+  mysql:
+    type: database
+    db: { engine: mysql, version: "8.4" }
+  wordpress:
+    source: { image: { name: "wordpress:6.7-apache" } }
+    ports: [80]
+    env:
+      WORDPRESS_DB_HOST: "${{db.mysql.HOST}}:${{db.mysql.PORT}}"
+      WORDPRESS_DB_USER: "${{db.mysql.USER}}"
+      WORDPRESS_DB_PASSWORD: "${{db.mysql.PASSWORD}}"
+      WORDPRESS_DB_NAME: "${{db.mysql.NAME}}"
+    volumes:
+      - { name: content, path: /var/www/html }
+    domains:
+      - { host: "${{inputs.domain}}", port: 80 }
+    healthcheck: { type: tcp, port: 80, start_period: 60s }
+    depends_on: [mysql]

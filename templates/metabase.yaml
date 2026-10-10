@@ -1,0 +1,27 @@
+slug: metabase
+version: 1.0.0
+name: Metabase
+description: Business intelligence and dashboards with a PostgreSQL application database.
+icon: https://www.metabase.com/images/logo.svg
+tags: [analytics, bi]
+inputs:
+  - { name: domain, label: Domain, type: domain, required: true }
+services:
+  postgres:
+    type: database
+    db: { engine: postgres, version: "16" }
+  metabase:
+    source: { image: { name: "metabase/metabase:v0.51.3" } }
+    ports: [3000]
+    env:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: "${{db.postgres.HOST}}"
+      MB_DB_PORT: "${{db.postgres.PORT}}"
+      MB_DB_DBNAME: "${{db.postgres.NAME}}"
+      MB_DB_USER: "${{db.postgres.USER}}"
+      MB_DB_PASS: "${{db.postgres.PASSWORD}}"
+    domains:
+      - { host: "${{inputs.domain}}", port: 3000 }
+    healthcheck: { type: tcp, port: 3000, start_period: 120s }
+    resources: { memory: 1Gi }
+    depends_on: [postgres]

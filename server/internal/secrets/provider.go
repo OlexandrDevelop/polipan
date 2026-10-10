@@ -212,7 +212,15 @@ func (m *Manager) ValuesForService(ctx context.Context, serviceID string) ([]str
 	}
 	want := map[Ref]bool{}
 	// All secrets of the service scope (also those hidden from previews), current version.
-	for _, e := range vars.Effective(entries, scope.EnvironmentID, serviceID, false) {
+	dbEntries, err := vars.DatabaseEntries(ctx, m.DB, scope.EnvironmentID)
+	if err != nil {
+		return nil, err
+	}
+	view := vars.Effective(entries, scope.EnvironmentID, serviceID, false)
+	for _, e := range dbEntries {
+		view[e.Name] = e
+	}
+	for _, e := range view {
 		if e.Secret {
 			want[Ref{e.ID, e.Version}] = true
 		}

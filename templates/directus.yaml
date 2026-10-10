@@ -1,0 +1,35 @@
+slug: directus
+version: 1.0.0
+name: Directus
+description: A headless CMS and data platform with a PostgreSQL database.
+icon: https://directus.io/favicon.ico
+tags: [cms, api]
+inputs:
+  - { name: domain, label: Domain, type: domain, required: true }
+  - { name: admin_email, label: Admin email, type: string, required: true }
+  - { name: admin_password, label: Admin password, type: secret, required: true }
+  - { name: secret, label: App secret, type: secret, generate: true }
+services:
+  postgres:
+    type: database
+    db: { engine: postgres, version: "16" }
+  directus:
+    source: { image: { name: "directus/directus:11" } }
+    ports: [8055]
+    env:
+      DB_CLIENT: pg
+      DB_HOST: "${{db.postgres.HOST}}"
+      DB_PORT: "${{db.postgres.PORT}}"
+      DB_DATABASE: "${{db.postgres.NAME}}"
+      DB_USER: "${{db.postgres.USER}}"
+      DB_PASSWORD: "${{db.postgres.PASSWORD}}"
+      ADMIN_EMAIL: "${{inputs.admin_email}}"
+      ADMIN_PASSWORD: "${{inputs.admin_password}}"
+      PUBLIC_URL: "https://${{inputs.domain}}"
+    secrets: [SECRET]
+    volumes:
+      - { name: uploads, path: /directus/uploads }
+    domains:
+      - { host: "${{inputs.domain}}", port: 8055 }
+    healthcheck: { type: tcp, port: 8055, start_period: 60s }
+    depends_on: [postgres]

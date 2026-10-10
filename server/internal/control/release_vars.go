@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -145,6 +146,9 @@ func (c *Control) fillWorkload(ctx context.Context, q dbq, nodeID string, w *pb.
 	}
 	var secretKeys []string
 	for name, v := range values {
+		if strings.Contains(name, ".") {
+			continue // a secret of a referenced database (db.main.PASSWORD): used in templates only
+		}
 		env[name] = v
 		secretKeys = append(secretKeys, name)
 	}

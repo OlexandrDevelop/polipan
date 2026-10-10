@@ -1,0 +1,27 @@
+slug: minio
+version: 1.0.0
+name: MinIO
+description: S3 compatible object storage with a web console.
+icon: https://min.io/resources/img/logo/MINIO_wordmark.png
+tags: [storage, s3]
+inputs:
+  - { name: api_domain, label: S3 API domain, type: domain, required: true }
+  - { name: console_domain, label: Console domain, type: domain, required: true }
+  - { name: root_user, label: Root user, type: string, default: minioadmin }
+  - { name: root_password, label: Root password (at least 8 characters), type: secret, required: true }
+services:
+  minio:
+    source: { image: { name: "minio/minio:RELEASE.2024-12-18T13-15-44Z" } }
+    command: ["server", "/data", "--console-address", ":9001"]
+    ports: [9000]
+    env:
+      MINIO_ROOT_USER: "${{inputs.root_user}}"
+      MINIO_ROOT_PASSWORD: "${{inputs.root_password}}"
+      MINIO_SERVER_URL: "https://${{inputs.api_domain}}"
+      MINIO_BROWSER_REDIRECT_URL: "https://${{inputs.console_domain}}"
+    volumes:
+      - { name: data, path: /data }
+    domains:
+      - { host: "${{inputs.api_domain}}", port: 9000 }
+      - { host: "${{inputs.console_domain}}", port: 9001 }
+    healthcheck: { type: tcp, port: 9000, start_period: 30s }

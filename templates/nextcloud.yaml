@@ -1,0 +1,32 @@
+slug: nextcloud
+version: 1.0.0
+name: Nextcloud
+description: Files, calendar and contacts with a MariaDB database.
+icon: https://nextcloud.com/wp-content/uploads/2022/10/nextcloud-logo.svg
+tags: [files, collaboration]
+inputs:
+  - { name: domain, label: Domain, type: domain, required: true }
+  - { name: admin_user, label: Admin user, type: string, default: admin }
+  - { name: admin_password, label: Admin password, type: secret, required: true }
+services:
+  mariadb:
+    type: database
+    db: { engine: mariadb, version: "11" }
+  nextcloud:
+    source: { image: { name: "nextcloud:30-apache" } }
+    ports: [80]
+    env:
+      MYSQL_HOST: "${{db.mariadb.HOST}}"
+      MYSQL_DATABASE: "${{db.mariadb.NAME}}"
+      MYSQL_USER: "${{db.mariadb.USER}}"
+      MYSQL_PASSWORD: "${{db.mariadb.PASSWORD}}"
+      NEXTCLOUD_ADMIN_USER: "${{inputs.admin_user}}"
+      NEXTCLOUD_ADMIN_PASSWORD: "${{inputs.admin_password}}"
+      NEXTCLOUD_TRUSTED_DOMAINS: "${{inputs.domain}}"
+      OVERWRITEPROTOCOL: https
+    volumes:
+      - { name: data, path: /var/www/html }
+    domains:
+      - { host: "${{inputs.domain}}", port: 80 }
+    healthcheck: { type: tcp, port: 80, start_period: 120s }
+    depends_on: [mariadb]

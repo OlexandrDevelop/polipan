@@ -1,0 +1,23 @@
+slug: pgadmin
+version: 1.0.0
+name: pgAdmin
+description: The web tool to manage PostgreSQL databases.
+icon: https://www.pgadmin.org/static/COMPILED/assets/img/logo-right-128.png
+tags: [database, devtools]
+inputs:
+  - { name: domain, label: Domain, type: domain, required: true }
+  - { name: admin_email, label: Admin email, type: string, required: true }
+  - { name: admin_password, label: Admin password, type: secret, required: true }
+services:
+  pgadmin:
+    source: { image: { name: "dpage/pgadmin4:8.14" } }
+    ports: [80]
+    env:
+      PGADMIN_DEFAULT_EMAIL: "${{inputs.admin_email}}"
+      PGADMIN_DEFAULT_PASSWORD: "${{inputs.admin_password}}"
+      PGADMIN_LISTEN_PORT: "80"
+    volumes:
+      - { name: data, path: /var/lib/pgadmin }
+    domains:
+      - { host: "${{inputs.domain}}", port: 80 }
+    healthcheck: { type: tcp, port: 80, start_period: 60s }

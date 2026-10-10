@@ -8,8 +8,11 @@ import (
 	"errors"
 	"reflect"
 	"sort"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/polipan/polipan/server/internal/dbengine"
 )
 
 // Querier is a pool or a transaction.
@@ -139,7 +142,15 @@ func Build(ctx context.Context, q Querier, serviceID string) (*Snapshot, error) 
 	if err != nil {
 		return nil, err
 	}
-	res, err := Resolve(Effective(entries, scope.EnvironmentID, serviceID, scope.Preview))
+	dbEntries, err := DatabaseEntries(ctx, q, scope.EnvironmentID)
+	if err != nil {
+		return nil, err
+	}
+	view := Effective(entries, scope.EnvironmentID, serviceID, scope.Preview)
+	for _, e := range dbEntries {
+		view[e.Name] = e
+	}
+	res, err := Resolve(view)
 	if err != nil {
 		return nil, err
 	}
@@ -221,4 +232,46 @@ func sameJSON(a, b []byte) bool {
 		return false
 	}
 	return reflect.DeepEqual(x, y)
+}
+
+// DatabaseEntries makes the reference entries ${{db.<name>.FIELD}} of the database services of an
+// environment (REQ-DB-004). HOST is the stable network alias of the service. PASSWORD points to the
+// secret DB_PASSWORD of the database, so it resolves through the secrets store and stays a secret.
+func DatabaseEntries(ctx context.Context, q Querier, environmentID string) ([]Entry, error) {
+	rows, err := q.Query(ctx, `SELECT s.id, s.name, s.db_engine,
+		COALESCE((SELECT x.value FROM variables x WHERE x.service_id = s.id AND x.name = 'DB_USER'), ''),
+		COALESCE((SELECT x.value FROM variables x WHERE x.service_id = s.id AND x.name = 'DB_NAME'), ''),
+		COALESCE((SELECT x.id FROM secrets x WHERE x.service_id = s.id AND x.name = 'DB_PASSWORD' AND x.deleted_at IS NULL), ''),
+		COALESCE((SELECT x.current_version FROM secrets x WHERE x.service_id = s.id AND x.name = 'DB_PASSWORD' AND x.deleted_at IS NULL), 0)
+		FROM services s WHERE s.environment_id = $1 AND s.type = 'database' AND s.deleted_at IS NULL ORDER BY s.name`, environmentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Entry
+	for rows.Next() {
+		var id, name, user, dbname, secretID string
+		var engineName *string
+		var version int
+		if err := rows.Scan(&id, &name, &engineName, &user, &dbname, &secretID, &version); err != nil {
+			return nil, err
+		}
+		if engineName == nil || secretID == "" {
+			continue
+		}
+		eng := dbengine.Get(*engineName)
+		if eng == nil {
+			continue
+		}
+		prefix := "db." + name + "."
+		host := dbengine.Alias(id)
+		out = append(out,
+			Entry{Name: prefix + "HOST", Value: host, Ref: true},
+			Entry{Name: prefix + "PORT", Value: strconv.Itoa(eng.Port), Ref: true},
+			Entry{Name: prefix + "USER", Value: user, Ref: true},
+			Entry{Name: prefix + "NAME", Value: dbname, Ref: true},
+			Entry{Name: prefix + "PASSWORD", Secret: true, ID: secretID, Version: version, Ref: true},
+			Entry{Name: prefix + "URL", Value: eng.URL(host, user, dbname, "${{"+prefix+"PASSWORD}}"), Ref: true})
+	}
+	return out, rows.Err()
 }

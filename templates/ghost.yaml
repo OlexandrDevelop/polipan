@@ -1,0 +1,29 @@
+slug: ghost
+version: 1.0.0
+name: Ghost
+description: The Ghost publishing platform with a MySQL database.
+icon: https://ghost.org/images/logos/ghost-logo-orb.png
+tags: [cms, blog]
+inputs:
+  - { name: domain, label: Domain, type: domain, required: true }
+services:
+  mysql:
+    type: database
+    db: { engine: mysql, version: "8.4" }
+  ghost:
+    source: { image: { name: "ghost:5-alpine" } }
+    ports: [2368]
+    env:
+      url: "https://${{inputs.domain}}"
+      database__client: mysql
+      database__connection__host: "${{db.mysql.HOST}}"
+      database__connection__port: "${{db.mysql.PORT}}"
+      database__connection__user: "${{db.mysql.USER}}"
+      database__connection__password: "${{db.mysql.PASSWORD}}"
+      database__connection__database: "${{db.mysql.NAME}}"
+    volumes:
+      - { name: content, path: /var/lib/ghost/content }
+    domains:
+      - { host: "${{inputs.domain}}", port: 2368 }
+    healthcheck: { type: tcp, port: 2368, start_period: 60s }
+    depends_on: [mysql]
