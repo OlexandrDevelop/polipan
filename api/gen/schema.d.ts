@@ -2266,6 +2266,8 @@ export interface components {
             status?: "invited" | "active" | "disabled";
             /** Format: date-time */
             last_login_at?: string;
+            /** @description Link to accept an invitation. Only in the answer of inviteMember: there is no email server, the admin sends it. */
+            invite_url?: string;
         };
         Team: {
             id?: string;
@@ -2275,6 +2277,8 @@ export interface components {
         ProjectRole: {
             user_id?: string;
             team_id?: string;
+            /** @description Set in GET /me, where the roles of the user come from many projects */
+            project_id?: string;
             /** @enum {string} */
             role: "admin" | "developer" | "viewer";
         };

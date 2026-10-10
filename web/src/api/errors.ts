@@ -6,6 +6,8 @@ export class ApiError extends Error {
   code: string
   retryAfter?: number
   requestId?: string
+  // Extra data of the error, for example details.reason.
+  details?: Record<string, unknown>
 
   constructor(
     status: number,
@@ -13,6 +15,7 @@ export class ApiError extends Error {
     message: string,
     retryAfter?: number,
     requestId?: string,
+    details?: Record<string, unknown>,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -20,6 +23,7 @@ export class ApiError extends Error {
     this.code = code
     this.retryAfter = retryAfter
     this.requestId = requestId
+    this.details = details
   }
 }
 
@@ -38,7 +42,12 @@ export async function unwrap<T>(call: Promise<Result<T>>): Promise<T> {
     throw new ApiError(0, 'network', 'The server did not answer.')
   }
   if (result.response.ok) return result.data as T
-  const body = (result.error ?? {}) as { code?: string; message?: string; request_id?: string }
+  const body = (result.error ?? {}) as {
+    code?: string
+    message?: string
+    request_id?: string
+    details?: Record<string, unknown>
+  }
   const wait = Number(result.response.headers.get('Retry-After'))
   throw new ApiError(
     result.response.status,
@@ -46,5 +55,6 @@ export async function unwrap<T>(call: Promise<Result<T>>): Promise<T> {
     body.message ?? result.response.statusText,
     wait > 0 ? wait : undefined,
     body.request_id,
+    body.details,
   )
 }

@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, Navigate, Outlet, useNavigate, useParams } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { api, setCsrfToken } from '@/api/client'
+import { api, setCsrfToken, TWO_FACTOR_KEY } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { sessionWasActive, useMe } from '@/auth'
 import { CommandPalette } from '@/components/CommandPalette'
@@ -13,6 +13,7 @@ import { ThemeCycle } from '@/components/ThemeToggle'
 import { Banner, Button, Skeleton } from '@/components/ui'
 import { saveContext } from '@/context'
 import { t } from '@/i18n'
+import { useAccess } from '@/permissions'
 import { useLiveEvents } from '@/live'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { queryClient } from '@/queryClient'
@@ -66,6 +67,14 @@ export function AppShell() {
     enabled: Boolean(me.data),
     queryFn: () => unwrap(api.GET('/org')),
   })
+  const twoFactor = useQuery({
+    queryKey: TWO_FACTOR_KEY,
+    enabled: false,
+    initialData: false,
+    queryFn: () => false,
+  })
+  const canMembers = useAccess('member:read')
+  const canAudit = useAccess('audit:read')
   const logout = useMutation({
     mutationFn: () => unwrap(api.POST('/auth/logout')),
     onSettled: () => {
@@ -85,6 +94,9 @@ export function AppShell() {
   }
   if (me.data === null) {
     return <Navigate to="/login" search={{ expired: sessionWasActive() || undefined }} replace />
+  }
+  if (twoFactor.data && !window.location.pathname.endsWith('/settings/profile')) {
+    return <Navigate to="/o/$org/settings/profile" params={{ org }} replace />
   }
   const orgName = orgQuery.data?.name ?? 'Polipan'
   const wrongOrg = orgQuery.data?.slug !== undefined && orgQuery.data.slug !== org
@@ -127,6 +139,32 @@ export function AppShell() {
               {t('nav.backups')}
             </Link>
           </li>
+          {canMembers === 'allow' && (
+            <li className="flex-1 max-sm:hidden sm:flex-none">
+              <Link to="/o/$org/settings/members" params={{ org }} className={navLink}>
+                {t('nav.members')}
+              </Link>
+            </li>
+          )}
+          {canMembers === 'allow' && (
+            <li className="flex-1 max-sm:hidden sm:flex-none">
+              <Link to="/o/$org/settings/teams" params={{ org }} className={navLink}>
+                {t('nav.teams')}
+              </Link>
+            </li>
+          )}
+          <li className="flex-1 max-sm:hidden sm:flex-none">
+            <Link to="/o/$org/settings/tokens" params={{ org }} className={navLink}>
+              {t('nav.tokens')}
+            </Link>
+          </li>
+          {canAudit === 'allow' && (
+            <li className="flex-1 max-sm:hidden sm:flex-none">
+              <Link to="/o/$org/settings/audit" params={{ org }} className={navLink}>
+                {t('nav.audit')}
+              </Link>
+            </li>
+          )}
           <li className="flex-1 sm:flex-none">
             <Link to="/o/$org/settings/profile" params={{ org }} className={navLink}>
               {t('nav.profile')}

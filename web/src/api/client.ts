@@ -10,6 +10,9 @@ import { queryClient } from '@/queryClient'
 // Types are generated from api/openapi.yaml into api/gen/schema.d.ts.
 export const api = createClient<paths>({ baseUrl: '/api/v1' })
 
+// The query key of the flag "the org needs 2FA from this user".
+export const TWO_FACTOR_KEY = ['two-factor-required']
+
 // The CSRF token comes from GET /me. Every state-changing request sends it back.
 let csrfToken = ''
 
@@ -66,6 +69,18 @@ const session: Middleware = {
     // The session ended: the shell sees "no user" and goes to the login page.
     if (response.status === 401 && !isAnonymousCall(request.url)) {
       queryClient.setQueryData(['me'], null)
+    }
+    // The org needs 2FA and the user has none: the shell sends the user to the 2FA setup.
+    if (response.status === 403) {
+      void response
+        .clone()
+        .json()
+        .then((body: { details?: { reason?: string } }) => {
+          if (body.details?.reason === 'two_factor_required') {
+            queryClient.setQueryData(TWO_FACTOR_KEY, true)
+          }
+        })
+        .catch(() => undefined)
     }
     return response
   },

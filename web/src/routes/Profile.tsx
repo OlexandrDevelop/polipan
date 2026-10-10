@@ -3,9 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { api } from '@/api/client'
+import { api, TWO_FACTOR_KEY } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { useMe } from '@/auth'
+import { CodeBlock } from '@/components/Copy'
 import { DataList } from '@/components/DataList'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { PageHeader } from '@/components/PageHeader'
@@ -152,7 +153,143 @@ function Sessions() {
   )
 }
 
-// UI-43 (M1): profile, password, sessions and theme. Two-factor sign-in comes in M5.
+// The secret key inside an otpauth:// link, for a user who cannot scan a code.
+function secretOf(uri: string): string {
+  try {
+    return new URL(uri).searchParams.get('secret') ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function downloadText(name: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+// Two-factor sign-in. There is no QR library in the app, so the key is shown as text.
+function TwoFactor({ enabled }: { enabled: boolean }) {
+  const queryClient = useQueryClient()
+  const required = useQuery({
+    queryKey: TWO_FACTOR_KEY,
+    enabled: false,
+    initialData: false,
+    queryFn: () => false,
+  })
+  const [code, setCode] = useState('')
+  const [password, setPassword] = useState('')
+  const [recovery, setRecovery] = useState<string[]>([])
+  const refreshMe = () => {
+    queryClient.setQueryData(TWO_FACTOR_KEY, false)
+    return queryClient.invalidateQueries({ queryKey: ['me'] })
+  }
+  const enroll = useMutation({ mutationFn: () => unwrap(api.POST('/auth/totp/enroll')) })
+  const verify = useMutation({
+    mutationFn: () => unwrap(api.POST('/auth/totp/verify', { body: { totp_code: code.trim() } })),
+    onSuccess: async (data) => {
+      setRecovery(data.recovery_codes ?? [])
+      setCode('')
+      enroll.reset()
+      await refreshMe()
+    },
+  })
+  const disable = useMutation({
+    mutationFn: () => unwrap(api.POST('/auth/totp/disable', { body: { password } })),
+    onSuccess: () => {
+      setPassword('')
+      return refreshMe()
+    },
+  })
+  const uri = enroll.data?.otpauth_uri ?? ''
+  const codes = recovery.join('\n')
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold">{t('twofa.title')}</h2>
+      {required.data && !enabled && (
+        <Banner variant="warning" title={t('twofa.required_title')}>
+          {t('twofa.required')}
+        </Banner>
+      )}
+      {recovery.length > 0 && (
+        <div className="space-y-2">
+          <Banner variant="warning" title={t('twofa.recovery_title')}>
+            {t('twofa.recovery_text')}
+          </Banner>
+          <CodeBlock text={codes} label={t('twofa.recovery_title')} />
+          <Button onClick={() => downloadText('polipan-recovery-codes.txt', codes + '\n')}>
+            {t('twofa.download')}
+          </Button>
+          <div>
+            <Button onClick={() => setRecovery([])}>{t('twofa.saved')}</Button>
+          </div>
+        </div>
+      )}
+      {enabled ? (
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            disable.mutate()
+          }}
+        >
+          <StatusBadge tone="success" label={t('twofa.on')} />
+          {disable.error && <ErrorBanner error={disable.error} title={t('twofa.disable_failed')} />}
+          <TextField
+            label={t('twofa.password')}
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <Button type="submit" variant="destructive" loading={disable.isPending}>
+            {t('twofa.disable')}
+          </Button>
+        </form>
+      ) : !uri ? (
+        <div className="space-y-2">
+          <p className="text-sm text-muted">{t('twofa.off_text')}</p>
+          {enroll.error && <ErrorBanner error={enroll.error} title={t('twofa.enroll_failed')} />}
+          <Button variant="primary" loading={enroll.isPending} onClick={() => enroll.mutate()}>
+            {t('twofa.enroll')}
+          </Button>
+        </div>
+      ) : (
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            verify.mutate()
+          }}
+        >
+          <p>{t('twofa.scan_text')}</p>
+          {secretOf(uri) && <CodeBlock text={secretOf(uri)} label={t('twofa.key')} />}
+          <p className="text-sm text-muted">{t('twofa.uri')}</p>
+          <CodeBlock text={uri} label={t('twofa.uri')} />
+          {verify.error && <ErrorBanner error={verify.error} title={t('twofa.verify_failed')} />}
+          <TextField
+            label={t('twofa.code')}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            required
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+          />
+          <Button type="submit" variant="primary" loading={verify.isPending}>
+            {t('twofa.verify')}
+          </Button>
+        </form>
+      )}
+    </div>
+  )
+}
+
+// UI-43: profile, password, sessions, two-factor and theme.
 export function ProfilePage() {
   const me = useMe()
   return (
@@ -169,6 +306,7 @@ export function ProfilePage() {
           </Card>
           <NameForm key={me.data.user?.name} current={me.data.user?.name ?? ''} />
           <PasswordForm />
+          <TwoFactor enabled={Boolean(me.data.user?.totp_enabled)} />
           <Sessions />
           <div className="space-y-2">
             <h2 className="text-lg font-semibold">{t('profile.appearance')}</h2>

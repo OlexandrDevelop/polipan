@@ -1,7 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
-import { HomeRedirect, LoginPage, SetupPage } from '@/routes/Auth'
+import {
+  ForgotPasswordPage,
+  HomeRedirect,
+  InvitePage,
+  LoginPage,
+  ResetPasswordPage,
+  SetupPage,
+} from '@/routes/Auth'
+import { AuditPage } from '@/routes/Audit'
+import { MembersPage } from '@/routes/Members'
+import { ProjectRolesPage } from '@/routes/ProjectRoles'
+import { TeamsPage } from '@/routes/Teams'
+import { TokensPage } from '@/routes/Tokens'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { AppShell, RootLayout } from '@/routes/Layout'
 import { DeploymentPage } from '@/routes/DeploymentPage'
@@ -36,6 +48,21 @@ const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/setup',
   component: SetupPage,
+})
+const inviteRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/invite',
+  component: InvitePage,
+})
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reset-password',
+  component: ResetPasswordPage,
+})
+const forgotPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/forgot-password',
+  component: ForgotPasswordPage,
 })
 
 // Every signed-in page lives under /o/:org (navigation, section 2).
@@ -93,6 +120,31 @@ const profileRoute = createRoute({
   path: 'settings/profile',
   component: ProfilePage,
 })
+const membersRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'settings/members',
+  component: MembersPage,
+})
+const teamsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'settings/teams',
+  component: TeamsPage,
+})
+const tokensRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'settings/tokens',
+  component: TokensPage,
+})
+const auditRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'settings/audit',
+  component: AuditPage,
+})
+const projectRolesRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'p/$project/roles',
+  component: ProjectRolesPage,
+})
 const projectRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'p/$project',
@@ -142,6 +194,9 @@ const routeTree = rootRoute.addChildren([
   homeRoute,
   loginRoute,
   setupRoute,
+  inviteRoute,
+  resetPasswordRoute,
+  forgotPasswordRoute,
   orgRoute.addChildren([
     dashboardRoute,
     projectsRoute,
@@ -151,6 +206,11 @@ const routeTree = rootRoute.addChildren([
     backupsRoute,
     backupTargetsRoute,
     profileRoute,
+    membersRoute,
+    teamsRoute,
+    tokensRoute,
+    auditRoute,
+    projectRolesRoute,
     projectRoute,
     environmentRoute,
     newServiceRoute,

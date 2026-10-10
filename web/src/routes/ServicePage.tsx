@@ -22,7 +22,7 @@ import {
   StatusBadge,
 } from '@/components/ui'
 import { t, tState } from '@/i18n'
-import { accessFor } from '@/permissions'
+import { accessFor, effectiveRole } from '@/permissions'
 import { useMe } from '@/auth'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { ServiceDomains } from '@/routes/ServiceDomains'
@@ -365,7 +365,7 @@ export function ServicePage() {
 
   const service = live.data ?? scope.service
   const environment = scope.environment
-  const role = me.data?.org_role
+  const role = effectiveRole(me.data, environment.project_id)
   const deployAccess = accessFor(role, 'service:deploy', environment.protected)
   const updateAccess = accessFor(role, 'service:update', environment.protected)
   const busy = service.status === 'deploying'

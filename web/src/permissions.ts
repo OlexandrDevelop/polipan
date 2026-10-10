@@ -33,6 +33,14 @@ export type Permission =
   | 'backup:manage'
   | 'backup:restore'
   | 'template:manage'
+  | 'org:update'
+  | 'member:read'
+  | 'member:manage'
+  | 'team:manage'
+  | 'token:own'
+  | 'token:manage'
+  | 'audit:read'
+  | 'audit:export'
 
 const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'project:create': 'dev',
@@ -57,6 +65,14 @@ const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'backup:manage': 'p',
   'backup:restore': 'admin',
   'template:manage': 'dev',
+  'org:update': 'admin',
+  'member:read': 'all',
+  'member:manage': 'admin',
+  'team:manage': 'admin',
+  'token:own': 'all',
+  'token:manage': 'admin',
+  'audit:read': 'admin',
+  'audit:export': 'admin',
 }
 
 // hidden: the role can never do it. blocked: shown but disabled. allow: enabled.
@@ -76,7 +92,38 @@ export function accessFor(
   return 'hidden'
 }
 
-export function useAccess(permission: Permission, isProtected = false): Access {
+const roleRank: Record<Role, number> = { viewer: 0, developer: 1, admin: 2, owner: 3 }
+
+interface RoleSource {
+  org_role?: Role
+  project_roles?: { project_id?: string; role: 'admin' | 'developer' | 'viewer' }[]
+}
+
+// The role of the user in one project (security, section 3). Owner and admin keep their role.
+// For a developer or a viewer, the override of the project (user or team) replaces the org role.
+// If there are many overrides, the highest one wins.
+export function effectiveRole(
+  me: RoleSource | null | undefined,
+  projectId?: string,
+): Role | undefined {
+  const orgRole = me?.org_role
+  if (!orgRole || orgRole === 'owner' || orgRole === 'admin' || !projectId) return orgRole
+  const found = (me?.project_roles ?? []).filter((r) => r.project_id === projectId)
+  if (found.length === 0) return orgRole
+  return found.reduce<Role>(
+    (best, r) => (roleRank[r.role] > roleRank[best] ? r.role : best),
+    'viewer',
+  )
+}
+
+// Pass the project id on a project screen, to use the role of that project.
+export function useAccess(permission: Permission, isProtected = false, projectId?: string): Access {
   const me = useMe()
-  return accessFor(me.data?.org_role, permission, isProtected)
+  return accessFor(effectiveRole(me.data, projectId), permission, isProtected)
+}
+
+// The effective role of the signed-in user in a project (the org role without a project id).
+export function useRole(projectId?: string): Role | undefined {
+  const me = useMe()
+  return effectiveRole(me.data, projectId)
 }

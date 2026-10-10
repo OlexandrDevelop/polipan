@@ -21,7 +21,7 @@ import {
   TextField,
 } from '@/components/ui'
 import { t, tState } from '@/i18n'
-import { useAccess, accessFor } from '@/permissions'
+import { useAccess, accessFor, useRole } from '@/permissions'
 import { useMe } from '@/auth'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { useScope, useServices } from '@/scope'
@@ -131,10 +131,10 @@ function CreateEnvironmentDialog({
 }
 
 function ServiceCards({ environment, project }: { environment: Environment; project: string }) {
+  const role = useRole(environment.project_id)
   const { org } = useParams({ from: '/o/$org' })
   const services = useServices(environment.id)
-  const me = useMe()
-  const access = accessFor(me.data?.org_role, 'service:create', environment.protected)
+  const access = accessFor(role, 'service:create', environment.protected)
 
   const addButton =
     access === 'hidden' ? undefined : access === 'blocked' ? (
@@ -206,7 +206,8 @@ export function ProjectPage() {
   const navigate = useNavigate()
   const scope = useScope(projectSlug ?? '', envSlug)
   const [creating, setCreating] = useState(false)
-  const canCreateEnv = useAccess('env:create')
+  const canCreateEnv = useAccess('env:create', false, scope.project?.id)
+  const canManageRoles = useAccess('member:manage')
 
   if (scope.state === 'pending') return <Skeleton />
   if (scope.state === 'error') return <ErrorBanner error={scope.error} onRetry={scope.retry} />
@@ -219,9 +220,20 @@ export function ProjectPage() {
       <PageHeader
         title={project.name ?? ''}
         actions={
-          canCreateEnv === 'allow' && (
-            <Button onClick={() => setCreating(true)}>{t('env.create')}</Button>
-          )
+          <>
+            {canManageRoles === 'allow' && (
+              <Link
+                to="/o/$org/p/$project/roles"
+                params={{ org: orgSlug, project: project.slug ?? '' }}
+                className="inline-flex min-h-8 items-center rounded-sm border border-border-strong px-3 py-1 text-sm coarse:min-h-11"
+              >
+                {t('roles.link')}
+              </Link>
+            )}
+            {canCreateEnv === 'allow' && (
+              <Button onClick={() => setCreating(true)}>{t('env.create')}</Button>
+            )}
+          </>
         }
       />
       {environments.length === 0 || !environment ? (

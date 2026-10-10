@@ -7,6 +7,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { api } from '@/api/client'
 import { ApiError, unwrap } from '@/api/errors'
 import { fetchMe, useMe } from '@/auth'
+import { CodeBlock } from '@/components/Copy'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { PageHeader } from '@/components/PageHeader'
 import { Banner, Button, Card, Skeleton, TextField } from '@/components/ui'
@@ -43,9 +44,22 @@ export function LoginPage() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [totp, setTotp] = useState('')
+  // Stays on after the server asked for a code, so the field does not vanish after a wrong code.
+  const [askCode, setAskCode] = useState(false)
 
   const login = useMutation({
-    mutationFn: () => unwrap(api.POST('/auth/login', { body: { email, password } })),
+    mutationFn: () =>
+      unwrap(
+        api.POST('/auth/login', {
+          body: { email, password, ...(totp.trim() ? { totp_code: totp.trim() } : {}) },
+        }),
+      ),
+    onError: (e) => {
+      if (e instanceof ApiError && e.status === 401 && e.details?.reason === 'totp_required') {
+        setAskCode(true)
+      }
+    },
     onSuccess: async () => {
       await openSession()
       await navigate({ to: '/' })
@@ -56,6 +70,9 @@ export function LoginPage() {
 
   const error = login.error
   const status = error instanceof ApiError ? error.status : 0
+  // The account has 2FA: the server asks for a code (a 6-digit code or a recovery code).
+  const needsCode =
+    error instanceof ApiError && status === 401 && error.details?.reason === 'totp_required'
   function submit(event: FormEvent) {
     event.preventDefault()
     login.mutate()
@@ -64,9 +81,11 @@ export function LoginPage() {
   return (
     <AuthCard title={t('login.title')}>
       {search.expired && <Banner variant="warning">{t('login.expired')}</Banner>}
+      {needsCode && <Banner variant="info">{t('login.totp_needed')}</Banner>}
       {error &&
+        !needsCode &&
         (status === 401 ? (
-          <Banner variant="danger">{t('login.wrong')}</Banner>
+          <Banner variant="danger">{t(askCode ? 'login.wrong_code' : 'login.wrong')}</Banner>
         ) : status === 429 && error instanceof ApiError ? (
           <Banner variant="danger" title={t('login.locked_title')}>
             {lockMessage(error)}
@@ -92,10 +111,28 @@ export function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
+        {askCode && (
+          <TextField
+            label={t('login.totp_code')}
+            hint={t('login.totp_hint')}
+            autoComplete="one-time-code"
+            autoCapitalize="none"
+            spellCheck={false}
+            required
+            autoFocus
+            value={totp}
+            onChange={(e) => setTotp(e.target.value)}
+          />
+        )}
         <Button type="submit" variant="primary" loading={login.isPending} className="w-full">
           {t('login.submit')}
         </Button>
       </form>
+      <p className="text-sm text-muted">
+        <Link to="/forgot-password" className="text-primary underline">
+          {t('login.forgot')}
+        </Link>
+      </p>
       <p className="text-sm text-muted">
         {t('login.first_time')}{' '}
         <Link to="/setup" className="text-primary underline">
@@ -188,6 +225,122 @@ export function SetupPage() {
         />
         <Button type="submit" variant="primary" loading={setup.isPending} className="w-full">
           {t('setup.submit')}
+        </Button>
+      </form>
+    </AuthCard>
+  )
+}
+
+// A user with an invitation link sets a name and a password. The server then signs the user in.
+export function InvitePage() {
+  const token = new URLSearchParams(window.location.search).get('token') ?? ''
+  const navigate = useNavigate()
+  const [name, setName] = useState('')
+  const [password, setPassword] = useState('')
+  const [touched, setTouched] = useState(false)
+  const accept = useMutation({
+    mutationFn: () =>
+      unwrap(
+        api.POST('/auth/invitations/accept', { body: { token, name: name.trim(), password } }),
+      ),
+    onSuccess: async () => {
+      await openSession()
+      await navigate({ to: '/' })
+    },
+  })
+  const short = password.length < MIN_PASSWORD
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    setTouched(true)
+    if (!short && token) accept.mutate()
+  }
+  return (
+    <AuthCard title={t('invite.title')}>
+      <p className="text-sm text-muted">{t('invite.intro')}</p>
+      {!token && (
+        <Banner variant="warning" title={t('invite.no_token_title')}>
+          {t('invite.no_token')}
+        </Banner>
+      )}
+      {accept.error && <ErrorBanner error={accept.error} title={t('invite.failed')} />}
+      <form onSubmit={submit} className="space-y-4">
+        <TextField
+          label={t('setup.name')}
+          autoComplete="name"
+          required
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <TextField
+          label={t('login.password')}
+          type="password"
+          autoComplete="new-password"
+          required
+          hint={t('setup.password_rule', { count: password.length, min: MIN_PASSWORD })}
+          error={touched && short ? t('setup.password_short', { min: MIN_PASSWORD }) : null}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <Button type="submit" variant="primary" loading={accept.isPending} className="w-full">
+          {t('invite.submit')}
+        </Button>
+      </form>
+    </AuthCard>
+  )
+}
+
+// The page of the link "Forgot password?". There is no mail server: an admin resets it.
+export function ForgotPasswordPage() {
+  return (
+    <AuthCard title={t('forgot.title')}>
+      <p>{t('forgot.text')}</p>
+      <CodeBlock text="polipan-server admin reset-password <email>" label={t('forgot.command')} />
+      <p className="text-sm text-muted">{t('forgot.next')}</p>
+      <Link to="/login" className="text-primary underline">
+        {t('setup.go_login')}
+      </Link>
+    </AuthCard>
+  )
+}
+
+// The admin gives the user a link with a token. The user sets a new password.
+export function ResetPasswordPage() {
+  const token = new URLSearchParams(window.location.search).get('token') ?? ''
+  const navigate = useNavigate()
+  const [password, setPassword] = useState('')
+  const [touched, setTouched] = useState(false)
+  const reset = useMutation({
+    mutationFn: () =>
+      unwrap(api.POST('/auth/password-reset/confirm', { body: { token, password } })),
+    onSuccess: () => navigate({ to: '/login' }),
+  })
+  const short = password.length < MIN_PASSWORD
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    setTouched(true)
+    if (!short && token) reset.mutate()
+  }
+  return (
+    <AuthCard title={t('reset.title')}>
+      {!token && (
+        <Banner variant="warning" title={t('reset.no_token_title')}>
+          {t('reset.no_token')}
+        </Banner>
+      )}
+      {reset.error && <ErrorBanner error={reset.error} title={t('reset.failed')} />}
+      <form onSubmit={submit} className="space-y-4">
+        <TextField
+          label={t('profile.new_password')}
+          type="password"
+          autoComplete="new-password"
+          required
+          hint={t('setup.password_rule', { count: password.length, min: MIN_PASSWORD })}
+          error={touched && short ? t('setup.password_short', { min: MIN_PASSWORD }) : null}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <Button type="submit" variant="primary" loading={reset.isPending} className="w-full">
+          {t('reset.submit')}
         </Button>
       </form>
     </AuthCard>
