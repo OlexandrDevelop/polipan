@@ -16,6 +16,7 @@ import (
 	"github.com/polipan/polipan/api"
 	"github.com/polipan/polipan/api/gen"
 	"github.com/polipan/polipan/server/internal/auth"
+	"github.com/polipan/polipan/server/internal/backup"
 	"github.com/polipan/polipan/server/internal/orchestrator"
 	"github.com/polipan/polipan/server/internal/secrets"
 	"github.com/polipan/polipan/server/internal/shared/clock"
@@ -55,6 +56,8 @@ type Deps struct {
 	Git *GitDeps
 	// Exec opens terminals on the nodes (the gateway, WP2.6).
 	Exec ExecGateway
+	// Backup is the backup service (M4).
+	Backup *backup.Service
 	// MaxBodyBytes is the size limit of a request body. Default 1 MiB.
 	MaxBodyBytes int64
 }
@@ -111,6 +114,7 @@ func NewRouter(d Deps) (http.Handler, error) {
 		Secrets:      d.Secrets,
 		Git:          d.Git,
 		Exec:         d.Exec,
+		Backup:       d.Backup,
 	}
 	if d.Pool != nil {
 		h.Store = store.New(d.Pool)

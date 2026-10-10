@@ -5,7 +5,9 @@ package reconcile
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/polipan/polipan/agent/internal/backup"
 	"github.com/polipan/polipan/proto/agentv1"
@@ -77,8 +79,37 @@ func (e *Engine) restoreSnapshot(ctx context.Context, rs *agentv1.RestoreSnapsho
 	if e.Backup == nil {
 		return nil, "unsupported_version", "this agent has no backup runner"
 	}
-	if err := e.Backup.Restore(ctx, rs); err != nil {
-		return e.backupFailed(err, backupSecrets([]*agentv1.BackupTargetSpec{rs.Target}, rs.RepoPassword))
+	secrets := backupSecrets([]*agentv1.BackupTargetSpec{rs.Target}, rs.RepoPassword)
+	// Files (redis, volumes): the container is stopped during the restore, and the reconcile loop must not start it.
+	var restart func()
+	if rs.StopContainer && rs.GetSource().GetContainer() != "" {
+		c, err := e.Docker.Inspect(ctx, rs.Source.Container)
+		if err != nil {
+			return e.backupFailed(fmt.Errorf("container %s: %w", rs.Source.Container, err), secrets)
+		}
+		placement := c.Labels[LabelPlacement]
+		if c.State == "running" {
+			e.suppress(placement)
+			if err := e.Docker.Stop(ctx, c.ID, 30); err != nil {
+				e.unsuppress(placement)
+				return e.backupFailed(fmt.Errorf("cannot stop %s: %w", rs.Source.Container, err), secrets)
+			}
+			restart = func() {
+				sctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				defer cancel()
+				e.unsuppress(placement)
+				if err := e.Docker.Start(sctx, c.ID); err != nil {
+					e.Log.Error("cannot start the container after a restore", "container", c.ID, "error", err)
+				}
+			}
+		}
+	}
+	err := e.Backup.Restore(ctx, rs)
+	if restart != nil {
+		restart()
+	}
+	if err != nil {
+		return e.backupFailed(err, secrets)
 	}
 	return []byte("{}"), "", ""
 }
@@ -101,4 +132,10 @@ func (e *Engine) deleteSnapshots(ctx context.Context, d *agentv1.DeleteSnapshots
 		return e.backupFailed(err, backupSecrets(d.Targets, d.RepoPassword))
 	}
 	return []byte("{}"), "", ""
+}
+
+func (e *Engine) unsuppress(placement string) {
+	e.mu.Lock()
+	delete(e.suppressed, placement)
+	e.mu.Unlock()
 }

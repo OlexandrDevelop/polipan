@@ -39,7 +39,7 @@ func (s *Store) ListProjects(ctx context.Context, orgID string, limit int, after
 		t, id = after.Time, after.ID
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT `+projectCols+` FROM projects p
-		WHERE p.org_id = $1 AND p.deleted_at IS NULL AND ($2::timestamptz IS NULL OR (p.created_at, p.id) > ($2, $3))
+		WHERE p.org_id = $1 AND p.deleted_at IS NULL AND NOT `+systemProject+` AND ($2::timestamptz IS NULL OR (p.created_at, p.id) > ($2, $3))
 		ORDER BY p.created_at, p.id LIMIT $4`, orgID, nullTime(after, t), id, limit+1)
 	if err != nil {
 		return nil, err
@@ -66,8 +66,11 @@ func nullTime(c *Cursor, t time.Time) *time.Time {
 // GetProject reads a project of the org.
 func (s *Store) GetProject(ctx context.Context, orgID, id string) (*Project, error) {
 	return scanProject(s.Pool.QueryRow(ctx, `SELECT `+projectCols+` FROM projects p
-		WHERE p.id = $1 AND p.org_id = $2 AND p.deleted_at IS NULL`, id, orgID))
+		WHERE p.id = $1 AND p.org_id = $2 AND p.deleted_at IS NULL AND NOT `+systemProject, id, orgID))
 }
+
+// systemProject is true for the hidden project that holds the secrets of backup targets and policies (not a user project).
+const systemProject = `COALESCE(p.settings->>'system', '') = 'true'`
 
 // NewEnv is the data for an environment that is created together with a project or on its own.
 type NewEnv struct {

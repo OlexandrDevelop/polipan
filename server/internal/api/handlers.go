@@ -10,6 +10,7 @@ import (
 
 	"github.com/polipan/polipan/api/gen"
 	"github.com/polipan/polipan/server/internal/auth"
+	"github.com/polipan/polipan/server/internal/backup"
 	"github.com/polipan/polipan/server/internal/logging"
 	"github.com/polipan/polipan/server/internal/orchestrator"
 	"github.com/polipan/polipan/server/internal/secrets"
@@ -54,6 +55,8 @@ type Handlers struct {
 	Git *GitDeps
 	// Exec opens terminals on the nodes (the gateway). Without it exec answers 500.
 	Exec ExecGateway
+	// Backup is the backup service (M4). Without it the backup operations answer 500.
+	Backup *backup.Service
 
 	cookieSecure bool
 	perms        map[Route]string

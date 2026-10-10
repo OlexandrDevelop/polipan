@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/polipan/polipan/server/internal/api"
+	"github.com/polipan/polipan/server/internal/backup"
 	"github.com/polipan/polipan/server/internal/config"
 	"github.com/polipan/polipan/server/internal/control"
 	"github.com/polipan/polipan/server/internal/db"
@@ -64,10 +65,11 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	gw.State = ctl
 	gw.Health = ctl
 
+	bk := backup.New(backup.Deps{DB: pool, Secrets: sec, Sender: gw, Orch: ctl, Clock: clk, Log: log})
 	handler, err := api.NewRouter(api.Deps{
 		Log: log, DB: pool, Pool: pool, Clock: clk, RateLimit: cfg.APIRateLimit, Web: web.Handler(),
 		Orchestrator: ctl, ExternalURL: cfg.ExternalURL, TrustedProxies: cfg.TrustedProxies, AgentListen: cfg.AgentListen,
-		Secrets: sec, Exec: gw,
+		Secrets: sec, Exec: gw, Backup: bk,
 		Git:        &api.GitDeps{Keys: builds.Keys, Policy: ctl.SSRFPolicy},
 		SetupToken: pki.SetupToken(kek), SessionTTL: cfg.SessionTTL, SessionAbsoluteTTL: cfg.SessionAbsoluteTTL,
 	})
@@ -87,6 +89,13 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 			log.Error("agent gateway stopped", "error", err)
 		}
 	}()
+	bkDone := make(chan struct{})
+	go func() {
+		defer close(bkDone)
+		if err := bk.Run(runCtx); err != nil {
+			log.Error("backup service stopped", "error", err)
+		}
+	}()
 	ctlDone := make(chan struct{})
 	go func() {
 		defer close(ctlDone)
@@ -98,6 +107,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		cancelRun()
 		<-gwDone
 		<-ctlDone
+		<-bkDone
 	}()
 
 	host, _ := os.Hostname()

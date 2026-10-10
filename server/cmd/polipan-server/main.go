@@ -12,6 +12,7 @@
 //	polipan-server [-config file] setup-url   print the one-time setup URL for the first user
 //	polipan-server [-config file] admin rotate-kek            make a new master key and re-wrap all data keys
 //	polipan-server [-config file] admin rotate-dek --project <id or slug>  re-encrypt the secrets of a project
+//	polipan-server [-config file] admin backup-password --policy <id>  print the restic password and the repositories of a policy
 //	polipan-server version                    print the version
 package main
 
@@ -27,6 +28,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/polipan/polipan/server/internal/backup"
 	"github.com/polipan/polipan/server/internal/config"
 	"github.com/polipan/polipan/server/internal/control"
 	"github.com/polipan/polipan/server/internal/db"
@@ -93,8 +95,10 @@ func run() error {
 			return secrets.RotateKEKCommand(ctx, cfg, os.Getenv, os.Stdout)
 		case "rotate-dek":
 			return secrets.RotateDEKCommand(ctx, cfg, flag.Args()[2:], os.Getenv, os.Stdout)
+		case "backup-password":
+			return backup.PasswordCommand(ctx, cfg, flag.Args()[2:], os.Getenv, os.Stdout)
 		}
-		return fmt.Errorf("unknown admin command %q (rotate-kek, rotate-dek)", flag.Arg(1))
+		return fmt.Errorf("unknown admin command %q (rotate-kek, rotate-dek, backup-password)", flag.Arg(1))
 	case "healthcheck":
 		return healthcheck(ctx, cfg.Listen)
 	default:

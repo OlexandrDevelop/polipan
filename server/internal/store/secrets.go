@@ -171,7 +171,7 @@ func scanSecret(row pgx.Row) (*Secret, error) {
 // ListSecrets lists the secrets of a project. A filter keeps only the secrets of that environment or service.
 func (s *Store) ListSecrets(ctx context.Context, orgID, projectID string, envID, serviceID *string) ([]Secret, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT `+secretCols+secretFrom+`
-		WHERE x.project_id = $1 AND p.org_id = $2 AND x.deleted_at IS NULL AND p.deleted_at IS NULL
+		WHERE x.project_id = $1 AND p.org_id = $2 AND x.deleted_at IS NULL AND p.deleted_at IS NULL AND NOT `+systemProject+`
 		  AND ($3::text IS NULL OR x.environment_id = $3) AND ($4::text IS NULL OR x.service_id = $4)
 		ORDER BY x.name, x.id`, projectID, orgID, envID, serviceID)
 	if err != nil {
@@ -192,7 +192,7 @@ func (s *Store) ListSecrets(ctx context.Context, orgID, projectID string, envID,
 // GetSecret reads a secret of the org.
 func (s *Store) GetSecret(ctx context.Context, orgID, id string) (*Secret, error) {
 	return scanSecret(s.Pool.QueryRow(ctx, `SELECT `+secretCols+secretFrom+`
-		WHERE x.id = $1 AND p.org_id = $2 AND x.deleted_at IS NULL AND p.deleted_at IS NULL`, id, orgID))
+		WHERE x.id = $1 AND p.org_id = $2 AND x.deleted_at IS NULL AND p.deleted_at IS NULL AND NOT `+systemProject, id, orgID))
 }
 
 // NewSecret is the data of a new secret.
