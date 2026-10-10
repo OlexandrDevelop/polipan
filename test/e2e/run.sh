@@ -7,11 +7,12 @@
 #   sh test/e2e/run.sh              builds the images and runs the whole test
 #   OUTAGE_SECONDS=60 sh ...        shorter server outage (the done criterion uses 300)
 #   KEEP=1 sh ...                   keep the test Docker host after the run
+#   E2E_HOST=name sh ...            name of the test Docker host (default pp-e2e-dind)
 set -eu
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
-host=pp-e2e-dind
+host=${E2E_HOST:-pp-e2e-dind}
 outage=${OUTAGE_SECONDS:-300}
 dx() { docker exec "$host" "$@"; }
 step() { printf '\n== %s\n' "$*"; }

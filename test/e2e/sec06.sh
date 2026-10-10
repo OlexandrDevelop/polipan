@@ -9,11 +9,11 @@
 # deploy/nftables/polipan-build.sh, and builds test/e2e/sec06/Dockerfile with buildctl from the
 # server address. The build must print PUBLIC_OK and ALL_BLOCKED.
 #
-#   sh test/e2e/sec06.sh        KEEP=1 keeps the Docker host
+#   sh test/e2e/sec06.sh        KEEP=1 keeps the Docker host, SEC06_HOST=name sets its name
 set -eu
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
-host=pp-sec06-dind
+host=${SEC06_HOST:-pp-sec06-dind}
 dx() { docker exec "$host" "$@"; }
 cleanup() { [ -n "${KEEP:-}" ] || docker rm -f "$host" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
