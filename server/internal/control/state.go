@@ -6,7 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
+	"strconv"
 	"strings"
 
 	pb "github.com/polipan/polipan/proto/agentv1"
@@ -51,9 +53,11 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 
 	rows, err := q.Query(ctx,
 		`SELECT p.id, p.service_id, s.environment_id, p.release_id, p.color, p.role, p.health, s.desired_state,
-		        r.image_ref, r.config_snapshot, COALESCE(host(p.ip), '')
+		        r.image_ref, r.config_snapshot, COALESCE(host(p.ip), ''), pr.org_id, pr.id, p.replica_index
 		   FROM placements p
 		   JOIN services s ON s.id = p.service_id AND s.deleted_at IS NULL
+		   JOIN environments en ON en.id = s.environment_id
+		   JOIN projects pr ON pr.id = en.project_id
 		   JOIN releases r ON r.id = p.release_id
 		  WHERE p.node_id = $1
 		  ORDER BY p.created_at, p.id`, nodeID)
@@ -61,9 +65,10 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 		return nil, err
 	}
 	for rows.Next() {
-		var pid, sid, eid, rid, color, role, health, svcState, imageRef, ip string
+		var pid, sid, eid, rid, color, role, health, svcState, imageRef, ip, orgID, projectID string
+		var replica int
 		var raw []byte
-		if err := rows.Scan(&pid, &sid, &eid, &rid, &color, &role, &health, &svcState, &imageRef, &raw, &ip); err != nil {
+		if err := rows.Scan(&pid, &sid, &eid, &rid, &color, &role, &health, &svcState, &imageRef, &raw, &ip, &orgID, &projectID, &replica); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -85,6 +90,8 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 			Resources:        cfg.resourceSpec(),
 			Labels: map[string]string{
 				"polipan.service": sid, "polipan.placement": pid, "polipan.release": rid, "polipan.managed": "true",
+				// The ids that tag metrics and logs (12-observability section 7).
+				"polipan.org": orgID, "polipan.project": projectID, "polipan.environment": eid, "polipan.replica": strconv.Itoa(replica),
 			},
 		}
 		if w.RestartPolicy == "" {
@@ -111,6 +118,7 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 	}
 
 	c.addRegistryAuth(ctx, nodeID, ds) // pull credential of the built-in registry (build.go)
+	ds.Telemetry = c.telemetrySpec()
 
 	// The panel itself goes through Caddy of the node.
 	if u, err := url.Parse(c.Config.ExternalURL); err == nil && u.Hostname() != "" {
@@ -272,4 +280,27 @@ func (c *Control) addRemoteEndpoints(ctx context.Context, q dbq, nodeID string, 
 		})
 	}
 	return rows.Err()
+}
+
+// telemetrySpec tells the agents where to send metrics and logs. It is nil when monitoring is not set up.
+func (c *Control) telemetrySpec() *pb.TelemetrySpec {
+	if c.Config.VictoriaMetricsURL == "" && c.Config.VictoriaLogsURL == "" {
+		return nil
+	}
+	base := strings.TrimRight(c.Config.IngestURL, "/")
+	if base == "" {
+		host := "localhost"
+		if len(c.Config.AgentHosts) > 0 {
+			host = strings.TrimSpace(c.Config.AgentHosts[0])
+		}
+		port := "9444"
+		if _, p, err := net.SplitHostPort(c.Config.IngestListen); err == nil && p != "" {
+			port = p
+		}
+		base = "https://" + net.JoinHostPort(host, port)
+	}
+	return &pb.TelemetrySpec{
+		MetricsWriteUrl: base + "/ingest/metrics", LogsUrl: base + "/ingest/logs",
+		VmagentImage: c.Config.VMAgentImage, ScrapeIntervalSeconds: 15, BufferMib: 100,
+	}
 }

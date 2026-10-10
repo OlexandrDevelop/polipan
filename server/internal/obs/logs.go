@@ -393,3 +393,37 @@ func (b *Backends) Recent(ctx context.Context, now time.Time, f LogFilter, n int
 	}
 	return out, nil
 }
+
+// CountLogs counts the lines of a filter in a time range (for the log_match rule).
+func (b *Backends) CountLogs(ctx context.Context, f LogFilter, start, end time.Time) (int, error) {
+	q, err := f.Query()
+	if err != nil {
+		return 0, err
+	}
+	if !b.LogsEnabled() {
+		return 0, ErrUnavailable
+	}
+	form := url.Values{}
+	form.Set("query", q+" | stats count() c")
+	form.Set("start", start.UTC().Format(time.RFC3339Nano))
+	form.Set("end", end.UTC().Format(time.RFC3339Nano))
+	resp, err := b.do(ctx, "POST", b.LogsURL, "/select/logsql/query", nil, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if err := check(resp); err != nil {
+		return 0, err
+	}
+	var row map[string]any
+	dec := json.NewDecoder(resp.Body)
+	if err := dec.Decode(&row); err != nil {
+		if err == io.EOF {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("%w: %v", ErrUnavailable, err)
+	}
+	s, _ := row["c"].(string)
+	n, _ := strconv.Atoi(s)
+	return n, nil
+}

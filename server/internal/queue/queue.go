@@ -40,6 +40,9 @@ type Handler func(ctx context.Context, job Job) error
 type Queue struct {
 	pool  *pgxpool.Pool
 	clock clock.Clock
+	// Backoffs gives a job kind its own waits after failed attempts: the first entry after the first failure, and so
+	// on. The last entry is used for later failures. Kinds without an entry use the exponential Backoff.
+	Backoffs map[string][]time.Duration
 }
 
 // New creates a queue.
@@ -53,6 +56,8 @@ type EnqueueOptions struct {
 	UniqueKey string
 	// RunAt delays the job. Zero means now.
 	RunAt time.Time
+	// MaxAttempts is the number of tries before the job is dead. Zero means DefaultMaxAttempts.
+	MaxAttempts int
 }
 
 // Enqueue adds a job. It returns false when a job with the same unique key is already waiting or running.
@@ -69,10 +74,14 @@ func (q *Queue) Enqueue(ctx context.Context, kind string, payload any, opt Enque
 	if opt.UniqueKey != "" {
 		key = &opt.UniqueKey
 	}
-	tag, err := q.pool.Exec(ctx, `INSERT INTO jobs (kind, payload, run_at, unique_key)
-		VALUES ($1, $2, $3, $4)
+	max := opt.MaxAttempts
+	if max <= 0 {
+		max = DefaultMaxAttempts
+	}
+	tag, err := q.pool.Exec(ctx, `INSERT INTO jobs (kind, payload, run_at, unique_key, max_attempts)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (unique_key) WHERE state IN ('queued','running') DO NOTHING`,
-		kind, body, runAt, key)
+		kind, body, runAt, key, max)
 	if err != nil {
 		return false, err
 	}
@@ -112,9 +121,13 @@ func (q *Queue) Fail(ctx context.Context, job Job, cause error) error {
 		_, err := q.pool.Exec(ctx, `UPDATE jobs SET state = 'dead', last_error = $2 WHERE id = $1`, job.ID, cause.Error())
 		return err
 	}
+	wait := Backoff(job.Attempts)
+	if b := q.Backoffs[job.Kind]; len(b) > 0 {
+		wait = b[min(job.Attempts-1, len(b)-1)]
+	}
 	_, err := q.pool.Exec(ctx, `UPDATE jobs SET state = 'queued', run_at = $2, last_error = $3,
 		locked_by = NULL, locked_at = NULL WHERE id = $1`,
-		job.ID, q.clock.Now().Add(Backoff(job.Attempts)), cause.Error())
+		job.ID, q.clock.Now().Add(wait), cause.Error())
 	return err
 }
 
