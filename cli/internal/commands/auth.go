@@ -368,7 +368,7 @@ func (a *app) meCmd() *cobra.Command {
 
 func (a *app) tokenCmd() *cobra.Command {
 	var scopes, expires string
-	var all, any bool
+	var all, anyProject bool
 	create := a.cmd("create <name>", "Create an API token. The token is shown once", "createToken", exactArgs(1), func(cmd *cobra.Command, args []string) error {
 		sc := strings.Split(scopes, ",")
 		body := map[string]any{"name": args[0], "scopes": sc}
@@ -412,7 +412,7 @@ func (a *app) tokenCmd() *cobra.Command {
 			return err
 		}
 		op := "revokeToken"
-		if any {
+		if anyProject {
 			op = "revokeOrgToken"
 		}
 		if _, err := a.call(op, ids(args[0])); err != nil {
@@ -420,7 +420,7 @@ func (a *app) tokenCmd() *cobra.Command {
 		}
 		return a.done("revoked token " + args[0])
 	})
-	rm.Flags().BoolVar(&any, "any", false, "revoke the token of another user (needs token:manage)")
+	rm.Flags().BoolVar(&anyProject, "any", false, "revoke the token of another user (needs token:manage)")
 	return group("token", "API tokens", create, ls, rm)
 }
 

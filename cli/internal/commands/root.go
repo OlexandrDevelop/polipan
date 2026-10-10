@@ -110,6 +110,7 @@ func NewRoot(opts Options) *cobra.Command {
 	root.AddCommand(a.templateCommands()...)
 	root.AddCommand(a.backupCommands()...)
 	root.AddCommand(a.alertCommands()...)
+	root.AddCommand(a.ssoLoginCmd())
 	return root
 }
 

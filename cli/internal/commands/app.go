@@ -354,8 +354,9 @@ func (a *app) cmd(use, short, ops string, args cobra.PositionalArgs, run func(cm
 			return run(cmd, args)
 		},
 	}
+	c.Annotations = map[string]string{}
 	if ops != "" {
-		c.Annotations = map[string]string{operationsAnnotation: ops}
+		c.Annotations[operationsAnnotation] = ops
 	}
 	return c
 }
@@ -412,6 +413,6 @@ func minArgs(min int) cobra.PositionalArgs {
 	}
 }
 
-func noArgs() cobra.PositionalArgs { return exactArgs(0) }
+var noArgs = exactArgs(0)
 
 func ids(path ...string) apiops.Input { return apiops.Input{Path: path} }
