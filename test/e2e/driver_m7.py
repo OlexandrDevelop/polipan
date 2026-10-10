@@ -171,8 +171,9 @@ def create_service(p, env_id, name, image, config, failover=None, domain=None, v
 
 
 def httpd(extra=""):
-    # The page says on which node the container runs (POLIPAN_NODE is set by the agent).
-    return ["sh", "-c", "mkdir -p /www && echo hello-$POLIPAN_NODE > /www/index.html && " + extra + "exec httpd -f -p 8080 -h /www"]
+    # nginx on port 8080. The page says on which node the container runs (POLIPAN_NODE is set by the agent).
+    return ["sh", "-c", "mkdir -p /www && echo hello-$POLIPAN_NODE > /www/index.html && " + extra +
+            "printf 'server { listen 8080; root /www; }' > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
 
 
 def containers(node, svc_id, all_states=False):
@@ -264,7 +265,8 @@ def scenario(n1, n2, n3, ip1, ip2, ip3):
     if staging is None:
         _, staging = p.call("POST", f"/projects/{proj['id']}/environments", {"name": "staging", "kind": "staging"}, expect=201)
     alpine = "alpine:3.20"
-    web = create_service(p, prod["id"], "web", alpine, {"port": 8080, "command": httpd()}, failover="auto", domain="web.test")
+    nginx = "nginx:alpine"
+    web = create_service(p, prod["id"], "web", nginx, {"port": 8080, "command": httpd()}, failover="auto", domain="web.test")
     d = deploy_wait(p, web["id"])
     if placements_nodes(p, web["id"], by_id) != ["n1"]:
         fail(f"the scheduler must pick n1 first (tie by name): {placements_nodes(p, web['id'], by_id)}")
@@ -305,8 +307,8 @@ def scenario(n1, n2, n3, ip1, ip2, ip3):
     ok("AC-NODE-09: a client on n3 reaches web on n2 by its internal DNS name over the WireGuard mesh")
 
     # ---- REQ-SEC-106: environment isolation ----
-    other_n3 = create_service(p, staging["id"], "other3", alpine, {"port": 8080, "command": httpd(), "placement": {"nodes": ["n3"]}})
-    other_n2 = create_service(p, staging["id"], "other2", alpine, {"port": 8080, "command": httpd(), "placement": {"nodes": ["n2"]}})
+    other_n3 = create_service(p, staging["id"], "other3", nginx, {"port": 8080, "command": httpd(), "placement": {"nodes": ["n3"]}})
+    other_n2 = create_service(p, staging["id"], "other2", nginx, {"port": 8080, "command": httpd(), "placement": {"nodes": ["n2"]}})
     deploy_wait(p, other_n3["id"])
     deploy_wait(p, other_n2["id"])
     ip_o3 = container_ip(n3, containers(n3, other_n3["id"])[0])
@@ -393,8 +395,9 @@ def scenario(n1, n2, n3, ip1, ip2, ip3):
     ok("AC-NODE-07: node n2 came back, its old web container was removed and not started, web runs once")
 
     # ---- T-E2E-08: failover with a volume ----
-    data = create_service(p, prod["id"], "data", alpine, {"port": 8080, "placement": {"nodes": ["n2"]},
-                          "command": ["sh", "-c", "mkdir -p /data && [ -f /data/index.html ] || echo seed > /data/index.html; exec httpd -f -p 8080 -h /data"]},
+    data = create_service(p, prod["id"], "data", nginx, {"port": 8080, "placement": {"nodes": ["n2"]},
+                          "command": ["sh", "-c", "mkdir -p /data && { [ -f /data/index.html ] || echo seed > /data/index.html; } && "
+                                      "printf 'server { listen 8080; root /data; }' > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]},
                           failover="auto", domain="data.test", volume="/data")
     deploy_wait(p, data["id"])
     _, cur = p.call("GET", f"/services/{data['id']}", expect=200)
