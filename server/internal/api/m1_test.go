@@ -418,6 +418,9 @@ func TestAC_DOM_02_03_Domains(t *testing.T) {
 	}
 	// SEC-1: the host of the panel (and its www or apex partner) is reserved, with any path prefix.
 	panel := "panel.example.com"
+	if !orchestrator.IsPanelHost("https://www.example.com", "www.www.example.com") || orchestrator.IsPanelHost("https://panel.example.com", "app.example.com") {
+		t.Fatal("IsPanelHost: www.www.<apex> must match a www panel, an unrelated host must not")
+	}
 	for _, host := range []string{panel, strings.ToUpper(panel), "www." + panel} {
 		rec := c.do("POST", "/api/v1/services/"+b+"/domains", map[string]any{"host": host, "path_prefix": "/api"})
 		if rec.Code != 409 || !strings.Contains(rec.Body.String(), `"domain_in_use"`) {

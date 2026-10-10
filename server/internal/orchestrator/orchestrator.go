@@ -45,14 +45,28 @@ type Orchestrator interface {
 	CreateJoinToken(ctx context.Context, orgID, nodeName string, labels map[string]string, actorID string) (JoinToken, error)
 }
 
-// IsPanelHost reports whether host is the host of the panel (the host of externalURL) or its
-// www or apex partner. Service domains must not use these hosts: the panel route is not a
-// domain row, and a service route on the same host could take the logins of the panel.
+// IsPanelHost reports whether host could serve the same name as the panel. Both names are
+// expanded like the agent does for redirect_www (the name, "www." + name, and the name without
+// one "www."). If the two sets share a name, the host is refused. Service domains must not
+// use these hosts: the panel route is not a domain row, and a service route on the same host
+// could take the logins of the panel.
 func IsPanelHost(externalURL, host string) bool {
 	u, err := url.Parse(externalURL)
 	if err != nil || u.Hostname() == "" {
 		return false
 	}
-	norm := func(h string) string { return strings.TrimPrefix(strings.ToLower(strings.TrimSuffix(h, ".")), "www.") }
-	return norm(u.Hostname()) == norm(host)
+	variants := func(h string) []string {
+		h = strings.ToLower(strings.TrimSuffix(h, "."))
+		return []string{h, "www." + h, strings.TrimPrefix(h, "www.")}
+	}
+	panel := map[string]bool{}
+	for _, v := range variants(u.Hostname()) {
+		panel[v] = true
+	}
+	for _, v := range variants(host) {
+		if panel[v] {
+			return true
+		}
+	}
+	return false
 }
