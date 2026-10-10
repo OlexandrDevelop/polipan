@@ -9,3 +9,10 @@ import _ "embed"
 //
 //go:embed openapi.yaml
 var Spec []byte
+
+// ConfigSchema is the content of polipan.schema.json, the schema of polipan.yaml.
+// The server and the CLI validate with the same file (REQ-CAC-100).
+// It is a copy of docs/spec/schemas/polipan.schema.json (make api-sync).
+//
+//go:embed polipan.schema.json
+var ConfigSchema []byte

@@ -1,0 +1,427 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polipan.dev/schemas/polipan.schema.json",
+  "title": "polipan.yaml",
+  "description": "Config as code for one Polipan project. See docs/spec/07-config-as-code.md. Unknown keys are errors.",
+  "type": "object",
+  "required": ["version", "project", "services"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "project": { "$ref": "#/$defs/slug", "description": "Slug of the project this file belongs to." },
+    "environments": {
+      "type": "object",
+      "description": "Environments and their overrides, keyed by environment slug.",
+      "propertyNames": { "$ref": "#/$defs/slug" },
+      "additionalProperties": { "$ref": "#/$defs/environment" }
+    },
+    "services": {
+      "type": "object",
+      "description": "Services keyed by name. Applied to every environment unless overridden.",
+      "propertyNames": { "pattern": "^[a-z0-9-]{1,40}$" },
+      "additionalProperties": { "$ref": "#/$defs/service" }
+    },
+    "variables": {
+      "type": "object",
+      "description": "Project-wide shared plain variables.",
+      "propertyNames": { "$ref": "#/$defs/envName" },
+      "additionalProperties": { "$ref": "#/$defs/envValue" }
+    },
+    "secrets": {
+      "type": "array",
+      "description": "Names of project-wide secrets that must exist. Values are never in this file.",
+      "items": { "$ref": "#/$defs/secretRef" }
+    },
+    "previews": { "$ref": "#/$defs/previews" },
+    "backup_targets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/backupTarget" }
+    },
+    "alerts": { "$ref": "#/$defs/alerts" }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$" },
+    "envName": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$" },
+    "envValue": { "type": ["string", "number", "boolean"] },
+    "duration": { "type": "string", "pattern": "^[0-9]+(ms|s|m|h|d)$", "description": "For example 30s, 5m, 24h, 7d." },
+    "cpu": { "type": "string", "pattern": "^[0-9]+m?$|^[0-9]+\\.[0-9]+$", "description": "Cores (0.5) or millicores (500m)." },
+    "memory": { "type": "string", "pattern": "^[0-9]+(Ki|Mi|Gi|Ti)$" },
+    "size": { "type": "string", "pattern": "^[0-9]+(Ki|Mi|Gi|Ti)$" },
+    "strategy": { "enum": ["recreate", "blue_green", "canary"] },
+    "secretRef": {
+      "oneOf": [
+        { "$ref": "#/$defs/envName" },
+        {
+          "type": "object",
+          "required": ["name"],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "$ref": "#/$defs/envName" },
+            "preview": { "type": "boolean", "default": false },
+            "build_time": { "type": "boolean", "default": false },
+            "file": { "type": "string", "description": "Mount as a tmpfs file at this absolute path instead of an env var." }
+          }
+        }
+      ]
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["production", "staging", "custom"] },
+        "protected": { "type": "boolean" },
+        "auto_deploy": { "type": "boolean" },
+        "deploy": { "$ref": "#/$defs/deploy", "description": "Default deploy options for all services of this environment." },
+        "variables": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/envName" },
+          "additionalProperties": { "$ref": "#/$defs/envValue" }
+        },
+        "secrets": { "type": "array", "items": { "$ref": "#/$defs/secretRef" } },
+        "services": {
+          "type": "object",
+          "description": "Per-service overrides for this environment. Only fields listed in $defs/serviceOverride.",
+          "additionalProperties": { "$ref": "#/$defs/serviceOverride" }
+        }
+      }
+    },
+    "serviceOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "description": "false removes the service from this environment." },
+        "source": { "$ref": "#/$defs/source" },
+        "domains": { "type": "array", "items": { "$ref": "#/$defs/domain" } },
+        "env": { "$ref": "#/$defs/envMap" },
+        "secrets": { "type": "array", "items": { "$ref": "#/$defs/secretRef" } },
+        "replicas": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "resources": { "$ref": "#/$defs/resources" },
+        "placement": { "$ref": "#/$defs/placement" },
+        "failover": { "enum": ["none", "auto"] },
+        "allow_data_loss_failover": { "type": "boolean" },
+        "deploy": { "$ref": "#/$defs/deploy" },
+        "backup": { "$ref": "#/$defs/backup" },
+        "auto_deploy": { "type": "boolean" }
+      }
+    },
+    "envMap": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/envName" },
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/$defs/envValue" },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "value": { "$ref": "#/$defs/envValue" },
+              "preview": { "type": "boolean", "default": false },
+              "build_time": { "type": "boolean", "default": false }
+            },
+            "required": ["value"]
+          }
+        ]
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "git": {
+          "type": "object",
+          "required": ["repo"],
+          "additionalProperties": false,
+          "properties": {
+            "connection": { "type": "string", "description": "Name of a Git connection." },
+            "repo": { "type": "string", "description": "owner/name or a full URL." },
+            "branch": { "type": "string", "default": "main" },
+            "path": { "type": "string", "default": "/" },
+            "builder": { "enum": ["dockerfile", "railpack"], "default": "railpack" },
+            "dockerfile": { "type": "string", "default": "Dockerfile" },
+            "build_args": { "type": "object", "additionalProperties": { "type": "string" } },
+            "commit": { "type": "string", "description": "Pin a commit. Empty means the branch head." }
+          }
+        },
+        "image": {
+          "type": "object",
+          "required": ["name"],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string", "description": "Image with tag or digest, for example ghcr.io/acme/api:1.4.2." },
+            "registry_secret": { "$ref": "#/$defs/envName", "description": "Name of a secret that holds registry credentials." }
+          }
+        }
+      }
+    },
+    "port": {
+      "oneOf": [
+        { "type": "integer", "minimum": 1, "maximum": 65535 },
+        {
+          "type": "object",
+          "required": ["container"],
+          "additionalProperties": false,
+          "properties": {
+            "container": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "protocol": { "enum": ["tcp", "udp"], "default": "tcp" },
+            "host": { "type": "integer", "minimum": 1, "maximum": 65535, "description": "Host port. Forces the recreate strategy." }
+          }
+        }
+      ]
+    },
+    "domain": {
+      "type": "object",
+      "required": ["host"],
+      "additionalProperties": false,
+      "properties": {
+        "host": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "path_prefix": { "type": "string", "default": "/" },
+        "https": { "type": "boolean", "default": true },
+        "redirect_www": { "enum": ["to_www", "to_apex"] },
+        "ingress_nodes": { "type": "array", "items": { "type": "string" } },
+        "max_body": { "$ref": "#/$defs/size" },
+        "ip_allow": { "type": "array", "items": { "type": "string" } },
+        "basic_auth_secret": { "$ref": "#/$defs/envName" }
+      }
+    },
+    "volume": {
+      "type": "object",
+      "required": ["name", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "path": { "type": "string", "pattern": "^/" },
+        "kind": { "enum": ["volume", "bind", "tmpfs"], "default": "volume" },
+        "access_mode": { "enum": ["single_writer", "shared"], "default": "single_writer" },
+        "size_limit": { "$ref": "#/$defs/size" },
+        "node": { "type": "string", "description": "Node name to create the volume on." }
+      }
+    },
+    "healthcheck": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["http", "tcp", "command"] },
+        "path": { "type": "string", "default": "/" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "host_header": { "type": "string" },
+        "command": { "type": "array", "items": { "type": "string" } },
+        "expected_status": { "type": "string", "pattern": "^[0-9]{3}(-[0-9]{3})?$", "default": "200-399" },
+        "interval": { "$ref": "#/$defs/duration", "default": "5s" },
+        "timeout": { "$ref": "#/$defs/duration", "default": "3s" },
+        "healthy_threshold": { "type": "integer", "minimum": 1, "default": 3 },
+        "unhealthy_threshold": { "type": "integer", "minimum": 1, "default": 3 },
+        "start_period": { "$ref": "#/$defs/duration", "default": "30s" },
+        "deploy_timeout": { "$ref": "#/$defs/duration", "default": "300s" },
+        "restart_on_unhealthy": { "type": "boolean", "default": true }
+      },
+      "allOf": [
+        { "if": { "properties": { "type": { "const": "command" } } }, "then": { "required": ["command"] } }
+      ]
+    },
+    "deploy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": { "$ref": "#/$defs/strategy" },
+        "drain_seconds": { "type": "integer", "minimum": 0, "maximum": 3600, "default": 30 },
+        "retain_stopped": { "type": "integer", "minimum": 0, "maximum": 5, "default": 1 },
+        "allow_overlap": { "type": "boolean", "default": true },
+        "allow_downtime_on_low_capacity": { "type": "boolean", "default": false },
+        "pre_deploy": { "type": "array", "items": { "type": "string" }, "description": "Command run once in a one-off container before the new version starts." },
+        "post_deploy": { "type": "array", "items": { "type": "string" } },
+        "canary": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "steps": { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 100 }, "minItems": 1, "default": [10, 25, 50, 100] },
+            "step_interval": { "$ref": "#/$defs/duration", "default": "5m" },
+            "max_5xx_rate": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.02 },
+            "max_p95_ratio": { "type": "number", "minimum": 1, "default": 1.5 }
+          }
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cpu": { "$ref": "#/$defs/cpu" },
+        "memory": { "$ref": "#/$defs/memory" },
+        "memory_reservation": { "$ref": "#/$defs/memory" }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nodes": { "type": "array", "items": { "type": "string" } },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+        "spread": { "type": "boolean", "default": true }
+      }
+    },
+    "backup": {
+      "type": "object",
+      "required": ["schedule", "targets"],
+      "additionalProperties": false,
+      "properties": {
+        "schedule": { "type": "string", "description": "Cron expression, UTC." },
+        "targets": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "Names of backup targets." },
+        "volume": { "type": "string", "description": "Volume name to back up (for non-database services)." },
+        "retention": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "keep_daily": { "type": "integer", "default": 7 },
+            "keep_weekly": { "type": "integer", "default": 4 },
+            "keep_monthly": { "type": "integer", "default": 6 }
+          }
+        },
+        "restore_check": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "schedule": { "type": "string", "default": "0 3 * * 0" },
+            "mode": { "enum": ["full", "sample"], "default": "full" }
+          }
+        },
+        "pre_hook": { "type": "array", "items": { "type": "string" } },
+        "post_hook": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "backupTarget": {
+      "type": "object",
+      "required": ["name", "kind", "config"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "kind": { "enum": ["s3", "b2", "sftp", "local", "azure", "gcs"] },
+        "config": { "type": "object", "additionalProperties": true, "description": "Bucket, endpoint, path. No credentials." },
+        "credentials_secret": { "$ref": "#/$defs/envName", "description": "Name of the secret that holds the credentials." }
+      }
+    },
+    "previews": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "base_environment": { "type": "string", "description": "Environment slug used as the template. Default staging." },
+        "max_active": { "type": "integer", "minimum": 1, "default": 10 },
+        "ttl": { "$ref": "#/$defs/duration", "default": "7d" },
+        "from_forks": { "type": "boolean", "default": false },
+        "node_selector": { "type": "object", "additionalProperties": { "type": "string" } },
+        "strategy": { "$ref": "#/$defs/strategy" },
+        "seed_command": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "alerts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "kind"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "kind": { "enum": ["telegram", "slack", "email", "webhook"] },
+              "config": { "type": "object", "additionalProperties": true },
+              "secret": { "$ref": "#/$defs/envName", "description": "Name of the secret with the token or URL." }
+            }
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "type", "channels"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "type": { "type": "string" },
+              "severity": { "enum": ["info", "warning", "critical"], "default": "warning" },
+              "service": { "type": "string" },
+              "environment": { "type": "string" },
+              "node": { "type": "string" },
+              "threshold": { "type": "number" },
+              "for": { "$ref": "#/$defs/duration" },
+              "query": { "type": "string" },
+              "count": { "type": "integer" },
+              "repeat_interval": { "$ref": "#/$defs/duration", "default": "4h" },
+              "channels": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+            }
+          }
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["app", "database", "worker", "cron"], "default": "app" },
+        "source": { "$ref": "#/$defs/source" },
+        "db": {
+          "type": "object",
+          "required": ["engine"],
+          "additionalProperties": false,
+          "properties": {
+            "engine": { "enum": ["postgres", "mysql", "mariadb", "mongo", "redis"] },
+            "version": { "type": "string" },
+            "expose_host_port": { "type": "integer", "minimum": 30000, "maximum": 39999 }
+          }
+        },
+        "ports": { "type": "array", "items": { "$ref": "#/$defs/port" } },
+        "command": { "type": "array", "items": { "type": "string" } },
+        "entrypoint": { "type": "array", "items": { "type": "string" } },
+        "workdir": { "type": "string" },
+        "env": { "$ref": "#/$defs/envMap" },
+        "secrets": { "type": "array", "items": { "$ref": "#/$defs/secretRef" } },
+        "domains": { "type": "array", "items": { "$ref": "#/$defs/domain" } },
+        "volumes": { "type": "array", "items": { "$ref": "#/$defs/volume" } },
+        "files": {
+          "type": "array",
+          "description": "Small config files mounted read-only. Not for secrets.",
+          "items": {
+            "type": "object",
+            "required": ["path", "content"],
+            "additionalProperties": false,
+            "properties": { "path": { "type": "string", "pattern": "^/" }, "content": { "type": "string", "maxLength": 1048576 } }
+          }
+        },
+        "healthcheck": { "$ref": "#/$defs/healthcheck" },
+        "deploy": { "$ref": "#/$defs/deploy" },
+        "resources": { "$ref": "#/$defs/resources" },
+        "replicas": { "type": "integer", "minimum": 0, "maximum": 100, "default": 1 },
+        "placement": { "$ref": "#/$defs/placement" },
+        "failover": { "enum": ["none", "auto"], "default": "none" },
+        "allow_data_loss_failover": { "type": "boolean", "default": false },
+        "stop_grace_period": { "$ref": "#/$defs/duration", "default": "30s" },
+        "restart_policy": { "enum": ["always", "on-failure", "no"], "default": "always" },
+        "auto_deploy": { "type": "boolean", "description": "Deploy on push to the tracked branch. Default true, except in protected environments." },
+        "depends_on": { "type": "array", "items": { "type": "string" } },
+        "cron": {
+          "type": "object",
+          "required": ["schedule", "command"],
+          "additionalProperties": false,
+          "properties": {
+            "schedule": { "type": "string" },
+            "command": { "type": "array", "items": { "type": "string" } },
+            "timeout": { "$ref": "#/$defs/duration", "default": "1h" },
+            "concurrency": { "enum": ["forbid", "allow"], "default": "forbid" }
+          }
+        },
+        "backup": { "$ref": "#/$defs/backup" },
+        "request_body_limit": { "$ref": "#/$defs/size" }
+      },
+      "allOf": [
+        { "if": { "properties": { "type": { "const": "cron" } }, "required": ["type"] }, "then": { "required": ["cron"] } },
+        { "if": { "properties": { "type": { "const": "database" } }, "required": ["type"] }, "then": { "required": ["db"] } }
+      ]
+    }
+  }
+}

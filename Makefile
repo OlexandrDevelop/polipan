@@ -50,6 +50,7 @@ smoke: ## Start the images and check /healthz (gate 11, needs make images)
 api-sync: ## Copy openapi.yaml and agent.proto from docs/spec to /api and /proto
 	cp docs/spec/openapi.yaml api/openapi.yaml
 	cp docs/spec/schemas/agent.proto proto/agent.proto
+	cp docs/spec/schemas/polipan.schema.json api/polipan.schema.json
 
 .PHONY: generate
 generate: ## Generate Go and TypeScript API code and the gRPC code

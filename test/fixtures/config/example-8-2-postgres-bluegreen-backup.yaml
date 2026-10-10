@@ -1,0 +1,42 @@
+# Example from docs/spec/07-config-as-code.md section 8.
+version: 1
+project: shop
+environments:
+  production:
+    kind: production
+    protected: true
+    deploy:
+      strategy: blue_green
+      drain_seconds: 30
+  staging:
+    kind: staging
+backup_targets:
+  - name: offsite
+    kind: b2
+    config: { bucket: acme-backups, path: shop }
+    credentials_secret: B2_CREDENTIALS
+services:
+  db:
+    type: database
+    db: { engine: postgres, version: "16" }
+    volumes:
+      - { name: data, path: /var/lib/postgresql/data }
+    backup:
+      schedule: "0 2 * * *"
+      targets: [offsite]
+      retention: { keep_daily: 7, keep_weekly: 4, keep_monthly: 6 }
+      restore_check: { enabled: true, schedule: "0 3 * * 0" }
+  api:
+    source:
+      git: { repo: acme/shop, branch: main, builder: dockerfile }
+    ports: [8080]
+    env:
+      LOG_LEVEL: info
+      DATABASE_URL: "${{db.db.URL}}"
+    secrets: [SESSION_KEY]
+    healthcheck: { type: http, path: /ready, port: 8080 }
+    deploy:
+      pre_deploy: ["./migrate", "up"]
+    depends_on: [db]
+    replicas: 2
+    failover: auto

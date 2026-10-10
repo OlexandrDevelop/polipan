@@ -1,0 +1,20 @@
+# Example from docs/spec/07-config-as-code.md section 8.
+version: 1
+project: blog
+services:
+  web:
+    source:
+      git:
+        repo: acme/blog
+        branch: main
+        builder: railpack
+    ports: [3000]
+    domains:
+      - host: blog.example.com
+        port: 3000
+    healthcheck:
+      type: http
+      path: /healthz
+    resources:
+      cpu: "500m"
+      memory: 512Mi

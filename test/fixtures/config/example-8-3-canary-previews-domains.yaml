@@ -1,0 +1,42 @@
+# Example from docs/spec/07-config-as-code.md section 8.
+version: 1
+project: shop
+previews:
+  enabled: true
+  base_environment: staging
+  max_active: 10
+  ttl: 7d
+  node_selector: { preview: "true" }
+environments:
+  production:
+    kind: production
+    protected: true
+    services:
+      api:
+        domains:
+          - { host: api.shop.example.com, port: 8080 }
+        replicas: 3
+        deploy:
+          strategy: canary
+          canary:
+            steps: [10, 25, 50, 100]
+            step_interval: 5m
+            max_5xx_rate: 0.02
+            max_p95_ratio: 1.5
+  staging:
+    kind: staging
+    services:
+      api:
+        domains:
+          - { host: api.staging.shop.example.com, port: 8080 }
+services:
+  api:
+    source:
+      git: { repo: acme/shop, branch: main, builder: railpack }
+    ports: [8080]
+    healthcheck: { type: http, path: /ready }
+    env:
+      LOG_LEVEL: { value: debug, preview: true }
+    secrets:
+      - SESSION_KEY
+      - { name: SENTRY_DSN, preview: true }
