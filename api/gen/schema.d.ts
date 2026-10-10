@@ -2192,6 +2192,8 @@ export interface components {
             status: "ok" | "degraded";
             database?: boolean;
             queue_lag_seconds?: number;
+            victoria_metrics?: boolean;
+            victoria_logs?: boolean;
         };
         /** @enum {string} */
         Role: "owner" | "admin" | "developer" | "viewer";
@@ -2236,6 +2238,8 @@ export interface components {
             metrics_retention_days: number;
             /** @default 30 */
             logs_retention_days: number;
+            /** @description Needed when a retention gets shorter: older data is deleted (409 retention_shrink_needs_confirm) */
+            confirm_retention_shrink?: boolean;
             /** @default 365 */
             audit_retention_days: number;
             /** @default false */
@@ -2606,6 +2610,13 @@ export interface components {
             strategy_options?: components["schemas"]["StrategyOptions"];
             state?: components["schemas"]["DeploymentState"];
             canary_step?: number;
+            /** @description The steps of a canary deployment, for example [10, 25, 50, 100] */
+            canary_steps?: number[];
+            canary_paused?: boolean;
+            /** @description The last gate result: step, passed, reason, health_ok, green_requests, green_5xx_rate, green_p95_seconds, blue_p95_seconds */
+            canary_gate?: {
+                [key: string]: unknown;
+            };
             failure_reason?: string;
             failure_detail?: string;
             warnings?: components["schemas"]["Warning"][];
@@ -2807,6 +2818,9 @@ export interface components {
             level?: string;
             /** @enum {string} */
             stream?: "stdout" | "stderr";
+            replica?: number;
+            /** @description false for a context line around a match */
+            match?: boolean;
             project_id?: string;
             environment_id?: string;
             service_id?: string;
@@ -3008,6 +3022,9 @@ export interface components {
             enabled?: boolean;
             /** @enum {string} */
             state?: "ok" | "failing";
+            last_error?: string;
+            /** Format: date-time */
+            last_ok_at?: string;
         };
         AlertChannelWrite: {
             /** @enum {string} */
@@ -3043,6 +3060,9 @@ export interface components {
             enabled?: boolean;
             /** Format: date-time */
             muted_until?: string;
+            mute_reason?: string;
+            /** @description A default rule made at install */
+            builtin?: boolean;
         };
         AlertRuleWrite: {
             name: string;
@@ -3062,12 +3082,23 @@ export interface components {
         AlertInstance: {
             id?: string;
             rule_id?: string;
+            rule_name?: string;
+            rule_type?: string;
+            /** @enum {string} */
+            severity?: "info" | "warning" | "critical";
+            fingerprint?: string;
             /** @enum {string} */
             state?: "firing" | "resolved";
             /** Format: date-time */
             first_fired_at?: string;
             /** Format: date-time */
+            last_notified_at?: string;
+            /** Format: date-time */
             resolved_at?: string;
+            /** @description The rule is muted: no message is sent */
+            muted?: boolean;
+            /** @description A node_down alert of the node hides this one */
+            suppressed?: boolean;
             details?: {
                 [key: string]: unknown;
             };
@@ -6306,6 +6337,9 @@ export interface operations {
                 release_id?: string;
                 node_id?: string;
                 level?: "debug" | "info" | "warn" | "error" | "unknown";
+                stream?: "stdout" | "stderr";
+                /** @description Lines before and after each match */
+                context?: number;
                 from?: components["parameters"]["From"];
                 to?: components["parameters"]["To"];
                 limit?: components["parameters"]["Limit"];

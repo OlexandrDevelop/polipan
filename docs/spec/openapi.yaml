@@ -1226,6 +1226,8 @@ paths:
         - {name: release_id, in: query, schema: {type: string}}
         - {name: node_id, in: query, schema: {type: string}}
         - {name: level, in: query, schema: {type: string, enum: [debug, info, warn, error, unknown]}}
+        - {name: stream, in: query, schema: {type: string, enum: [stdout, stderr]}}
+        - {name: context, in: query, schema: {type: integer, minimum: 0, maximum: 20, default: 0}, description: "Lines before and after each match"}
         - {$ref: '#/components/parameters/From'}
         - {$ref: '#/components/parameters/To'}
         - {$ref: '#/components/parameters/Limit'}
@@ -1675,7 +1677,7 @@ components:
     Health:
       type: object
       required: [status]
-      properties: {status: {type: string, enum: [ok, degraded]}, database: {type: boolean}, queue_lag_seconds: {type: number}}
+      properties: {status: {type: string, enum: [ok, degraded]}, database: {type: boolean}, queue_lag_seconds: {type: number}, victoria_metrics: {type: boolean}, victoria_logs: {type: boolean}}
     Role: {type: string, enum: [owner, admin, developer, viewer]}
     Strategy: {type: string, enum: [recreate, blue_green, canary]}
     DeploymentState:
@@ -1708,6 +1710,7 @@ components:
         preview_domain: {type: string}
         metrics_retention_days: {type: integer, default: 90}
         logs_retention_days: {type: integer, default: 30}
+        confirm_retention_shrink: {type: boolean, writeOnly: true, description: "Needed when a retention gets shorter: older data is deleted (409 retention_shrink_needs_confirm)"}
         audit_retention_days: {type: integer, default: 365}
         require_2fa: {type: boolean, default: false}
         allow_private_targets: {type: boolean, default: false}
@@ -1891,6 +1894,9 @@ components:
         strategy_options: {$ref: '#/components/schemas/StrategyOptions'}
         state: {$ref: '#/components/schemas/DeploymentState'}
         canary_step: {type: integer}
+        canary_steps: {type: array, items: {type: integer}, description: "The steps of a canary deployment, for example [10, 25, 50, 100]"}
+        canary_paused: {type: boolean}
+        canary_gate: {type: object, additionalProperties: true, description: "The last gate result: step, passed, reason, health_ok, green_requests, green_5xx_rate, green_p95_seconds, blue_p95_seconds"}
         failure_reason: {type: string}
         failure_detail: {type: string}
         warnings: {type: array, items: {$ref: '#/components/schemas/Warning'}}
@@ -1970,7 +1976,7 @@ components:
       properties: {version: {type: integer}, created_by: {type: string}, created_at: {type: string, format: date-time}, destroyed: {type: boolean}, used_by_releases: {type: integer}}
     LogLine:
       type: object
-      properties: {time: {type: string, format: date-time}, message: {type: string}, level: {type: string}, stream: {type: string, enum: [stdout, stderr]}, project_id: {type: string}, environment_id: {type: string}, service_id: {type: string}, release_id: {type: string}, node_id: {type: string}, container: {type: string}}
+      properties: {time: {type: string, format: date-time}, message: {type: string}, level: {type: string}, stream: {type: string, enum: [stdout, stderr]}, replica: {type: integer}, match: {type: boolean, description: "false for a context line around a match"}, project_id: {type: string}, environment_id: {type: string}, service_id: {type: string}, release_id: {type: string}, node_id: {type: string}, container: {type: string}}
     MetricResult:
       type: object
       properties:
@@ -2010,21 +2016,21 @@ components:
       properties: {id: {type: string}, trigger: {type: string, enum: [schedule, manual, first_backup]}, policy_id: {type: string}, backup_run_id: {type: string}, target_id: {type: string}, node_id: {type: string}, state: {type: string, enum: [queued, running, passed, failed]}, checks: {type: array, items: {type: object, properties: {name: {type: string}, ok: {type: boolean}, detail: {type: string}}}}, duration_ms: {type: integer}, started_at: {type: string, format: date-time}, finished_at: {type: string, format: date-time}}
     AlertChannel:
       type: object
-      properties: {id: {type: string}, kind: {type: string, enum: [telegram, slack, email, webhook]}, name: {type: string}, config: {type: object, additionalProperties: true}, enabled: {type: boolean}, state: {type: string, enum: [ok, failing]}}
+      properties: {id: {type: string}, kind: {type: string, enum: [telegram, slack, email, webhook]}, name: {type: string}, config: {type: object, additionalProperties: true}, enabled: {type: boolean}, state: {type: string, enum: [ok, failing]}, last_error: {type: string}, last_ok_at: {type: string, format: date-time}}
     AlertChannelWrite:
       type: object
       required: [kind, name]
       properties: {kind: {type: string, enum: [telegram, slack, email, webhook]}, name: {type: string}, config: {type: object, additionalProperties: true}, secret: {type: string, writeOnly: true}, enabled: {type: boolean}}
     AlertRule:
       type: object
-      properties: {id: {type: string}, name: {type: string}, type: {type: string}, scope: {type: object, properties: {project_id: {type: string}, environment_id: {type: string}, service_id: {type: string}, node_id: {type: string}}}, params: {type: object, properties: {threshold: {type: number}, for_seconds: {type: integer}, query: {type: string}, count: {type: integer}}}, severity: {type: string, enum: [info, warning, critical]}, channel_ids: {type: array, items: {type: string}}, repeat_interval_seconds: {type: integer, default: 14400}, enabled: {type: boolean}, muted_until: {type: string, format: date-time}}
+      properties: {id: {type: string}, name: {type: string}, type: {type: string}, scope: {type: object, properties: {project_id: {type: string}, environment_id: {type: string}, service_id: {type: string}, node_id: {type: string}}}, params: {type: object, properties: {threshold: {type: number}, for_seconds: {type: integer}, query: {type: string}, count: {type: integer}}}, severity: {type: string, enum: [info, warning, critical]}, channel_ids: {type: array, items: {type: string}}, repeat_interval_seconds: {type: integer, default: 14400}, enabled: {type: boolean}, muted_until: {type: string, format: date-time}, mute_reason: {type: string}, builtin: {type: boolean, description: "A default rule made at install"}}
     AlertRuleWrite:
       type: object
       required: [name, type, severity, channel_ids]
       properties: {name: {type: string}, type: {type: string}, scope: {type: object, additionalProperties: {type: string}}, params: {type: object, additionalProperties: true}, severity: {type: string, enum: [info, warning, critical]}, channel_ids: {type: array, items: {type: string}}, repeat_interval_seconds: {type: integer}, enabled: {type: boolean}}
     AlertInstance:
       type: object
-      properties: {id: {type: string}, rule_id: {type: string}, state: {type: string, enum: [firing, resolved]}, first_fired_at: {type: string, format: date-time}, resolved_at: {type: string, format: date-time}, details: {type: object, additionalProperties: true}}
+      properties: {id: {type: string}, rule_id: {type: string}, rule_name: {type: string}, rule_type: {type: string}, severity: {type: string, enum: [info, warning, critical]}, fingerprint: {type: string}, state: {type: string, enum: [firing, resolved]}, first_fired_at: {type: string, format: date-time}, last_notified_at: {type: string, format: date-time}, resolved_at: {type: string, format: date-time}, muted: {type: boolean, description: "The rule is muted: no message is sent"}, suppressed: {type: boolean, description: "A node_down alert of the node hides this one"}, details: {type: object, additionalProperties: true}}
     ConfigPlan:
       type: object
       properties:

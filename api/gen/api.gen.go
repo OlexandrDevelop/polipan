@@ -48,6 +48,13 @@ const (
 	AlertChannelWriteKindWebhook  AlertChannelWriteKind = "webhook"
 )
 
+// Defines values for AlertInstanceSeverity.
+const (
+	AlertInstanceSeverityCritical AlertInstanceSeverity = "critical"
+	AlertInstanceSeverityInfo     AlertInstanceSeverity = "info"
+	AlertInstanceSeverityWarning  AlertInstanceSeverity = "warning"
+)
+
 // Defines values for AlertInstanceState.
 const (
 	AlertInstanceStateFiring   AlertInstanceState = "firing"
@@ -257,8 +264,8 @@ const (
 
 // Defines values for LogLineStream.
 const (
-	Stderr LogLineStream = "stderr"
-	Stdout LogLineStream = "stdout"
+	LogLineStreamStderr LogLineStream = "stderr"
+	LogLineStreamStdout LogLineStream = "stdout"
 )
 
 // Defines values for MemberSource.
@@ -309,10 +316,10 @@ const (
 
 // Defines values for PlacementHealth.
 const (
-	PlacementHealthHealthy   PlacementHealth = "healthy"
-	PlacementHealthStarting  PlacementHealth = "starting"
-	PlacementHealthUnhealthy PlacementHealth = "unhealthy"
-	PlacementHealthUnknown   PlacementHealth = "unknown"
+	Healthy   PlacementHealth = "healthy"
+	Starting  PlacementHealth = "starting"
+	Unhealthy PlacementHealth = "unhealthy"
+	Unknown   PlacementHealth = "unknown"
 )
 
 // Defines values for PlacementRole.
@@ -512,6 +519,12 @@ const (
 	SearchLogsParamsLevelWarn    SearchLogsParamsLevel = "warn"
 )
 
+// Defines values for SearchLogsParamsStream.
+const (
+	SearchLogsParamsStreamStderr SearchLogsParamsStream = "stderr"
+	SearchLogsParamsStreamStdout SearchLogsParamsStream = "stdout"
+)
+
 // Defines values for GetNodeMetricsParamsMetrics.
 const (
 	GetNodeMetricsParamsMetricsCpu           GetNodeMetricsParamsMetrics = "cpu"
@@ -567,12 +580,14 @@ const (
 
 // AlertChannel defines model for AlertChannel.
 type AlertChannel struct {
-	Config  *map[string]interface{} `json:"config,omitempty"`
-	Enabled *bool                   `json:"enabled,omitempty"`
-	Id      *string                 `json:"id,omitempty"`
-	Kind    *AlertChannelKind       `json:"kind,omitempty"`
-	Name    *string                 `json:"name,omitempty"`
-	State   *AlertChannelState      `json:"state,omitempty"`
+	Config    *map[string]interface{} `json:"config,omitempty"`
+	Enabled   *bool                   `json:"enabled,omitempty"`
+	Id        *string                 `json:"id,omitempty"`
+	Kind      *AlertChannelKind       `json:"kind,omitempty"`
+	LastError *string                 `json:"last_error,omitempty"`
+	LastOkAt  *time.Time              `json:"last_ok_at,omitempty"`
+	Name      *string                 `json:"name,omitempty"`
+	State     *AlertChannelState      `json:"state,omitempty"`
 }
 
 // AlertChannelKind defines model for AlertChannel.Kind.
@@ -595,22 +610,39 @@ type AlertChannelWriteKind string
 
 // AlertInstance defines model for AlertInstance.
 type AlertInstance struct {
-	Details      *map[string]interface{} `json:"details,omitempty"`
-	FirstFiredAt *time.Time              `json:"first_fired_at,omitempty"`
-	Id           *string                 `json:"id,omitempty"`
-	ResolvedAt   *time.Time              `json:"resolved_at,omitempty"`
-	RuleId       *string                 `json:"rule_id,omitempty"`
-	State        *AlertInstanceState     `json:"state,omitempty"`
+	Details        *map[string]interface{} `json:"details,omitempty"`
+	Fingerprint    *string                 `json:"fingerprint,omitempty"`
+	FirstFiredAt   *time.Time              `json:"first_fired_at,omitempty"`
+	Id             *string                 `json:"id,omitempty"`
+	LastNotifiedAt *time.Time              `json:"last_notified_at,omitempty"`
+
+	// Muted The rule is muted: no message is sent
+	Muted      *bool                  `json:"muted,omitempty"`
+	ResolvedAt *time.Time             `json:"resolved_at,omitempty"`
+	RuleId     *string                `json:"rule_id,omitempty"`
+	RuleName   *string                `json:"rule_name,omitempty"`
+	RuleType   *string                `json:"rule_type,omitempty"`
+	Severity   *AlertInstanceSeverity `json:"severity,omitempty"`
+	State      *AlertInstanceState    `json:"state,omitempty"`
+
+	// Suppressed A node_down alert of the node hides this one
+	Suppressed *bool `json:"suppressed,omitempty"`
 }
+
+// AlertInstanceSeverity defines model for AlertInstance.Severity.
+type AlertInstanceSeverity string
 
 // AlertInstanceState defines model for AlertInstance.State.
 type AlertInstanceState string
 
 // AlertRule defines model for AlertRule.
 type AlertRule struct {
+	// Builtin A default rule made at install
+	Builtin    *bool      `json:"builtin,omitempty"`
 	ChannelIds *[]string  `json:"channel_ids,omitempty"`
 	Enabled    *bool      `json:"enabled,omitempty"`
 	Id         *string    `json:"id,omitempty"`
+	MuteReason *string    `json:"mute_reason,omitempty"`
 	MutedUntil *time.Time `json:"muted_until,omitempty"`
 	Name       *string    `json:"name,omitempty"`
 	Params     *struct {
@@ -879,8 +911,15 @@ type DeployRequest struct {
 
 // Deployment defines model for Deployment.
 type Deployment struct {
-	ActorId           *string          `json:"actor_id,omitempty"`
-	CanaryStep        *int             `json:"canary_step,omitempty"`
+	ActorId *string `json:"actor_id,omitempty"`
+
+	// CanaryGate The last gate result: step, passed, reason, health_ok, green_requests, green_5xx_rate, green_p95_seconds, blue_p95_seconds
+	CanaryGate   *map[string]interface{} `json:"canary_gate,omitempty"`
+	CanaryPaused *bool                   `json:"canary_paused,omitempty"`
+	CanaryStep   *int                    `json:"canary_step,omitempty"`
+
+	// CanarySteps The steps of a canary deployment, for example [10, 25, 50, 100]
+	CanarySteps       *[]int           `json:"canary_steps,omitempty"`
 	EnvironmentId     *string          `json:"environment_id,omitempty"`
 	FailureDetail     *string          `json:"failure_detail,omitempty"`
 	FailureReason     *string          `json:"failure_reason,omitempty"`
@@ -1054,6 +1093,8 @@ type Health struct {
 	Database        *bool        `json:"database,omitempty"`
 	QueueLagSeconds *float32     `json:"queue_lag_seconds,omitempty"`
 	Status          HealthStatus `json:"status"`
+	VictoriaLogs    *bool        `json:"victoria_logs,omitempty"`
+	VictoriaMetrics *bool        `json:"victoria_metrics,omitempty"`
 }
 
 // HealthStatus defines model for Health.Status.
@@ -1061,16 +1102,20 @@ type HealthStatus string
 
 // LogLine defines model for LogLine.
 type LogLine struct {
-	Container     *string        `json:"container,omitempty"`
-	EnvironmentId *string        `json:"environment_id,omitempty"`
-	Level         *string        `json:"level,omitempty"`
-	Message       *string        `json:"message,omitempty"`
-	NodeId        *string        `json:"node_id,omitempty"`
-	ProjectId     *string        `json:"project_id,omitempty"`
-	ReleaseId     *string        `json:"release_id,omitempty"`
-	ServiceId     *string        `json:"service_id,omitempty"`
-	Stream        *LogLineStream `json:"stream,omitempty"`
-	Time          *time.Time     `json:"time,omitempty"`
+	Container     *string `json:"container,omitempty"`
+	EnvironmentId *string `json:"environment_id,omitempty"`
+	Level         *string `json:"level,omitempty"`
+
+	// Match false for a context line around a match
+	Match     *bool          `json:"match,omitempty"`
+	Message   *string        `json:"message,omitempty"`
+	NodeId    *string        `json:"node_id,omitempty"`
+	ProjectId *string        `json:"project_id,omitempty"`
+	ReleaseId *string        `json:"release_id,omitempty"`
+	Replica   *int           `json:"replica,omitempty"`
+	ServiceId *string        `json:"service_id,omitempty"`
+	Stream    *LogLineStream `json:"stream,omitempty"`
+	Time      *time.Time     `json:"time,omitempty"`
 }
 
 // LogLineStream defines model for LogLine.Stream.
@@ -1179,16 +1224,19 @@ type Org struct {
 // OrgSettings defines model for OrgSettings.
 type OrgSettings struct {
 	// AcmeDnsProvider DNS-01 provider name and credential secret id
-	AcmeDnsProvider      *map[string]interface{} `json:"acme_dns_provider,omitempty"`
-	AcmeEmail            *string                 `json:"acme_email,omitempty"`
-	AllowOwnerPassword   *bool                   `json:"allow_owner_password,omitempty"`
-	AllowPrivateTargets  *bool                   `json:"allow_private_targets,omitempty"`
-	AuditRetentionDays   *int                    `json:"audit_retention_days,omitempty"`
-	DefaultDomainSuffix  *string                 `json:"default_domain_suffix,omitempty"`
-	LogsRetentionDays    *int                    `json:"logs_retention_days,omitempty"`
-	MetricsRetentionDays *int                    `json:"metrics_retention_days,omitempty"`
-	PreviewDomain        *string                 `json:"preview_domain,omitempty"`
-	Require2fa           *bool                   `json:"require_2fa,omitempty"`
+	AcmeDnsProvider     *map[string]interface{} `json:"acme_dns_provider,omitempty"`
+	AcmeEmail           *string                 `json:"acme_email,omitempty"`
+	AllowOwnerPassword  *bool                   `json:"allow_owner_password,omitempty"`
+	AllowPrivateTargets *bool                   `json:"allow_private_targets,omitempty"`
+	AuditRetentionDays  *int                    `json:"audit_retention_days,omitempty"`
+
+	// ConfirmRetentionShrink Needed when a retention gets shorter: older data is deleted (409 retention_shrink_needs_confirm)
+	ConfirmRetentionShrink *bool   `json:"confirm_retention_shrink,omitempty"`
+	DefaultDomainSuffix    *string `json:"default_domain_suffix,omitempty"`
+	LogsRetentionDays      *int    `json:"logs_retention_days,omitempty"`
+	MetricsRetentionDays   *int    `json:"metrics_retention_days,omitempty"`
+	PreviewDomain          *string `json:"preview_domain,omitempty"`
+	Require2fa             *bool   `json:"require_2fa,omitempty"`
 }
 
 // OrgUpdate defines model for OrgUpdate.
@@ -1895,21 +1943,28 @@ type ListGitReposParams struct {
 // SearchLogsParams defines parameters for SearchLogs.
 type SearchLogsParams struct {
 	// Q Free text, a phrase in quotes, or /regex/
-	Q             *string                `form:"q,omitempty" json:"q,omitempty"`
-	ProjectId     *string                `form:"project_id,omitempty" json:"project_id,omitempty"`
-	EnvironmentId *string                `form:"environment_id,omitempty" json:"environment_id,omitempty"`
-	ServiceId     *string                `form:"service_id,omitempty" json:"service_id,omitempty"`
-	ReleaseId     *string                `form:"release_id,omitempty" json:"release_id,omitempty"`
-	NodeId        *string                `form:"node_id,omitempty" json:"node_id,omitempty"`
-	Level         *SearchLogsParamsLevel `form:"level,omitempty" json:"level,omitempty"`
-	From          *From                  `form:"from,omitempty" json:"from,omitempty"`
-	To            *To                    `form:"to,omitempty" json:"to,omitempty"`
-	Limit         *Limit                 `form:"limit,omitempty" json:"limit,omitempty"`
-	Cursor        *Cursor                `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Q             *string                 `form:"q,omitempty" json:"q,omitempty"`
+	ProjectId     *string                 `form:"project_id,omitempty" json:"project_id,omitempty"`
+	EnvironmentId *string                 `form:"environment_id,omitempty" json:"environment_id,omitempty"`
+	ServiceId     *string                 `form:"service_id,omitempty" json:"service_id,omitempty"`
+	ReleaseId     *string                 `form:"release_id,omitempty" json:"release_id,omitempty"`
+	NodeId        *string                 `form:"node_id,omitempty" json:"node_id,omitempty"`
+	Level         *SearchLogsParamsLevel  `form:"level,omitempty" json:"level,omitempty"`
+	Stream        *SearchLogsParamsStream `form:"stream,omitempty" json:"stream,omitempty"`
+
+	// Context Lines before and after each match
+	Context *int    `form:"context,omitempty" json:"context,omitempty"`
+	From    *From   `form:"from,omitempty" json:"from,omitempty"`
+	To      *To     `form:"to,omitempty" json:"to,omitempty"`
+	Limit   *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor  *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // SearchLogsParamsLevel defines parameters for SearchLogs.
 type SearchLogsParamsLevel string
+
+// SearchLogsParamsStream defines parameters for SearchLogs.
+type SearchLogsParamsStream string
 
 // UpdateMeJSONBody defines parameters for UpdateMe.
 type UpdateMeJSONBody struct {
@@ -8733,6 +8788,38 @@ func NewSearchLogsRequest(server string, params *SearchLogsParams) (*http.Reques
 		if params.Level != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "level", runtime.ParamLocationQuery, *params.Level); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Stream != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "stream", runtime.ParamLocationQuery, *params.Stream); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Context != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "context", runtime.ParamLocationQuery, *params.Context); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -28153,6 +28240,22 @@ func (siw *ServerInterfaceWrapper) SearchLogs(w http.ResponseWriter, r *http.Req
 	err = runtime.BindQueryParameter("form", true, false, "level", r.URL.Query(), &params.Level)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "level", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "stream" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "stream", r.URL.Query(), &params.Stream)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "stream", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "context" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "context", r.URL.Query(), &params.Context)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "context", Err: err})
 		return
 	}
 
