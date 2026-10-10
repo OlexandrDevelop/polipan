@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polipan UI prototype (T-323)</title>
+<style>
+:root{--bg:#fff;--surface:#f6f7f9;--text:#111827;--muted:#4b5563;--bs:#6b7280;--border:#d6dae1;--primary:#4338ca;--onp:#fff;--ok:#15803d;--warn:#a16207;--err:#b91c1c;--info:#1d4ed8;--r:10px;--sh:0 4px 16px rgb(0 0 0/.12)}
+[data-theme=dark]{--bg:#0b0f19;--surface:#131a2a;--text:#e6e9f0;--muted:#a0a8b8;--bs:#7d8799;--border:#2a3447;--primary:#a5b4fc;--onp:#0b0f19;--ok:#4ade80;--warn:#facc15;--err:#f87171;--info:#7db0ff}
+*{box-sizing:border-box}
+body{margin:0;font:14px/20px system-ui,sans-serif;background:var(--bg);color:var(--text)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+nav.side{background:var(--surface);border-right:1px solid var(--border);padding:12px;position:sticky;top:0;height:100vh}
+nav.side a,nav.bottom a{display:flex;gap:8px;align-items:center;padding:8px 10px;border-radius:8px;color:var(--text);text-decoration:none;cursor:pointer;min-height:36px}
+nav a[aria-current=page]{background:var(--primary);color:var(--onp)}
+nav a:hover:not([aria-current]){background:var(--border)}
+.brand{font-weight:700;font-size:18px;padding:6px 10px 12px}
+.switch{width:100%;text-align:left;border:1px solid var(--bs);background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:12px;cursor:pointer}
+nav.bottom{display:none}
+header.top{display:flex;gap:8px;align-items:center;padding:10px 24px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:5}
+.crumb{color:var(--muted)} .grow{flex:1}
+main{padding:24px;max-width:1280px}
+h1{font-size:24px;line-height:32px;margin:0 0 4px} h2{font-size:16px;margin:0 0 8px}
+.btn{border:1px solid var(--bs);background:var(--bg);border-radius:8px;padding:6px 12px;cursor:pointer;min-height:32px}
+.btn.p{background:var(--primary);color:var(--onp);border-color:var(--primary);font-weight:600}
+.btn.d{border-color:var(--err);color:var(--err)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.badge{display:inline-flex;gap:4px;align-items:center;border-radius:9999px;padding:2px 10px;font-size:12px;font-weight:600;border:1px solid currentColor}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.err{color:var(--err)}.info{color:var(--info)}.mut{color:var(--muted)}
+.banner{border:1px solid var(--err);border-left-width:6px;border-radius:8px;padding:8px 12px;margin:12px 0;background:var(--surface)}
+.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--border);margin:16px 0}
+.tabs button{border:0;background:none;padding:10px 14px;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;color:var(--muted)}
+.tabs button[aria-selected=true]{border-color:var(--primary);color:var(--text);font-weight:600}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border)}
+th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase}
+.steps{display:flex;gap:0;margin:12px 0;flex-wrap:wrap}
+.step{flex:1;min-width:90px;padding:8px;border-top:4px solid var(--border);font-size:12px}
+.step.done{border-color:var(--ok)}.step.now{border-color:var(--primary);font-weight:700}
+.bar{height:10px;border-radius:9999px;background:var(--border);overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%;background:var(--primary);transition:width .3s}
+pre.log{background:#0b0f19;color:#e6e9f0;padding:12px;border-radius:8px;overflow:auto;max-height:200px;font:12px/18px ui-monospace,monospace;margin:0}
+.view{display:none}.view.on{display:block}
+.chart{height:90px;display:flex;align-items:flex-end;gap:3px}
+.chart i{flex:1;background:var(--primary);opacity:.8;border-radius:3px 3px 0 0}
+dialog{border:1px solid var(--bs);border-radius:14px;background:var(--bg);color:var(--text);box-shadow:var(--sh);max-width:min(520px,92vw);padding:20px}
+dialog::backdrop{background:rgb(0 0 0/.5)}
+dialog.pal{width:560px;padding:0;margin-top:12vh}
+.pal input{width:100%;border:0;border-bottom:1px solid var(--border);padding:14px;background:transparent;outline:none}
+.pal li{list-style:none;padding:10px 14px;cursor:pointer}.pal li:hover,.pal li:focus{background:var(--surface)}
+.pal ul{margin:0;padding:0}
+.toast{position:fixed;right:16px;bottom:16px;background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;display:none}
+.cards{display:none}
+.note{font-size:12px;color:var(--muted)}
+.sr{position:absolute;left:-9999px}
+@media(max-width:1023px){.app{grid-template-columns:64px 1fr}nav.side .lbl,.brand span,.switch .lbl{display:none}}
+@media(max-width:639px){
+ .app{display:block;padding-bottom:64px}nav.side{display:none}
+ nav.bottom{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);justify-content:space-around;z-index:9;padding-bottom:env(safe-area-inset-bottom)}
+ nav.bottom a{flex-direction:column;gap:2px;font-size:11px;min-width:56px;min-height:56px;justify-content:center}
+ main{padding:16px}header.top{padding:8px 12px}.hide-phone{display:none}
+ .btn{min-height:44px}
+ table.resp{display:none}.cards{display:grid;gap:12px}
+ .tabs button{min-height:44px}
+}
+@media(min-width:1536px){main{max-width:1600px}.grid{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}}
+</style>
+</head>
+<body data-theme="light">
+<a class="sr" href="#main">Skip to content</a>
+<div class="app">
+<nav class="side" aria-label="Main">
+  <div class="brand">🐝 <span>Polipan</span></div>
+  <button class="switch" id="sw" aria-haspopup="listbox"><span class="lbl">Acme · <b>shop</b> / production</span><span aria-hidden="true" class="hide-lbl"></span></button>
+  <a data-go="dash" aria-current="page" tabindex="0">▦ <span class="lbl">Dashboard</span></a>
+  <a data-go="svc" tabindex="0">◧ <span class="lbl">Projects</span></a>
+  <a data-go="dep" tabindex="0">⇄ <span class="lbl">Deployments</span></a>
+  <a data-go="nodes" tabindex="0">▤ <span class="lbl">Nodes</span></a>
+  <a data-go="more" tabindex="0">❖ <span class="lbl">Catalog</span></a>
+  <a data-go="more" tabindex="0">🔔 <span class="lbl">Alerts</span></a>
+  <a data-go="more" tabindex="0">⚙ <span class="lbl">Settings</span></a>
+</nav>
+<div>
+<header class="top">
+  <span class="crumb hide-phone">Acme / shop /</span><b>production</b>
+  <span class="grow"></span>
+  <button class="btn" id="pb">⌘K <span class="hide-phone">Search</span></button>
+  <button class="btn" id="th" aria-label="Theme: light. Click to change">Theme: Light</button>
+</header>
+<main id="main">
+
+<section class="view on" id="v-dash">
+  <h1>Dashboard</h1><p class="mut">Everything you run, at a glance.</p>
+  <div class="grid">
+    <div class="card"><h2>Services</h2><b style="font-size:30px">12</b> <span class="ok">● 10 running</span> <span class="warn">▲ 1 degraded</span> <span class="err">✕ 1 failed</span></div>
+    <div class="card"><h2>Alerts</h2><b style="font-size:30px">2</b> firing <br><a href="#" class="err">High 5xx on api</a></div>
+    <div class="card"><h2>Nodes</h2><b style="font-size:30px">3</b> <span class="ok">● ready</span><div class="bar"><i style="width:62%"></i></div><span class="note">CPU 62%</span></div>
+    <div class="card"><h2>Needs attention</h2><span class="warn">▲</span> db has no backup<br><span class="warn">▲</span> restore not verified in 30 days</div>
+  </div>
+  <h2 style="margin-top:24px">Recent deployments</h2>
+  <table class="resp"><tr><th>Service</th><th>Release</th><th>State</th><th>When</th></tr>
+   <tr><td><a href="#" data-go="svc">api</a></td><td>#42 a1b2c3d</td><td class="warn">▲ shifting 25%</td><td>2 min ago</td></tr>
+   <tr><td>web</td><td>#17 9f8e7d6</td><td class="ok">● live</td><td>1 h ago</td></tr>
+   <tr><td>worker</td><td>#9 77aa11b</td><td class="err">✕ failed</td><td>3 h ago</td></tr></table>
+  <div class="cards">
+   <div class="card"><b>api</b> #42 <span class="warn">▲ shifting 25%</span><br><span class="note">2 min ago</span></div>
+   <div class="card"><b>web</b> #17 <span class="ok">● live</span><br><span class="note">1 h ago</span></div>
+  </div>
+</section>
+
+<section class="view" id="v-svc">
+  <div class="note">Project shop · Environment production</div>
+  <div class="banner"><b>Production</b> is protected. Deploys and rollbacks need extra care.</div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h1>api</h1><span class="badge warn">▲ Deploying</span><span class="grow"></span>
+    <button class="btn p" id="deployBtn">Deploy</button><button class="btn" id="rbBtn">Roll back</button><button class="btn">Restart</button></div>
+  <div class="tabs" role="tablist" id="tabs">
+    <button role="tab" aria-selected="true" data-t="ov">Overview</button><button role="tab" aria-selected="false" data-t="rel">Releases</button><button role="tab" aria-selected="false" data-t="env">Env &amp; secrets</button><button role="tab" aria-selected="false" data-t="lg">Logs</button><button role="tab" aria-selected="false" data-t="mt">Metrics</button>
+    <button role="tab" aria-selected="false" data-t="x">Domains</button><button role="tab" aria-selected="false" data-t="x">Volumes</button><button role="tab" aria-selected="false" data-t="x">Health</button><button role="tab" aria-selected="false" data-t="x">Terminal</button><button role="tab" aria-selected="false" data-t="x">Backups</button><button role="tab" aria-selected="false" data-t="x">Settings</button>
+  </div>
+  <div id="t-ov" class="tp">
+    <div class="grid">
+      <div class="card"><h2>Live release</h2>#41 <code>e4d5c6b</code> · Ada · 1 day ago<br><span class="ok">● healthy 3/3</span></div>
+      <div class="card"><h2>Replicas</h2>node-1 <span class="ok">●</span> · node-2 <span class="ok">●</span> · node-3 <span class="ok">●</span></div>
+      <div class="card"><h2>URLs</h2>https://api.shop.example.com <span class="ok">🔒 valid</span></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h2>Deployment #42 · blue-green → canary</h2>
+      <div class="steps" aria-label="Deployment steps"><div class="step done">✓ Build</div><div class="step done">✓ Start</div><div class="step done">✓ Health check</div><div class="step now">● Shifting</div><div class="step">Switch</div><div class="step">Drain</div><div class="step">Live</div></div>
+      <div>Traffic to new release: <b id="pct">25%</b> <span class="note">(gate: 5xx 0.2% &lt; 1%, p95 180 ms &lt; 400 ms ✓)</span></div>
+      <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="25" id="pbar"><i style="width:25%"></i></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn p" id="step">Promote to next step</button><button class="btn">Pause</button><button class="btn d" id="abort">Abort and roll back</button></div>
+      <details style="margin-top:12px"><summary>Build log</summary><pre class="log">[12:01:02] Fetching a1b2c3d
+[12:01:20] Railpack: detected Node
+[12:02:11] Image pushed
+[12:02:30] Health check ok on 3/3 replicas</pre></details>
+    </div>
+  </div>
+  <div id="t-rel" class="tp" hidden>
+    <table class="resp"><tr><th>#</th><th>Commit</th><th>Author</th><th>Status</th><th></th></tr>
+     <tr><td>42</td><td>a1b2c3d</td><td>Ada</td><td class="warn">▲ deploying</td><td></td></tr>
+     <tr><td>41</td><td>e4d5c6b</td><td>Ada</td><td class="ok">● live</td><td></td></tr>
+     <tr><td>40</td><td>c0ffee1</td><td>Bo</td><td class="mut">superseded <span class="badge info">⚡ fast rollback</span></td><td><button class="btn rb">Roll back</button></td></tr></table>
+    <div class="cards"><div class="card"><b>#40</b> c0ffee1 · Bo<br><span class="badge info">⚡ fast rollback</span><br><br><button class="btn rb">Roll back</button></div></div>
+    <p class="note">Compare two releases: select two rows to see the diff (desktop and tablet).</p>
+  </div>
+  <div id="t-env" class="tp" hidden>
+    <table class="resp"><tr><th>Name</th><th>Value</th><th>Scope</th></tr>
+     <tr><td>NODE_ENV</td><td>production</td><td>environment</td></tr>
+     <tr><td>DATABASE_URL 🔑</td><td class="mut">secret · v3 · updated 2 d ago</td><td><button class="btn">Set new value</button></td></tr></table>
+    <div class="cards"><div class="card"><b>DATABASE_URL 🔑</b><br><span class="mut">secret · v3</span><br><button class="btn">Set new value</button></div></div>
+    <p class="note">Secrets are never shown after save.</p>
+  </div>
+  <div id="t-lg" class="tp" hidden>
+    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap"><input placeholder="Search logs (text, field:value)" aria-label="Search logs" style="flex:1;min-width:160px;padding:8px;border:1px solid var(--bs);border-radius:8px;background:var(--bg)"><select aria-label="Replica"><option>All replicas</option></select><button class="btn">Pause</button></div>
+    <pre class="log">12:04:01 node-1 GET /health 200 2ms
+12:04:02 node-2 POST /orders 201 41ms
+12:04:03 node-3 ERROR payment timeout</pre></div>
+  <div id="t-mt" class="tp" hidden>
+    <div class="note">Range: 1 h · 24 h · 7 d · 30 d · 90 d. ▼ marks releases.</div>
+    <h2>Requests / s</h2><div class="chart" role="img" aria-label="Requests per second, stable with a rise at release 42"><i style="height:30%"></i><i style="height:40%"></i><i style="height:35%"></i><i style="height:55%"></i><i style="height:60%"></i><i style="height:50%"></i><i style="height:70%"></i><i style="height:65%"></i></div>
+    <p class="note">Every chart has a table view for screen readers.</p>
+  </div>
+  <div id="t-x" class="tp" hidden><div class="card">This tab is shown in the written spec (screen inventory).</div></div>
+</section>
+
+<section class="view" id="v-dep"><h1>Deployments</h1><div class="card"><span class="mut">Open service “api” to see the live deploy view.</span> <button class="btn" data-go="svc">Open api</button></div></section>
+<section class="view" id="v-nodes"><h1>Nodes</h1>
+  <table class="resp"><tr><th>Node</th><th>State</th><th>CPU</th><th>RAM</th><th>Workloads</th></tr>
+  <tr><td>node-1</td><td class="ok">● ready</td><td>62%</td><td>48%</td><td>5</td></tr>
+  <tr><td>node-2</td><td class="ok">● ready</td><td>40%</td><td>51%</td><td>4</td></tr>
+  <tr><td>node-3</td><td class="warn">▲ suspect</td><td>—</td><td>—</td><td>3</td></tr></table>
+  <div class="cards"><div class="card"><b>node-1</b> <span class="ok">● ready</span><br>CPU 62% · RAM 48%</div><div class="card"><b>node-3</b> <span class="warn">▲ suspect</span></div></div>
+  <p><button class="btn p">Add node</button></p></section>
+<section class="view" id="v-more"><h1>More screens</h1><div class="card">See the written screen inventory. This prototype shows the key screens only.</div></section>
+
+</main></div></div>
+<nav class="bottom" aria-label="Main (phone)">
+  <a data-go="dash" aria-current="page" tabindex="0">▦<span>Home</span></a>
+  <a data-go="svc" tabindex="0">◧<span>Projects</span></a>
+  <a data-go="dep" tabindex="0">⇄<span>Deploys</span></a>
+  <a data-go="nodes" tabindex="0">▤<span>Nodes</span></a>
+  <a data-go="more" tabindex="0">☰<span>More</span></a>
+</nav>
+
+<dialog id="dDeploy" aria-labelledby="dd-t"><h2 id="dd-t">Deploy api</h2>
+  <div class="banner"><b>Production</b> environment</div>
+  <p>Commit <code>a1b2c3d</code> “Fix checkout”.<br>Strategy that will run: <b>Blue-green</b>. No downtime expected.</p>
+  <p class="note">Why: health check is set and no volume blocks it.</p>
+  <form method="dialog" style="display:flex;gap:8px;justify-content:flex-end"><button class="btn">Cancel</button><button class="btn p" value="ok">Deploy</button></form></dialog>
+<dialog id="dRb" aria-labelledby="rb-t"><h2 id="rb-t">Roll back to #40?</h2>
+  <div class="banner"><b>Production</b> environment</div>
+  <p><b>Restored:</b> image, env variables, settings of #40.<br><b>Not restored:</b> data in volumes and databases.</p>
+  <p><span class="badge info">⚡ Fast rollback</span> The old containers are still available. Takes about 5 seconds.</p>
+  <form method="dialog" style="display:flex;gap:8px;justify-content:flex-end"><button class="btn">Cancel</button><button class="btn d" value="ok">Roll back</button></form></dialog>
+<dialog class="pal" id="dPal" aria-label="Command palette"><input id="pi" placeholder="Type a command or search…" aria-label="Command"><ul>
+  <li tabindex="0" data-go="svc">Go to service: api</li><li tabindex="0" data-go="nodes">Go to Nodes</li><li tabindex="0" id="cmdDeploy">Deploy api…</li><li tabindex="0" id="cmdTheme">Switch theme</li></ul></dialog>
+<div class="toast" id="toast" role="status"></div>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+function go(v){$$('.view').forEach(x=>x.classList.toggle('on',x.id==='v-'+v));$$('[data-go]').forEach(a=>a.tagName==='A'&&a.toggleAttribute('aria-current',a.dataset.go===v)||0);$$('nav a').forEach(a=>{if(a.dataset.go===v)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')})}
+document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g){e.preventDefault();go(g.dataset.go);const p=$('#dPal');if(p.open)p.close()}});
+document.addEventListener('keydown',e=>{const g=e.target.closest&&e.target.closest('nav a');if(g&&(e.key==='Enter'||e.key===' ')){e.preventDefault();g.click()}
+ if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();$('#dPal').showModal();$('#pi').focus()}});
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$$('#tabs button').forEach(x=>x.setAttribute('aria-selected',x===b));$$('.tp').forEach(p=>p.hidden=p.id!=='t-'+b.dataset.t)});
+$('#pb').onclick=()=>{$('#dPal').showModal();$('#pi').focus()};
+$('#deployBtn').onclick=()=>$('#dDeploy').showModal();
+$('#rbBtn').onclick=()=>$('#dRb').showModal();
+$$('.rb').forEach(b=>b.onclick=()=>$('#dRb').showModal());
+$('#cmdDeploy').onclick=()=>{$('#dPal').close();go('svc');$('#dDeploy').showModal()};
+function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';setTimeout(()=>e.style.display='none',2500)}
+$$('dialog form').forEach(f=>f.addEventListener('submit',e=>{if(e.submitter&&e.submitter.value==='ok')toast('Done (prototype)')}));
+let pct=25;$('#step').onclick=()=>{pct=pct>=100?100:pct+25;$('#pct').textContent=pct+'%';$('#pbar i').style.width=pct+'%';$('#pbar').setAttribute('aria-valuenow',pct);if(pct===100)toast('Release #42 is live')};
+$('#abort').onclick=()=>{pct=0;$('#pct').textContent='0%';$('#pbar i').style.width='0';toast('Aborted. Traffic is back on #41.')};
+const modes=['system','light','dark'];let mi=+(localStorage.getItem('pm')||0);
+function theme(){const m=modes[mi];const dark=m==='dark'||(m==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.body.dataset.theme=dark?'dark':'light';const l='Theme: '+m[0].toUpperCase()+m.slice(1);$('#th').textContent=l;$('#th').setAttribute('aria-label',l+'. Click to change')}
+$('#th').onclick=()=>{mi=(mi+1)%3;localStorage.setItem('pm',mi);theme()};$('#cmdTheme').onclick=()=>{$('#th').click();$('#dPal').close()};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',theme);theme();
+</script>
+</body>
+</html>
