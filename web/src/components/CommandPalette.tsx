@@ -69,6 +69,24 @@ export function CommandPalette({ org, projectSlug, envSlug, onClose, onSignOut }
         run: () => void navigate({ to: '/o/$org/nodes', params: { org } }),
       },
       {
+        id: 'page:alerts',
+        group: t('palette.pages'),
+        label: t('nav.alerts'),
+        run: () => void navigate({ to: '/o/$org/alerts', params: { org } }),
+      },
+      {
+        id: 'page:alert-settings',
+        group: t('palette.pages'),
+        label: t('alerts.editor_title'),
+        run: () => void navigate({ to: '/o/$org/settings/alerts', params: { org } }),
+      },
+      {
+        id: 'page:logs',
+        group: t('palette.pages'),
+        label: t('nav.logs'),
+        run: () => void navigate({ to: '/o/$org/logs', params: { org }, search: {} }),
+      },
+      {
         id: 'page:profile',
         group: t('palette.pages'),
         label: t('nav.profile'),
@@ -200,7 +218,15 @@ export function CommandPalette({ org, projectSlug, envSlug, onClose, onSignOut }
         .map((i) => ({ ...i, id: `recent:${i.id}`, group: t('palette.recent') }))
       return [...recentItems, ...list].map(remember)
     }
-    return filterItems(list, query).map(remember)
+    // The last row always searches the logs for the text (navigation, section 4).
+    const searchLogs: SearchItem = {
+      id: 'page:logs-search',
+      group: t('palette.pages'),
+      label: t('palette.search_logs', { text: query.trim() }),
+      run: () =>
+        void navigate({ to: '/o/$org/logs', params: { org }, search: { q: query.trim() } }),
+    }
+    return [...filterItems(list, query), searchLogs].map(remember)
   }
 
   return (

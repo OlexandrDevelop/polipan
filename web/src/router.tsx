@@ -11,6 +11,10 @@ import {
 } from '@/routes/Auth'
 import { ConfigAsCodePage } from '@/routes/ConfigAsCode'
 import { AuditPage } from '@/routes/Audit'
+import { AlertSettingsPage } from '@/routes/AlertSettings'
+import { AlertsPage } from '@/routes/AlertsPage'
+import { LogsPage, validateLogsSearch } from '@/routes/LogsPage'
+import { OrgSettingsPage } from '@/routes/OrgSettings'
 import { MembersPage } from '@/routes/Members'
 import { ProjectRolesPage } from '@/routes/ProjectRoles'
 import { TeamsPage } from '@/routes/Teams'
@@ -128,6 +132,28 @@ const backupTargetsRoute = createRoute({
   path: 'settings/backup-targets',
   component: BackupTargetsPage,
 })
+const alertsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'alerts',
+  component: AlertsPage,
+})
+const alertSettingsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'settings/alerts',
+  component: AlertSettingsPage,
+})
+const logsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'logs',
+  component: LogsPage,
+  // The filters stay in the URL, so a link restores the search (UI-37).
+  validateSearch: validateLogsSearch,
+})
+const orgSettingsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'settings/organization',
+  component: OrgSettingsPage,
+})
 const profileRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'settings/profile',
@@ -225,6 +251,10 @@ const routeTree = rootRoute.addChildren([
     catalogRoute,
     backupsRoute,
     backupTargetsRoute,
+    alertsRoute,
+    alertSettingsRoute,
+    logsRoute,
+    orgSettingsRoute,
     profileRoute,
     membersRoute,
     teamsRoute,

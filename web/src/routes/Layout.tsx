@@ -75,6 +75,7 @@ export function AppShell() {
   })
   const canMembers = useAccess('member:read')
   const canAudit = useAccess('audit:read')
+  const canOrg = useAccess('org:update')
   const logout = useMutation({
     mutationFn: () => unwrap(api.POST('/auth/logout')),
     onSettled: () => {
@@ -135,6 +136,16 @@ export function AppShell() {
             </Link>
           </li>
           <li className="flex-1 max-sm:hidden sm:flex-none">
+            <Link to="/o/$org/alerts" params={{ org }} className={navLink}>
+              {t('nav.alerts')}
+            </Link>
+          </li>
+          <li className="flex-1 max-sm:hidden sm:flex-none">
+            <Link to="/o/$org/logs" params={{ org }} className={navLink}>
+              {t('nav.logs')}
+            </Link>
+          </li>
+          <li className="flex-1 max-sm:hidden sm:flex-none">
             <Link to="/o/$org/backups" params={{ org }} className={navLink}>
               {t('nav.backups')}
             </Link>
@@ -150,6 +161,13 @@ export function AppShell() {
             <li className="flex-1 max-sm:hidden sm:flex-none">
               <Link to="/o/$org/settings/teams" params={{ org }} className={navLink}>
                 {t('nav.teams')}
+              </Link>
+            </li>
+          )}
+          {canOrg === 'allow' && (
+            <li className="flex-1 max-sm:hidden sm:flex-none">
+              <Link to="/o/$org/settings/organization" params={{ org }} className={navLink}>
+                {t('nav.organization')}
               </Link>
             </li>
           )}
