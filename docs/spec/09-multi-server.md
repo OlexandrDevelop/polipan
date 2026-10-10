@@ -123,6 +123,17 @@ Rules:
 7. The server never fails over when **it cannot reach any other node** (it assumes its own network is the problem). It waits until at least one other node is `ready`.
 8. Every failover creates an audit event (`actor_type = system`) and an alert.
 
+## 9a. Implementation notes (M7)
+
+- **Addresses.** The Docker network `polipan` of a node IS its mesh subnet (a /24 of `mesh_cidr`). The server gives each placement a fixed address from `.10` to `.127` (`placements.ip`). `.1` is the bridge, `.2` is the Caddy container, the upper half (`.128/25`) is Docker's own range (the panel container, one-off containers get `.200` to `.249` from the agent). A node whose network has another subnet (an install from before M7) keeps working on its own, but the self-check says the mesh does not reach its containers.
+- **DNS.** The names are the container name `pp-<placement>` and the service alias `svc-<id>` (also `.polipan.internal`). A node gets the names and addresses of replicas on other nodes only for environments it runs workloads of (`DesiredState.remote_endpoints`, no secrets, no env).
+- **Environment firewall.** The agent writes `table inet polipan` (routed traffic) and `table bridge polipan_iso` (traffic inside one node): between two addresses of `mesh_cidr` only the same environment and the Caddy addresses are accepted. Forwarding of the mesh goes through `DOCKER-USER` and there is no NAT between mesh addresses.
+- **Delete.** A deleted node stays as a tombstone row (`nodes.deleted_at`) with its certificate revoked and its subnet, name and key cleared. Its services with `failover = auto` move as if the node was down, the others stop with a reason.
+- **Move with data.** Only `volume_copy = backup` exists in this version: a fresh backup of the volume policies, restored on the target (needs a volume backup policy). `direct` answers 422. The old volume stays on the old node as an orphan volume.
+- **Failover of a service with a volume** needs a successful run of a *volume* backup policy of every local volume. A database that is only backed up as a dump is not failed over (the dump needs a running database): the service says so.
+- **Alerts.** M8 has the alert engine. Until then an alert is an event of topic `alert` (`node_suspect`, `node_down`, `service_failover`, `failover_blocked`) next to the audit event.
+- **Install script.** The panel serves `/install-agent.sh` (file `server/internal/api/install-agent.sh`).
+
 ## 10. Control plane host
 
 The control-plane host runs an agent like any other node. Its Caddy also serves the UI and API (`/api`, `/`). Agents reach the server on `agent_grpc_port`, not through Caddy. Moving the control plane to another host is a documented manual procedure (restore the DB backup, move `master.key`, point DNS), described in user docs, not automated in v1.

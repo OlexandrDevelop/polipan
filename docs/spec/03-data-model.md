@@ -237,6 +237,10 @@ CREATE TABLE services (
   desired_state text NOT NULL DEFAULT 'running' CHECK (desired_state IN ('running','stopped')),
   failover text NOT NULL DEFAULT 'none' CHECK (failover IN ('none','auto')),
   allow_data_loss_failover boolean NOT NULL DEFAULT false,
+  failover_state text NOT NULL DEFAULT 'healthy' CHECK (failover_state IN ('healthy','blocked','moving','moved')),  -- M7, 09 section 9
+  failover_reason text,                      -- why a blocked service was not moved
+  failover_data_lost_since timestamptz,      -- time of the backup that a failover restored: data after it is lost
+  failover_at timestamptz,
   deleted_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -353,6 +357,10 @@ CREATE TABLE nodes (
   cert_serial text, cert_expires_at timestamptz,
   desired_state_version bigint NOT NULL DEFAULT 0,
   acked_state_version bigint NOT NULL DEFAULT 0,
+  down_at timestamptz,                       -- M7: when the state became down
+  usage jsonb,                               -- M7: the last heartbeat {cpu_millis, memory_bytes, disk_bytes}
+  drain_note text,                           -- M7: what a drain could not move
+  deleted_at timestamptz,                    -- M7: a deleted node stays as a row (revoked certificate, waiting failover); name, subnet and key are cleared
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (org_id, name)
@@ -386,9 +394,11 @@ CREATE TABLE placements (
   container_id text,
   weight int NOT NULL DEFAULT 100 CHECK (weight BETWEEN 0 AND 100),
   health text NOT NULL DEFAULT 'unknown' CHECK (health IN ('unknown','starting','healthy','unhealthy')),
+  ip inet,                                   -- M7: fixed address in the mesh subnet of the node, .10 to .127
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX placements_node_ip ON placements (node_id, ip) WHERE ip IS NOT NULL;
 CREATE INDEX placements_node ON placements (node_id);
 CREATE INDEX placements_service ON placements (service_id);
 ```
