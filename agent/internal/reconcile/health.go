@@ -39,6 +39,7 @@ type hstate struct {
 	next        time.Time
 	containerID string
 	startedAt   time.Time
+	seen        time.Time // when the runner first saw this container
 	busy        bool
 	restartIdx  int
 	restartAt   time.Time
@@ -112,7 +113,7 @@ func (e *Engine) healthTick(ctx context.Context) {
 		}
 		if s.containerID != c.ID {
 			e.resetHealth(s)
-			s.containerID, s.health = c.ID, "starting"
+			s.containerID, s.health, s.seen = c.ID, "starting", now
 		}
 		due := !s.busy && !now.Before(s.next)
 		restart := s.health == "unhealthy" && !s.restartAt.IsZero() && !now.Before(s.restartAt)
@@ -120,7 +121,7 @@ func (e *Engine) healthTick(ctx context.Context) {
 			s.restartAt = time.Time{}
 			s.restartIdx++
 			e.resetHealth(s)
-			s.containerID, s.health = c.ID, "starting"
+			s.containerID, s.health, s.seen = c.ID, "starting", now
 			due = false
 		}
 		if due {
@@ -173,6 +174,13 @@ func (e *Engine) runProbe(ctx context.Context, w *agentv1.WorkloadSpec, c docker
 	if ic, err := e.Docker.Inspect(ctx, c.ID); err == nil {
 		started = ic.StartedAt
 	}
+	e.mu.Lock()
+	if started.IsZero() {
+		if s := e.hs[w.PlacementId]; s != nil {
+			started = s.seen // Docker gave no start time: the first time we saw the container
+		}
+	}
+	e.mu.Unlock()
 	res := e.probeOnce(ctx, w, c, started)
 
 	healthy, unhealthy := int(hc.HealthyThreshold), int(hc.UnhealthyThreshold)
@@ -335,7 +343,17 @@ func (e *Engine) probeCommand(ctx context.Context, c docker.Container, cmd []str
 		return probeResult{err: err.Error()}
 	}
 	defer func() { _ = conn.Close() }()
-	out, _ := io.ReadAll(io.LimitReader(conn, maxHealthBody))
+	got := make(chan []byte, 1)
+	go func() {
+		b, _ := io.ReadAll(io.LimitReader(conn, maxHealthBody))
+		got <- b
+	}()
+	var out []byte
+	select {
+	case out = <-got:
+	case <-ctx.Done():
+		return probeResult{err: "the command did not end in time"}
+	}
 	_ = conn.CloseWrite()
 	code, err := conn.Wait(ctx)
 	res := probeResult{body: string(out)}

@@ -84,7 +84,12 @@ func (f *fakeDocker) Stop(_ context.Context, id string, _ int) error {
 	f.byID(id).State = "exited"
 	return nil
 }
-func (f *fakeDocker) Restart(context.Context, string, int) error { return nil }
+func (f *fakeDocker) Restart(_ context.Context, id string, _ int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rec("restart " + id)
+	return nil
+}
 func (f *fakeDocker) Remove(_ context.Context, id string, _ bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -441,7 +446,7 @@ func TestCommandIdempotent(t *testing.T) {
 	if got := sk.msgs[len(sk.msgs)-1].GetAck(); got.ErrorCode != "deadline_exceeded" {
 		t.Fatalf("ack: %+v", got)
 	}
-	e.HandleCommand(context.Background(), &agentv1.Command{CommandId: "cmd_3", Body: &agentv1.Command_PruneImages{PruneImages: &agentv1.PruneImages{}}})
+	e.HandleCommand(context.Background(), &agentv1.Command{CommandId: "cmd_3", Body: &agentv1.Command_RunBackup{RunBackup: &agentv1.RunBackup{}}})
 	if got := sk.msgs[len(sk.msgs)-1].GetAck(); got.ErrorCode != "unsupported_version" {
 		t.Fatalf("ack: %+v", got)
 	}
