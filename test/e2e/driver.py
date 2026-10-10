@@ -5,7 +5,7 @@ AC-DEPLOY-01, 02, 09, AC-REL-01, 02, 07, AC-HC-01, 03, 04, 05 and the chaos kill
 It runs inside the test Docker host with host networking. The panel is reached through the
 Caddy of the node (Host: panel.test), so the panel route is tested too.
 Usage: driver.py flow | gitflow | rollback | zerodowntime | chaos-start | chaos-end | serving | after
-M4 (run-m4.sh): m4-redis-start | m4-redis-backup | m4-redis-restore | m4-setup | m4-backup | m4-restore | m4-check-corrupt | m4-volume | m4-controlplane | m4-template
+M4 (run-m4.sh): m4-run | m4-redis-start | m4-redis-backup | m4-redis-restore | m4-setup | m4-backup | m4-restore | m4-check-corrupt | m4-volume | m4-controlplane | m4-template
 """
 import http.client
 import json
@@ -926,6 +926,17 @@ def m4_controlplane():
     print("M4 CONTROLPLANE PASSED")
 
 
+def m4_run():
+    """A manual backup run of the database policy (AC-BKP-05 needs one more run)."""
+    p = m4_panel()
+    st = m4_state()
+    _, before = p.call("GET", f"/backup-policies/{st['policy']}/runs", expect=200)
+    known = [r["id"] for r in before["items"]]
+    p.call("POST", f"/backup-policies/{st['policy']}/run", expect=202)
+    wait_run(p, st["policy"], newer_than=known)
+    print("M4 RUN PASSED")
+
+
 def m4_redis_start():
     p = m4_panel()
     st = m4_state()
@@ -986,4 +997,4 @@ if __name__ == "__main__":
     {"flow": flow, "serving": serving, "after": after, "gitflow": gitflow, "rollback": rollback, "zerodowntime": zerodowntime,
      "chaos-start": chaos_start, "chaos-end": chaos_end, "m4-setup": m4_setup, "m4-backup": m4_backup, "m4-restore": m4_restore,
      "m4-restore-inplace": m4_restore_inplace, "m4-check-corrupt": m4_check_corrupt, "m4-volume": m4_volume,
-     "m4-volume-backup": m4_volume_backup, "m4-controlplane": m4_controlplane, "m4-template": m4_template, "m4-redis-start": m4_redis_start, "m4-redis-backup": m4_redis_backup, "m4-redis-restore": m4_redis_restore}[sys.argv[1]]()
+     "m4-volume-backup": m4_volume_backup, "m4-controlplane": m4_controlplane, "m4-template": m4_template, "m4-run": m4_run, "m4-redis-start": m4_redis_start, "m4-redis-backup": m4_redis_backup, "m4-redis-restore": m4_redis_restore}[sys.argv[1]]()

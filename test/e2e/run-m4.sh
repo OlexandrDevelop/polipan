@@ -131,6 +131,24 @@ n=$(dbexec "$db" "select count(*) from items")
 [ "$n" = 500 ] || { echo "FAIL: after the restore in place there are $n rows"; exit 1; }
 echo "ok: 500 rows again after the restore in place"
 
+step "AC-BKP-05: keep_daily 7 removes the oldest snapshot (old snapshots are added to the repository with restic first)"
+restic_minio() {
+  dxi docker exec -i -e RESTIC_PASSWORD="$pw" -e AWS_ACCESS_KEY_ID=minio -e AWS_SECRET_ACCESS_KEY=minio-secret-123 agent \
+    restic -r "s3:http://127.0.0.1:9000/backups/pp/$policy" "$@"
+}
+count_snapshots() { restic_minio snapshots --json | grep -o '"id":' | wc -l; }
+for d in 1 2 3 4 5 6 7; do
+  ts=$(dx date -u -d "@$(( $(dx date +%s) - d * 86400 - 3600 ))" '+%Y-%m-%d %H:%M:%S')
+  echo "old snapshot $d" | restic_minio backup --quiet --stdin --stdin-filename dump.pgdump --host "polipan-$policy" --time "$ts" --tag old >/dev/null
+done
+oldest=$(restic_minio snapshots --compact --tag old | grep -E '^[0-9a-f]{8} ' | sort -k2 | head -1 | cut -d' ' -f1)
+before=$(count_snapshots)
+driver m4-run
+after=$(count_snapshots)
+[ "$after" = 7 ] || { echo "FAIL: $after snapshots after the run (before: $before), want 7 (keep_daily 7)"; exit 1; }
+if restic_minio snapshots --compact | grep -q "^$oldest "; then echo "FAIL: the oldest snapshot $oldest is still there"; exit 1; fi
+echo "ok: AC-BKP-05: $before snapshots before the run, $after after, the oldest ($oldest) was removed"
+
 step "AC-BKP-08: corrupt the snapshot on the SFTP target, the check fails and a critical alert is raised"
 dx docker exec sftp sh -c "for f in \$(find /srv/restic/$policy/data -type f); do echo corrupted > \$f; done"
 driver m4-check-corrupt
