@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -57,6 +58,8 @@ const (
 // metricLabels are the labels that are kept (REQ-OBS-100). Others are dropped.
 var metricLabels = map[string]bool{"org": true, "project": true, "environment": true, "service": true, "release": true,
 	"node": true, "replica": true, "volume": true, "domain": true, "status_class": true, "le": true, "policy": true, "state": true}
+
+var metricNameRe = regexp.MustCompile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)
 
 // platformMetrics are written by the server only. An agent cannot send them.
 var platformMetrics = map[string]bool{"polipan_deployments_total": true, "polipan_deploy_duration_seconds": true,
@@ -250,7 +253,8 @@ func (in *Ingest) cleanSeries(nodeID string, sc *nodeScope, series []rwSeries) (
 	maxTS := in.now().Add(maxFutureSkew).UnixMilli()
 	for _, s := range series {
 		name := s.Labels["__name__"]
-		if !strings.HasPrefix(name, "polipan_") || platformMetrics[name] {
+		// The name goes into the import text as it is: only a plain metric name is allowed (no newline, brace or quote).
+		if !strings.HasPrefix(name, "polipan_") || platformMetrics[name] || !metricNameRe.MatchString(name) {
 			dropped++
 			continue
 		}

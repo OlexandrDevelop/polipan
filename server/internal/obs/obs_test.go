@@ -165,3 +165,20 @@ func TestIngestReadsTheScopeAgainForANewService(t *testing.T) {
 		t.Fatalf("the fresh scope: %d dropped, %s", dropped, out)
 	}
 }
+
+// SEC-1: a metric name with a newline or a brace must not add series with other labels to the import text.
+func TestIngestDropsAMetricNameThatInjectsSeries(t *testing.T) {
+	in := &Ingest{}
+	sc := &nodeScope{svc: map[string]svcScope{"svc_mine": {org: "org_1", project: "prj_1", env: "env_1"}}}
+	now := time.Now().UnixMilli()
+	evil := "polipan_http_requests_total{org=\"org_B\",service=\"svc_B\"} 1e6 1\npolipan_x"
+	series := []rwSeries{
+		{Labels: map[string]string{"__name__": evil, "service": "svc_mine"}, Samples: []rwSample{{Value: 1, TS: now}}},
+		{Labels: map[string]string{"__name__": "polipan_a{b=\"c\"}"}, Samples: []rwSample{{Value: 1, TS: now}}},
+		{Labels: map[string]string{"__name__": "polipan_ok_total", "service": "svc_mine"}, Samples: []rwSample{{Value: 1, TS: now}}},
+	}
+	text, dropped := in.cleanSeries("nod_1", sc, series)
+	if dropped != 2 || strings.Contains(text, "org_B") || strings.Count(text, "\n") != 1 {
+		t.Fatalf("dropped %d, text:\n%s", dropped, text)
+	}
+}
