@@ -353,7 +353,7 @@ dialog {
   height: 8px;
   border-radius: 9999px;
   background: currentColor;
-  animation: live-pulse 2s ease-in-out infinite;
+  animation: live-pulse 2s steps(1) infinite;
 }
 .live-dot[data-state='reconnecting'] {
   animation: none;

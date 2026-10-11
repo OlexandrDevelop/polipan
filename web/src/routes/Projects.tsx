@@ -321,9 +321,14 @@ export function DashboardPage() {
           <BackupsCard org={org} />
         </div>
       </Panel>
-      {(nodes.data?.length ?? 0) > 0 && (
+      {/* The panel is there while the nodes load, so the page below does not jump. */}
+      {(nodes.isPending || (nodes.data?.length ?? 0) > 0) && (
         <Panel title={t('dashboard.nodes')} hint={t('dashboard.refresh_hint')}>
-          <NodesTable org={org} nodes={nodes.data ?? []} />
+          {nodes.isPending ? (
+            <Skeleton lines={3} />
+          ) : (
+            <NodesTable org={org} nodes={nodes.data ?? []} />
+          )}
         </Panel>
       )}
       <Panel title={t('dashboard.projects')} className="space-y-3">

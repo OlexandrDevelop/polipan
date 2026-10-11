@@ -207,33 +207,37 @@ export function LogViewer({
   const { calm } = useCalm()
   const arrivals = useRef<number[]>([])
   const seenCount = useRef(lines.length)
-  const [freshId, setFreshId] = useState('')
+  const freshId = useRef('')
 
   const live = mode === 'live'
   const shown = live ? lines.slice(-limit) : lines.slice(0, limit)
   const hidden = lines.length - shown.length
+  // Without a search text there is nothing to match, so a busy stream does no work here.
   const matches = useMemo(
-    () => shown.filter((l) => l.gap === undefined && hasMatch(l, query)).map((l) => l.id),
+    () =>
+      query.trim() === ''
+        ? []
+        : shown.filter((l) => l.gap === undefined && hasMatch(l, query)).map((l) => l.id),
     [shown, query],
   )
   const [matchAt, setMatchAt] = useState(-1)
 
   // Typewriter (section 5.1): only the newest line, only while following, and never when more
-  // than 20 lines came in the last second. The text is in the DOM at once.
-  useEffect(() => {
-    const added = lines.length - seenCount.current
+  // than 20 lines came in the last second. The text is in the DOM at once. This is worked out
+  // while drawing, so a busy stream does not cost one more render per batch.
+  const added = lines.length - seenCount.current
+  if (added > 0) {
     seenCount.current = lines.length
-    if (added <= 0) return
     const now = performance.now()
-    arrivals.current = [
-      ...arrivals.current.filter((at) => now - at < 1000),
-      ...Array(added).fill(now),
-    ]
+    arrivals.current = arrivals.current.filter((at) => now - at < 1000)
+    for (let i = 0; i < Math.min(added, 21); i++) arrivals.current.push(now)
     const last = lines[lines.length - 1]
-    setFreshId(
-      live && follow && !calm && !table && arrivals.current.length <= 20 ? (last?.id ?? '') : '',
-    )
-  }, [lines, live, follow, calm, table])
+    freshId.current =
+      live && follow && !calm && !table && arrivals.current.length <= 20 ? (last?.id ?? '') : ''
+  } else if (added < 0) {
+    seenCount.current = lines.length
+    freshId.current = ''
+  }
 
   // Keep the end in view while following.
   useEffect(() => {
@@ -475,7 +479,7 @@ export function LogViewer({
                   wrap={wrap}
                   showService={showService}
                   showReplica={showReplica}
-                  fresh={l.id === freshId}
+                  fresh={l.id === freshId.current}
                   onContext={onContext}
                   onCopy={copy}
                 />
