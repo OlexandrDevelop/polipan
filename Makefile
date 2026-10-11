@@ -140,5 +140,13 @@ fuzz: ## Fuzz the parsers of untrusted input, FUZZTIME each (default 20s). Needs
 	@for t in cac:FuzzParse tpl:FuzzImportCompose tpl:FuzzParseManifest git:FuzzWebhook obs:FuzzTextFilter sso:FuzzVerifyIDToken; do \
 		go test ./server/internal/$${t%%:*}/ -run '^$$' -fuzz "^$${t##*:}$$" -fuzztime $(or $(FUZZTIME),20s) || exit 1; done
 
+.PHONY: chaos
+chaos: ## Chaos suite: kill server, kill agent, drop network, fill disk, kill node while deploying (needs POLIPAN_TEST_DATABASE_URL)
+	sh test/chaos/run.sh
+
+.PHONY: perf
+perf: ## Performance suite: 200 services, 20 nodes, deploy rate and log search over 1 GB (see test/perf/run.sh, needs Docker)
+	sh test/perf/run.sh
+
 .PHONY: gates
 gates: lint gate3 gate4 gate5 gate6 gate8 ## All gates that need no database

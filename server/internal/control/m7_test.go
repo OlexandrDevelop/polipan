@@ -82,13 +82,19 @@ type m7 struct {
 }
 
 // setupM7 starts the control loop with a fast monitor and a fake data mover.
-func setupM7(t *testing.T) *m7 {
+func setupM7(t *testing.T) *m7 { return setupM7With(t, nil) }
+
+// setupM7With is setupM7 with a change of the control deps.
+func setupM7With(t *testing.T, tweak func(*control.Deps)) *m7 {
 	t.Helper()
 	mover := &fakeMover{}
 	f := setupWith(t, func(d *control.Deps) {
 		d.MonitorInterval = 20 * time.Millisecond
 		d.PostSwitchCheck = 50 * time.Millisecond
 		d.Mover = mover
+		if tweak != nil {
+			tweak(d)
+		}
 	})
 	f.env.GW.Joined = f.ctl.NodeJoined
 	m := &m7{fixture: f, nodes: map[string]*node7{}, mover: mover}
@@ -444,9 +450,10 @@ func TestAC_NODE_04_07_FailoverStateless(t *testing.T) {
 	if got := m.q(t, `SELECT count(*) FROM placements WHERE node_id = $1`, a.a.NodeID); got != "0" {
 		t.Fatalf("the old placement must be gone: %s", got)
 	}
-	if got := m.q(t, `SELECT count(*) FROM audit_events WHERE action = 'service.failover' AND actor_type = 'system' AND target_id = $1`, m.serviceID); got != "1" {
-		t.Fatalf("audit event of the failover: %s", got)
-	}
+	// The audit event is written when the failover is done, a moment after the deployment is live.
+	waitFor(t, "the audit event of the failover", func() bool {
+		return m.q(t, `SELECT count(*) FROM audit_events WHERE action = 'service.failover' AND actor_type = 'system' AND target_id = $1`, m.serviceID) == "1"
+	})
 	if got := m.q(t, `SELECT count(*) FROM events WHERE topic = 'alert' AND payload->>'rule' IN ('node_down','service_failover')`); got < "2" {
 		t.Fatalf("alerts: %s", got)
 	}

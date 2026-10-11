@@ -215,13 +215,20 @@ func (s *Store) SaveDesired(ds *agentv1.DesiredState) (bool, error) {
 func writeAtomic(path string, b []byte, mode os.FileMode) error {
 	tmp := path + ".tmp"
 	_ = os.Remove(tmp)
+	// A failed write (for example a full disk) must not leave a partial file: it would keep the disk full.
 	if err := os.WriteFile(tmp, b, mode); err != nil {
+		_ = os.Remove(tmp)
 		return err
 	}
 	if err := os.Chmod(tmp, mode); err != nil {
+		_ = os.Remove(tmp)
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 type ackFile struct {

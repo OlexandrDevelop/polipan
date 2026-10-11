@@ -573,6 +573,9 @@ func imageRepo(image string) string {
 }
 
 func (c *Control) createRelease(ctx context.Context, depID, serviceID, releaseID, actorID, imageRef, digest string, snap *vars.Snapshot, previous *string) error {
+	// Read the source before the transaction starts. A query on the pool inside the transaction needs a second
+	// connection: with many deploys at once every connection would wait for another one and the pool would stop.
+	source, _ := json.Marshal(c.releaseSource(ctx, depID, actorID))
 	tx, err := c.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -585,7 +588,6 @@ func (c *Control) createRelease(ctx context.Context, depID, serviceID, releaseID
 	if actorID != "" {
 		actor = &actorID
 	}
-	source, _ := json.Marshal(c.releaseSource(ctx, depID, actorID))
 	variables, versions := releaseColumns(snap)
 	_, err = tx.Exec(ctx,
 		`INSERT INTO releases (id, service_id, number, image_ref, image_digest, config_snapshot, variable_snapshot, secret_versions, source, created_by)
