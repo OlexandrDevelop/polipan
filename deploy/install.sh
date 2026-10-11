@@ -11,6 +11,9 @@
 # Options:
 #   --domain HOST        public name of the panel (DNS must point to this server). Without it the panel
 #                        is served over plain HTTP on the server address.
+#   --address HOST[:PORT] address of the panel when there is no domain (default: the address of this server).
+#                        Use it when the browser reaches the server through another address, for example a
+#                        forwarded port: --address 127.0.0.1:8088
 #   --acme-email EMAIL   contact address for the certificate authority (optional)
 #   --version TAG        image tag (default: the release of this script, or latest in a development build)
 #   --registry NAME      image registry prefix (default: ghcr.io/polipan)
@@ -30,6 +33,7 @@ stamped_compose_sha256="@COMPOSE_SHA256@"
 stamped_firewall_sha256="@FIREWALL_SHA256@"
 
 domain=""
+address=""
 acme_email=""
 version="latest"
 registry="ghcr.io/polipan"
@@ -45,6 +49,7 @@ fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --domain) domain=$2; shift 2 ;;
+    --address) address=$2; shift 2 ;;
     --acme-email) acme_email=$2; shift 2 ;;
     --version) version=$2; shift 2 ;;
     --registry) registry=$2; shift 2 ;;
@@ -53,7 +58,7 @@ while [ $# -gt 0 ]; do
     --acme-ca-url) acme_ca_url=$2; shift 2 ;;
     --dir) dir=$2; shift 2 ;;
     --require-signature) require_signature=1; shift ;;
-    -h|--help) sed -n '3,25p' "$0"; exit 0 ;;
+    -h|--help) sed -n '3,27p' "$0"; exit 0 ;;
     *) fail "unknown option: $1" ;;
   esac
 done
@@ -124,6 +129,9 @@ fi
 if [ -n "$domain" ]; then
   external_url="https://$domain"
   host="$domain"
+elif [ -n "$address" ]; then
+  external_url="http://$address"
+  host=${address%%:*}
 else
   host=$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' | head -n 1)
   [ -n "$host" ] || host=$(hostname -I 2>/dev/null | cut -d ' ' -f 1)
@@ -245,7 +253,10 @@ done
 # ---- Agent of this host ----
 say "Installing the agent"
 cid=$(docker create "$agent_image")
-docker cp "$cid:/polipan-agent" /usr/local/bin/polipan-agent
+# A running agent keeps its old binary open: write the new file next to it and move it over (atomic).
+docker cp "$cid:/polipan-agent" /usr/local/bin/polipan-agent.new
+chmod 0755 /usr/local/bin/polipan-agent.new
+mv -f /usr/local/bin/polipan-agent.new /usr/local/bin/polipan-agent
 # restic makes the backups (F10). The agent image has a static restic, so no package is needed.
 if ! command -v restic >/dev/null 2>&1; then
   docker cp "$cid:/usr/local/bin/restic" /usr/local/bin/restic
@@ -295,7 +306,9 @@ User=root
 WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload
-systemctl enable --now polipan-agent
+systemctl enable polipan-agent
+# Start it, or restart it when it runs: a running agent must use the new binary and the new settings.
+systemctl restart polipan-agent
 
 # ---- Wait for the panel behind Caddy ----
 say "Waiting for the panel at $external_url"
