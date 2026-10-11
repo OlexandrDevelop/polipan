@@ -48,11 +48,8 @@ func TestAC_API_03_EveryScreenActionIsAnImplementedOperation(t *testing.T) {
 		byID[o.OperationID] = o
 	}
 	notOperations := map[string]bool{"cron": true, "inputs": true, "localStorage": true, "preview": true}
-	// Known gaps. deleteOrg and moveDomain have a screen action and no handler yet (reported to the team lead).
-	// The M9 operations (previews and promotion) are built in parallel. Remove an entry when its handler exists:
-	// the list must only get shorter.
-	knownGaps := map[string]bool{"deleteOrg": true, "moveDomain": true,
-		"createPreview": true, "listPreviews": true, "promoteEnvironment": true, "promoteRelease": true}
+	// Known gaps: none. Every operation of a screen has a handler. Keep the list empty.
+	knownGaps := map[string]bool{}
 	var missing, unimplemented []string
 	checked := 0
 	for id := range operationsOfScreens(t) {

@@ -214,7 +214,7 @@ function useGitConnections(enabled: boolean) {
   })
 }
 
-function AddGitConnectionDialog({
+export function AddGitConnectionDialog({
   onClose,
   onCreated,
 }: {

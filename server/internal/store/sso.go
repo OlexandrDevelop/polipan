@@ -252,7 +252,9 @@ func (s *Store) mappingsOf(ctx context.Context, q querier, providerID string) ([
 }
 
 // ReplaceGroupMappings replaces all mappings of a provider. A project must be in the org (ErrBadReference).
-func (s *Store) ReplaceGroupMappings(ctx context.Context, orgID, providerID string, list []GroupMapping) ([]GroupMapping, error) {
+// A caller who is not an owner may not change the mappings to owner (ErrOwnerProtect). The check reads the
+// mappings under the row lock of the provider, so two parallel calls cannot get around it.
+func (s *Store) ReplaceGroupMappings(ctx context.Context, orgID, providerID string, list []GroupMapping, byOwner bool) ([]GroupMapping, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -264,6 +266,9 @@ func (s *Store) ReplaceGroupMappings(ctx context.Context, orgID, providerID stri
 	before, err := s.mappingsOf(ctx, tx, providerID)
 	if err != nil {
 		return nil, err
+	}
+	if !byOwner && !sameOwnerMappings(before, list) {
+		return nil, ErrOwnerProtect
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM sso_group_mappings WHERE sso_provider_id = $1`, providerID); err != nil {
 		return nil, err
@@ -413,7 +418,7 @@ func (s *Store) SSOLogin(ctx context.Context, in SSOLoginInput) (*SSOLoginResult
 		if res.Linked {
 			e := actor
 			e.Action, e.TargetType, e.TargetID = "sso.identity_link", "user", res.UserID
-			e.Diff = map[string]any{"provider": p.Name}
+			e.Diff = map[string]any{"provider": p.Name, "email": in.Email, "subject": in.Subject}
 			if err := audit.Write(ctx, tx, e); err != nil {
 				return nil, err
 			}
@@ -576,4 +581,27 @@ func samePtrs(a, b *string) bool {
 		return a == b
 	}
 	return *a == *b
+}
+
+// sameOwnerMappings tells if two lists have the same mappings to owner.
+func sameOwnerMappings(a, b []GroupMapping) bool {
+	set := func(list []GroupMapping) map[string]bool {
+		out := map[string]bool{}
+		for _, m := range list {
+			if m.Role == "owner" {
+				out[m.GroupValue] = true
+			}
+		}
+		return out
+	}
+	x, y := set(a), set(b)
+	if len(x) != len(y) {
+		return false
+	}
+	for k := range x {
+		if !y[k] {
+			return false
+		}
+	}
+	return true
 }

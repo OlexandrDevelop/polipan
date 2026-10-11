@@ -57,8 +57,12 @@ func (h *Handlers) ssoConfig(r *http.Request, p *store.SSOProvider) (sso.Config,
 	if err != nil {
 		return sso.Config{}, err
 	}
+	redirect, err := h.ssoRedirectURL(p.ID)
+	if err != nil {
+		return sso.Config{}, err
+	}
 	c := sso.Config{Kind: p.Kind, ClientID: p.ClientID, ClientSecret: string(secret), Scopes: p.Scopes, Now: h.Clock.Now,
-		RedirectURL:   h.ssoRedirectURL(r, p.ID),
+		RedirectURL:   redirect,
 		GitHubAuthURL: h.SSO.GitHubAuthURL, GitHubTokenURL: h.SSO.GitHubTokenURL, GitHubAPIURL: h.SSO.GitHubAPIURL}
 	if p.GroupsClaim != nil {
 		c.GroupsClaim = *p.GroupsClaim
@@ -82,16 +86,15 @@ func (h *Handlers) ssoConfig(r *http.Request, p *store.SSOProvider) (sso.Config,
 	return c, nil
 }
 
-func (h *Handlers) ssoRedirectURL(r *http.Request, id string) string {
+// ssoRedirectURL builds the callback address from the external_url setting. It never uses the Host header:
+// a forged Host would send the code of a login to another site.
+func (h *Handlers) ssoRedirectURL(id string) (string, error) {
 	base := strings.TrimRight(h.Settings.ExternalURL, "/")
-	if base == "" {
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-		base = scheme + "://" + r.Host
+	u, err := url.Parse(base)
+	if err != nil || base == "" || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", errors.New("sso: external_url is not set")
 	}
-	return base + BasePath + "/auth/sso/" + id + "/callback"
+	return base + BasePath + "/auth/sso/" + id + "/callback", nil
 }
 
 func (h *Handlers) ssoCookiePath() string { return BasePath + "/auth/sso" }
@@ -104,6 +107,10 @@ func (h *Handlers) setSSOCookie(w http.ResponseWriter, value string, maxAge int)
 // ListLoginProviders lists the enabled providers for the login page, with the org policy: the page hides the
 // password form when sso_required is on, and shows the recovery login link only when break-glass is on.
 func (h *Handlers) ListLoginProviders(w http.ResponseWriter, r *http.Request) {
+	if h.Store == nil {
+		WriteJSON(w, http.StatusOK, []struct{}{})
+		return
+	}
 	list, err := h.Store.ListLoginProviders(r.Context())
 	if err != nil {
 		internalError(w, r, err)
@@ -653,20 +660,8 @@ func (h *Handlers) ReplaceGroupMappings(w http.ResponseWriter, r *http.Request, 
 		seen[key] = true
 		list = append(list, store.GroupMapping{GroupValue: group, Role: role, ProjectID: m.ProjectId})
 	}
-	// Only an owner may add, change or remove a mapping to owner: dropping one would demote the SSO owners at their
-	// next login. A non-owner may send the owner mappings again unchanged.
-	if PrincipalFrom(r.Context()).OrgRole != auth.RoleOwner {
-		current, err := h.Store.ListGroupMappings(r.Context(), p.OrgID, p.ID)
-		if err != nil {
-			internalError(w, r, err)
-			return
-		}
-		if !sameOwnerMappings(current, list) {
-			forbidOwnerChange(w, r)
-			return
-		}
-	}
-	out, err := h.Store.ReplaceGroupMappings(r.Context(), p.OrgID, p.ID, list)
+	// Only an owner may add, change or remove a mapping to owner: the store checks it inside its transaction.
+	out, err := h.Store.ReplaceGroupMappings(r.Context(), p.OrgID, p.ID, list, PrincipalFrom(r.Context()).OrgRole == auth.RoleOwner)
 	if memberFailed(w, r, err) {
 		return
 	}
@@ -675,27 +670,4 @@ func (h *Handlers) ReplaceGroupMappings(w http.ResponseWriter, r *http.Request, 
 		res[i] = mappingJSON(m)
 	}
 	WriteJSON(w, http.StatusOK, res)
-}
-
-// sameOwnerMappings tells if two lists have the same mappings to owner.
-func sameOwnerMappings(a, b []store.GroupMapping) bool {
-	set := func(list []store.GroupMapping) map[string]bool {
-		out := map[string]bool{}
-		for _, m := range list {
-			if m.Role == auth.RoleOwner {
-				out[m.GroupValue] = true
-			}
-		}
-		return out
-	}
-	x, y := set(a), set(b)
-	if len(x) != len(y) {
-		return false
-	}
-	for k := range x {
-		if !y[k] {
-			return false
-		}
-	}
-	return true
 }

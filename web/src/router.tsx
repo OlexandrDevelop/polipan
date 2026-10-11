@@ -16,6 +16,7 @@ import { AlertsPage } from '@/routes/AlertsPage'
 import { LogsPage, validateLogsSearch } from '@/routes/LogsPage'
 import { OrgSettingsPage } from '@/routes/OrgSettings'
 import { SsoPage, validateSsoSearch } from '@/routes/Sso'
+import { GitConnectionsPage } from '@/routes/GitConnections'
 import { MembersPage } from '@/routes/Members'
 import { ProjectRolesPage } from '@/routes/ProjectRoles'
 import { TeamsPage } from '@/routes/Teams'
@@ -38,7 +39,7 @@ import { ProfilePage } from '@/routes/Profile'
 import { ProjectPage } from '@/routes/ProjectPage'
 import { DashboardPage, ProjectsPage } from '@/routes/Projects'
 import { ReleaseDiffPage } from '@/routes/ReleaseDiffPage'
-import { ServicePage } from '@/routes/ServicePage'
+import { ServicePage, validateServiceSearch } from '@/routes/ServicePage'
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFoundPage })
 
@@ -172,6 +173,11 @@ const orgSettingsRoute = createRoute({
   path: 'settings/organization',
   component: OrgSettingsPage,
 })
+const gitRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'settings/git',
+  component: GitConnectionsPage,
+})
 const ssoRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'settings/sso',
@@ -252,11 +258,13 @@ const serviceRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'p/$project/e/$env/s/$service',
   component: ServicePage,
+  validateSearch: validateServiceSearch,
 })
 const serviceTabRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'p/$project/e/$env/s/$service/$tab',
   component: ServicePage,
+  validateSearch: validateServiceSearch,
 })
 
 const routeTree = rootRoute.addChildren([
@@ -282,6 +290,7 @@ const routeTree = rootRoute.addChildren([
     alertSettingsRoute,
     logsRoute,
     orgSettingsRoute,
+    gitRoute,
     ssoRoute,
     profileRoute,
     membersRoute,

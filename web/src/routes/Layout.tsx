@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, Navigate, Outlet, useNavigate, useParams } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api, setCsrfToken, TWO_FACTOR_KEY } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { sessionWasActive, useMe } from '@/auth'
@@ -17,6 +17,8 @@ import { useAccess } from '@/permissions'
 import { useLiveEvents } from '@/live'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { queryClient } from '@/queryClient'
+import { focusSearch, ShortcutHelp, useGoKeys, useHelpKey, useSingleKey } from '@/shortcuts'
+import { useTheme } from '@/theme'
 
 export function RootLayout() {
   return (
@@ -43,6 +45,35 @@ export function AppShell() {
   const [palette, setPalette] = useState(false)
   const userId = me.data?.user?.id
   const live = useLiveEvents(Boolean(me.data))
+  const [help, setHelp] = useState(false)
+  const openHelp = useCallback(() => setHelp(true), [])
+  const theme = useTheme()
+  const navigate = useNavigate()
+
+  // Single-key shortcuts (REQ-UI-021). They are off while a field has the focus.
+  useHelpKey(openHelp)
+  useSingleKey((event) => {
+    if (event.key === '/') return focusSearch()
+    if (event.key === 't') {
+      const order = ['system', 'light', 'dark'] as const
+      theme.setChoice(order[(order.indexOf(theme.choice) + 1) % order.length])
+      return true
+    }
+    return false
+  })
+  useGoKeys((letter) => {
+    const pages: Record<string, string> = {
+      d: '/o/$org',
+      p: '/o/$org/projects',
+      n: '/o/$org/nodes',
+      a: '/o/$org/alerts',
+      l: '/o/$org/logs',
+    }
+    const to = pages[letter]
+    if (!to) return false
+    void navigate({ to, params: { org } } as never)
+    return true
+  })
 
   // Ctrl+K or Cmd+K opens the command palette on every signed-in page (REQ-UI-019).
   useEffect(() => {
@@ -61,7 +92,6 @@ export function AppShell() {
     if (project && env) saveContext(userId, { project, env })
   }, [userId, project, env])
 
-  const navigate = useNavigate()
   const orgQuery = useQuery({
     queryKey: ['org'],
     enabled: Boolean(me.data),
@@ -76,6 +106,7 @@ export function AppShell() {
   const canMembers = useAccess('member:read')
   const canAudit = useAccess('audit:read')
   const canOrg = useAccess('org:update')
+  const canGit = useAccess('git:manage')
   const logout = useMutation({
     mutationFn: () => unwrap(api.POST('/auth/logout')),
     onSettled: () => {
@@ -176,6 +207,13 @@ export function AppShell() {
               </Link>
             </li>
           )}
+          {canGit === 'allow' && (
+            <li className="flex-1 max-sm:hidden sm:flex-none">
+              <Link to="/o/$org/settings/git" params={{ org }} className={navLink}>
+                {t('nav.git')}
+              </Link>
+            </li>
+          )}
           {canOrg === 'allow' && (
             <li className="flex-1 max-sm:hidden sm:flex-none">
               <Link to="/o/$org/settings/sso" params={{ org }} className={navLink}>
@@ -219,6 +257,15 @@ export function AppShell() {
                 {t('palette.shortcut')}
               </kbd>
             </Button>
+            <Button
+              variant="ghost"
+              aria-label={t('shortcuts.open')}
+              aria-keyshortcuts="?"
+              className="max-sm:hidden"
+              onClick={openHelp}
+            >
+              ?
+            </Button>
             <NotificationsBell org={org} notices={live.notices} onClear={live.clearNotices} />
             <span className="hidden sm:inline-flex">
               <ThemeCycle />
@@ -245,6 +292,7 @@ export function AppShell() {
             {wrongOrg ? <NotFoundPage /> : <Outlet />}
           </div>
         </main>
+        {help && <ShortcutHelp onClose={() => setHelp(false)} />}
         {palette && (
           <CommandPalette
             org={org}

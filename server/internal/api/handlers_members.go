@@ -585,3 +585,22 @@ func (h *Handlers) checkRetention(w http.ResponseWriter, r *http.Request, s *gen
 	}
 	return true
 }
+
+// DeleteOrg soft-deletes the organization. Only an owner may do it (org:delete) and must type the slug.
+// Sessions end, API tokens are revoked and the containers are removed. A purge job removes the rows after 30 days.
+func (h *Handlers) DeleteOrg(w http.ResponseWriter, r *http.Request, params gen.DeleteOrgParams) {
+	o, err := h.Store.GetOrg(r.Context(), h.orgID(r))
+	if fail(w, r, err) {
+		return
+	}
+	if params.Confirm != o.Slug {
+		invalid(w, r, "confirm", "confirm must be the slug of the organization")
+		return
+	}
+	ids, err := h.Store.SoftDeleteOrg(r.Context(), o.ID)
+	if fail(w, r, err) {
+		return
+	}
+	h.servicesRemoved(r, ids)
+	w.WriteHeader(http.StatusNoContent)
+}

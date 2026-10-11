@@ -4,6 +4,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/netip"
 
@@ -258,4 +259,43 @@ func (h *Handlers) refusePanelHost(w http.ResponseWriter, r *http.Request, host 
 	}
 	WriteError(w, r, http.StatusConflict, CodeDomainInUse, "this host is used by the panel", map[string]any{"host": host})
 	return true
+}
+
+// MoveDomain gives a domain to another service of the org in one change. The source and the target
+// environment must both allow the caller (protected environments need an admin), and neither service may
+// have its domains set by polipan.yaml.
+func (h *Handlers) MoveDomain(w http.ResponseWriter, r *http.Request, domainID gen.DomainId) {
+	var body gen.MoveDomainJSONBody
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	d, protected, err := h.Store.GetDomain(r.Context(), h.orgID(r), domainID)
+	if fail(w, r, err) {
+		return
+	}
+	target, err := h.Store.GetService(r.Context(), h.orgID(r), body.TargetServiceId)
+	if errors.Is(err, store.ErrNotFound) {
+		invalid(w, r, "target_service_id", "the target service does not exist")
+		return
+	}
+	if fail(w, r, err) {
+		return
+	}
+	if denyProtected(w, r, "domain:manage", protected) || denyProtected(w, r, "domain:manage", target.EnvProtected) {
+		return
+	}
+	if h.denyManaged(w, r, d.ServiceID, "domains") || h.denyManaged(w, r, target.ID, "domains") {
+		return
+	}
+	if target.ID == d.ServiceID {
+		WriteJSON(w, http.StatusOK, h.domainJSON(d, h.ingressIPs(r)))
+		return
+	}
+	moved, from, err := h.Store.MoveDomain(r.Context(), h.orgID(r), domainID, target.ID, configPort(target.Config))
+	if fail(w, r, err) {
+		return
+	}
+	h.domainsChanged(r, from)
+	h.domainsChanged(r, target.ID)
+	WriteJSON(w, http.StatusOK, h.domainJSON(moved, h.ingressIPs(r)))
 }

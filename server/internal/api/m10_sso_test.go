@@ -357,6 +357,10 @@ func TestAC_SSO_02_UnverifiedEmailIsNotLinked(t *testing.T) {
 	if rec := e.browse(idp, ""); !sessionOf(rec) || e.count(`SELECT count(*) FROM sso_identities`) != 1 || e.roleOf("owner@example.com") != "owner" {
 		t.Fatalf("verified link: %s role %q", rec.Header().Get("Location"), e.roleOf("owner@example.com"))
 	}
+	// Linking an identity to an existing local account is a notable event: it is audited.
+	if e.count(`SELECT count(*) FROM audit_events WHERE action = 'sso.identity_link'`) != 1 {
+		t.Fatal("the link of the identity was not audited")
+	}
 	e.fake.Next = map[string]any{"sub": "u-1", "email": "changed@example.com", "email_verified": true}
 	if rec := e.browse(idp, ""); !sessionOf(rec) || e.count(`SELECT count(*) FROM users`) != 1 {
 		t.Fatalf("login by subject: %s", rec.Header().Get("Location"))

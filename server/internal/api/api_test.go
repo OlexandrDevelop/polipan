@@ -206,7 +206,7 @@ func TestREQ_API_004_ErrorModel(t *testing.T) {
 		status       int
 		code         string
 	}{
-		{http.MethodGet, "/api/v1/auth/sso/providers", http.StatusNotImplemented, "internal_error"},
+		{http.MethodGet, "/api/v1/auth/sso/providers", http.StatusOK, ""},
 		{http.MethodGet, "/api/v1/nothing", http.StatusNotFound, "not_found"},
 	}
 	for _, c := range cases {
@@ -219,6 +219,13 @@ func TestREQ_API_004_ErrorModel(t *testing.T) {
 			RequestID string `json:"request_id"`
 		}
 		_ = json.Unmarshal(rec.Body.Bytes(), &body)
+		if c.status == http.StatusOK {
+			// A public handler answers without a store: an empty list, and the request id is echoed.
+			if rec.Code != c.status || rec.Header().Get("X-Request-ID") != "client-id-12345" {
+				t.Errorf("%s: status %d body %s", c.path, rec.Code, rec.Body)
+			}
+			continue
+		}
 		if rec.Code != c.status || body.Code != c.code || body.RequestID != "client-id-12345" {
 			t.Errorf("%s: status %d body %s", c.path, rec.Code, rec.Body)
 		}

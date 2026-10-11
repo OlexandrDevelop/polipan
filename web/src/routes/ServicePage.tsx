@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from '@/api/client'
@@ -24,6 +24,7 @@ import {
 } from '@/components/ui'
 import { t, tState } from '@/i18n'
 import { accessFor, effectiveRole } from '@/permissions'
+import { useSingleKey } from '@/shortcuts'
 import { useMe } from '@/auth'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { ServiceDomains } from '@/routes/ServiceDomains'
@@ -279,6 +280,13 @@ function Deployments({
   )
 }
 
+// The palette opens a dialog with "?dialog=deploy" or "?dialog=rollback". The page removes it.
+export function validateServiceSearch(search: Record<string, unknown>): {
+  dialog?: 'deploy' | 'rollback'
+} {
+  return search.dialog === 'deploy' || search.dialog === 'rollback' ? { dialog: search.dialog } : {}
+}
+
 // UI-06 (basic): state and control of one service, with the tabs of M1.
 export function ServicePage() {
   const params = useParams({ strict: false })
@@ -300,6 +308,7 @@ export function ServicePage() {
   const [localPending, setLocalPending] = useState(false)
   const [dialog, setDialog] = useState<'deploy' | 'rollback' | 'move' | null>(null)
   const releases = useReleases(serviceId)
+  const wanted = (useSearch({ strict: false }) as { dialog?: 'deploy' | 'rollback' }).dialog
 
   const live = useQuery({
     queryKey: ['service', serviceId],
@@ -347,22 +356,51 @@ export function ServicePage() {
   })
 
   // The key "d" opens the deploy dialog. It never starts a deploy (navigation, section 5).
+  // "r" and "l" open Releases and Logs, "[" and "]" go to the previous and next tab.
   const environmentForKey = scope.environment
   const keyAllowed =
     scope.state === 'ok' &&
     accessFor(me.data?.org_role, 'service:deploy', environmentForKey?.protected) === 'allow'
+  const execKeyAccess = accessFor(me.data?.org_role, 'service:exec', environmentForKey?.protected)
+  const rollbackKeyAccess = accessFor(
+    me.data?.org_role,
+    'service:rollback',
+    environmentForKey?.protected,
+  )
   useEffect(() => {
-    if (!keyAllowed) return
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null
-      const typing = target?.closest('input, textarea, select, [contenteditable], dialog')
-      if (event.key === 'd' && !event.ctrlKey && !event.metaKey && !event.altKey && !typing) {
-        setDialog('deploy')
-      }
+    if (!wanted || scope.state !== 'ok') return
+    if (wanted === 'deploy' && keyAllowed) setDialog('deploy')
+    if (wanted === 'rollback' && rollbackKeyAccess === 'allow') setDialog('rollback')
+    void navigate({ to: '.', search: {}, replace: true })
+  }, [wanted, scope.state, keyAllowed, rollbackKeyAccess, navigate])
+  const goTab = (id: Tab) =>
+    void navigate({
+      to: '/o/$org/p/$project/e/$env/s/$service/$tab',
+      params: { org, project: projectSlug, env: envSlug, service: name, tab: id },
+    })
+  useSingleKey((event) => {
+    if (scope.state !== 'ok') return false
+    if (event.key === 'd' && keyAllowed) {
+      setDialog('deploy')
+      return true
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [keyAllowed])
+    if (event.key === 'r') {
+      goTab('releases')
+      return true
+    }
+    if (event.key === 'l') {
+      goTab('logs')
+      return true
+    }
+    if (event.key === '[' || event.key === ']') {
+      const shown = tabs.filter((id) => id !== 'terminal' || execKeyAccess !== 'hidden')
+      const at = shown.indexOf(tab)
+      const next = shown[(at + (event.key === ']' ? 1 : -1) + shown.length) % shown.length]
+      goTab(next)
+      return true
+    }
+    return false
+  })
 
   if (scope.state === 'pending') return <Skeleton />
   if (scope.state === 'error') return <ErrorBanner error={scope.error} onRetry={scope.retry} />

@@ -12,10 +12,32 @@ import { ErrorBanner } from '@/components/ErrorBanner'
 import { PageHeader } from '@/components/PageHeader'
 import { ThemeRadios } from '@/components/ThemeToggle'
 import { Time } from '@/components/Time'
-import { Banner, Button, Card, Skeleton, StatusBadge, TextField } from '@/components/ui'
+import {
+  Banner,
+  Button,
+  Card,
+  CheckboxField,
+  Skeleton,
+  StatusBadge,
+  TextField,
+} from '@/components/ui'
 import { t } from '@/i18n'
+import { setSingleKeys, useSingleKeys } from '@/shortcuts'
 
 const MIN_PASSWORD = 12
+
+// Single-key shortcuts on or off. The choice stays on this device (UI-43).
+function KeysSetting() {
+  const on = useSingleKeys()
+  return (
+    <CheckboxField
+      label={t('shortcuts.enabled')}
+      hint={t('shortcuts.setting_text')}
+      checked={on}
+      onChange={(e) => setSingleKeys(e.target.checked)}
+    />
+  )
+}
 
 function NameForm({ current }: { current: string }) {
   const queryClient = useQueryClient()
@@ -311,6 +333,7 @@ export function ProfilePage() {
           <div className="space-y-2">
             <h2 className="text-lg font-semibold">{t('profile.appearance')}</h2>
             <ThemeRadios />
+            <KeysSetting />
             <p className="text-sm text-muted">{t('profile.language')}</p>
           </div>
         </>

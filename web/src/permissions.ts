@@ -9,6 +9,7 @@ export type Role = components['schemas']['Role']
 //   all:   every role
 //   dev:   owner, admin, developer
 //   admin: owner, admin
+//   owner: owner only
 //   p:     owner, admin; developer only on a non-protected environment
 export type Permission =
   | 'project:create'
@@ -35,6 +36,7 @@ export type Permission =
   | 'backup:restore'
   | 'template:manage'
   | 'org:update'
+  | 'org:delete'
   | 'sso:manage'
   | 'member:read'
   | 'member:manage'
@@ -49,7 +51,7 @@ export type Permission =
   | 'service:promote'
   | 'preview:manage'
 
-const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
+const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p' | 'owner'> = {
   'project:create': 'dev',
   'env:create': 'dev',
   'service:create': 'p',
@@ -74,6 +76,7 @@ const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'backup:restore': 'admin',
   'template:manage': 'dev',
   'org:update': 'admin',
+  'org:delete': 'owner',
   'sso:manage': 'admin',
   'member:read': 'all',
   'member:manage': 'admin',
@@ -98,8 +101,10 @@ export function accessFor(
   permission: Permission,
   isProtected = false,
 ): Access {
-  if (role === 'owner' || role === 'admin') return 'allow'
   const rule = rules[permission]
+  if (role === 'owner') return 'allow'
+  if (rule === 'owner') return 'hidden'
+  if (role === 'admin') return 'allow'
   if (rule === 'all') return role ? 'allow' : 'hidden'
   if (role === 'developer' && rule !== 'admin') {
     return rule === 'p' && isProtected ? 'blocked' : 'allow'
