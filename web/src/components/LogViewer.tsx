@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { copyText } from '@/components/Copy'
 import { Button, CheckboxField } from '@/components/ui'
@@ -61,6 +61,81 @@ function Message({ entry, query }: { entry: LogEntry; query: string }) {
     </>
   )
 }
+
+interface LogRowProps {
+  l: LogEntry
+  query: string
+  wrap: boolean
+  showService?: boolean
+  showReplica?: boolean
+  onContext?: (entry: LogEntry) => void
+  onCopy: (entry: LogEntry) => void
+}
+
+// One log line. It is memoized, so a new line draws one row, not the whole list.
+const LogRow = memo(function LogRow({
+  l,
+  query,
+  wrap,
+  showService,
+  showReplica,
+  onContext,
+  onCopy,
+}: LogRowProps) {
+  return (
+    <div
+      data-line=""
+      data-id={l.id}
+      tabIndex={-1}
+      className={`group flex gap-2 px-2 py-0.5 focus:bg-bg focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-primary ${
+        l.match === false ? 'text-muted' : ''
+      }`}
+    >
+      {l.time && (
+        <time
+          dateTime={l.time}
+          title={new Date(l.time).toISOString()}
+          className="shrink-0 text-muted"
+        >
+          {formatTime(l.time)}
+        </time>
+      )}
+      {showService && l.service && <span className="shrink-0">{l.service}</span>}
+      {showReplica && l.replica !== undefined && (
+        <span className="shrink-0 text-muted">
+          {l.node ? `${l.node}/` : ''}#{l.replica}
+        </span>
+      )}
+      <Level level={l.level} />
+      {l.stream === 'stderr' && <span className="shrink-0 text-danger">{t('logs.stderr')}</span>}
+      {l.match === false && <span className="sr-only">{t('logs.context_line')}</span>}
+      <span className={`min-w-0 flex-1 ${wrap ? 'whitespace-pre-wrap break-words' : ''}`}>
+        <Message entry={l} query={query} />
+      </span>
+      <span className="flex shrink-0 gap-1 font-sans opacity-0 focus-within:opacity-100 group-focus:opacity-100 group-hover:opacity-100 coarse:opacity-100">
+        {onContext && l.match !== false && (
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={() => onContext(l)}
+            className="rounded-sm border border-border-strong px-1 text-xs"
+          >
+            {t('logs.context')}
+          </button>
+        )}
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => onCopy(l)}
+          aria-label={t('logs.copy_line')}
+          className="rounded-sm border border-border-strong px-1 text-xs"
+        >
+          {t('common.copy')}
+        </button>
+      </span>
+    </div>
+  )
+})
 
 interface LogViewerProps {
   lines: LogEntry[]
@@ -158,9 +233,9 @@ export function LogViewer({
     const row = box.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(matches[next])}"]`)
     row?.focus()
   }
-  function copy(entry: LogEntry) {
+  const copy = useCallback((entry: LogEntry) => {
     void copyText(lineText(entry)).then(() => setCopied(t('common.copied')))
-  }
+  }, [])
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement
@@ -359,62 +434,16 @@ export function LogViewer({
                   {t('logs.gap', { seconds: l.gap })}
                 </div>
               ) : (
-                <div
+                <LogRow
                   key={l.id}
-                  data-line=""
-                  data-id={l.id}
-                  tabIndex={-1}
-                  className={`group flex gap-2 px-2 py-0.5 focus:bg-bg focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-primary ${
-                    l.match === false ? 'text-muted' : ''
-                  }`}
-                >
-                  {l.time && (
-                    <time
-                      dateTime={l.time}
-                      title={new Date(l.time).toISOString()}
-                      className="shrink-0 text-muted"
-                    >
-                      {formatTime(l.time)}
-                    </time>
-                  )}
-                  {showService && l.service && <span className="shrink-0">{l.service}</span>}
-                  {showReplica && l.replica !== undefined && (
-                    <span className="shrink-0 text-muted">
-                      {l.node ? `${l.node}/` : ''}#{l.replica}
-                    </span>
-                  )}
-                  <Level level={l.level} />
-                  {l.stream === 'stderr' && (
-                    <span className="shrink-0 text-danger">{t('logs.stderr')}</span>
-                  )}
-                  {l.match === false && <span className="sr-only">{t('logs.context_line')}</span>}
-                  <span
-                    className={`min-w-0 flex-1 ${wrap ? 'whitespace-pre-wrap break-words' : ''}`}
-                  >
-                    <Message entry={l} query={query} />
-                  </span>
-                  <span className="flex shrink-0 gap-1 font-sans opacity-0 focus-within:opacity-100 group-focus:opacity-100 group-hover:opacity-100 coarse:opacity-100">
-                    {onContext && l.match !== false && (
-                      <button
-                        type="button"
-                        tabIndex={-1}
-                        onClick={() => onContext(l)}
-                        className="rounded-sm border border-border-strong px-1 text-xs"
-                      >
-                        {t('logs.context')}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      onClick={() => copy(l)}
-                      aria-label={t('logs.copy_line')}
-                      className="rounded-sm border border-border-strong px-1 text-xs"
-                    >
-                      {t('common.copy')}
-                    </button>
-                  </span>
-                </div>
+                  l={l}
+                  query={query}
+                  wrap={wrap}
+                  showService={showService}
+                  showReplica={showReplica}
+                  onContext={onContext}
+                  onCopy={copy}
+                />
               ),
             )}
             {!live && (hidden > 0 || onLoadOlder) && (

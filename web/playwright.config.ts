@@ -6,6 +6,9 @@ import { defineConfig, devices } from '@playwright/test'
 // so no Polipan server is needed. PW_CHANNEL=chrome uses an installed Google Chrome instead of
 // the Playwright browser download.
 const port = 5179
+// The built app (npm run build:check) is served by "vite preview" with the CSP header of the
+// Go server. Only the e2e/built-*.spec.ts files run against it.
+const builtPort = 5180
 
 export default defineConfig({
   testDir: 'e2e',
@@ -20,12 +23,30 @@ export default defineConfig({
   projects: [
     {
       name: 'laptop',
+      testIgnore: /built-.*\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
     },
+    {
+      name: 'built',
+      testMatch: /built-.*\.spec\.ts/,
+      fullyParallel: false,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 800 },
+        baseURL: `http://localhost:${builtPort}`,
+      },
+    },
   ],
-  webServer: {
-    command: `npx vite --port ${port} --strictPort`,
-    url: `http://localhost:${port}`,
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: [
+    {
+      command: `npx vite --port ${port} --strictPort`,
+      url: `http://localhost:${port}`,
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      command: `npx vite preview --outDir dist-check --port ${builtPort} --strictPort`,
+      url: `http://localhost:${builtPort}`,
+      reuseExistingServer: !process.env.CI,
+    },
+  ],
 })

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from '@/api/client'
 import { ApiError, unwrap } from '@/api/errors'
@@ -24,12 +24,11 @@ import {
 } from '@/components/ui'
 import { t, tState } from '@/i18n'
 import { accessFor, effectiveRole } from '@/permissions'
+import { lazyNamed } from '@/lazy'
 import { useSingleKey } from '@/shortcuts'
 import { useMe } from '@/auth'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { ServiceDomains } from '@/routes/ServiceDomains'
-import { ServiceLogs } from '@/routes/ServiceLogs'
-import { MetricsPanel } from '@/components/MetricsPanel'
 import { ServiceHealth } from '@/routes/ServiceHealth'
 import { ServiceReleases, useReleases } from '@/routes/ServiceReleases'
 import { ServicePlacement, FailoverBanner } from '@/routes/ServicePlacement'
@@ -37,11 +36,14 @@ import { ServiceSettings } from '@/routes/ServiceSettings'
 import { BackupBadge, ServiceBackups } from '@/routes/ServiceBackups'
 import { ServiceDelete } from '@/routes/ServiceDelete'
 import { ServiceStorage } from '@/routes/ServiceStorage'
-import { ServiceTerminal } from '@/routes/ServiceTerminal'
 import { ServiceVariables } from '@/routes/ServiceVariables'
 import { useNodes, useScope } from '@/scope'
 import type { Service } from '@/scope'
 import { deploymentTone, isDeploymentActive, serviceTone } from '@/status'
+
+const ServiceLogs = lazyNamed(() => import('@/routes/ServiceLogs'), 'ServiceLogs')
+const MetricsPanel = lazyNamed(() => import('@/components/MetricsPanel'), 'MetricsPanel')
+const ServiceTerminal = lazyNamed(() => import('@/routes/ServiceTerminal'), 'ServiceTerminal')
 
 const tabs = [
   'overview',
@@ -635,26 +637,34 @@ export function ServicePage() {
       {tab === 'backups' && (
         <ServiceBackups service={service} environmentProtected={environment.protected} />
       )}
-      {tab === 'logs' && <ServiceLogs serviceId={serviceId} />}
+      {tab === 'logs' && (
+        <Suspense fallback={<Skeleton />}>
+          <ServiceLogs serviceId={serviceId} />
+        </Suspense>
+      )}
       {tab === 'metrics' && (
-        <MetricsPanel
-          kind="service"
-          id={serviceId}
-          markers={(releases.data?.items ?? [])
-            .filter((r) => r.created_at)
-            .map((r) => ({
-              time: Math.floor(new Date(r.created_at ?? '').getTime() / 1000),
-              label: `v${r.number}`,
-              onOpen: () =>
-                void navigate({
-                  to: '/o/$org/p/$project/e/$env/s/$service/$tab',
-                  params: { ...base, tab: 'releases' },
-                }),
-            }))}
-        />
+        <Suspense fallback={<Skeleton />}>
+          <MetricsPanel
+            kind="service"
+            id={serviceId}
+            markers={(releases.data?.items ?? [])
+              .filter((r) => r.created_at)
+              .map((r) => ({
+                time: Math.floor(new Date(r.created_at ?? '').getTime() / 1000),
+                label: `v${r.number}`,
+                onOpen: () =>
+                  void navigate({
+                    to: '/o/$org/p/$project/e/$env/s/$service/$tab',
+                    params: { ...base, tab: 'releases' },
+                  }),
+              }))}
+          />
+        </Suspense>
       )}
       {tab === 'terminal' && (
-        <ServiceTerminal service={service} environmentProtected={environment.protected} />
+        <Suspense fallback={<Skeleton />}>
+          <ServiceTerminal service={service} environmentProtected={environment.protected} />
+        </Suspense>
       )}
       {tab === 'settings' && (
         <>

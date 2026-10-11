@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { Button } from '@/components/ui'
+import { t } from '@/i18n'
 
 export interface Column<T> {
   header: string
@@ -20,6 +23,10 @@ interface DataListProps<T> {
   actionsHeader?: string
 }
 
+// A long list draws this many rows at first and more on request. The page stays fast with
+// 1 000 rows and never depends on a scroll position (quality, section 3; responsive, paging).
+export const FIRST_ROWS = 200
+
 // A table from tablet width, a list of cards on a phone (REQ-UI-018).
 export function DataList<T>({
   caption,
@@ -29,6 +36,8 @@ export function DataList<T>({
   actions,
   actionsHeader = '',
 }: DataListProps<T>) {
+  const [limit, setLimit] = useState(FIRST_ROWS)
+  const visible = rows.slice(0, limit)
   const primary = columns.find((c) => c.primary) ?? columns[0]
   const details = columns.filter((c) => c !== primary && !c.cardHidden)
   return (
@@ -51,7 +60,7 @@ export function DataList<T>({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {visible.map((row) => (
               <tr key={rowKey(row)} className="border-b border-border align-top">
                 {columns.map((c) => (
                   <td key={c.header} className="p-3">
@@ -65,7 +74,7 @@ export function DataList<T>({
         </table>
       </div>
       <ul aria-label={caption} className="space-y-3 sm:hidden">
-        {rows.map((row) => (
+        {visible.map((row) => (
           <li key={rowKey(row)}>
             <article className="space-y-2 rounded-md border border-border bg-surface p-4">
               <div className="break-words font-semibold">{primary.cell(row)}</div>
@@ -82,6 +91,16 @@ export function DataList<T>({
           </li>
         ))}
       </ul>
+      {rows.length > visible.length && (
+        <div className="mt-3 flex items-center gap-3">
+          <Button onClick={() => setLimit(limit + FIRST_ROWS)}>
+            {t('list.show_more', { count: Math.min(FIRST_ROWS, rows.length - visible.length) })}
+          </Button>
+          <span className="text-sm text-muted">
+            {t('list.shown', { shown: visible.length, total: rows.length })}
+          </span>
+        </div>
+      )}
     </>
   )
 }

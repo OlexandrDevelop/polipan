@@ -7,12 +7,12 @@ import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { DataList } from '@/components/DataList'
 import { ErrorBanner } from '@/components/ErrorBanner'
+import { AddGitConnectionDialog } from '@/components/GitConnectionDialog'
 import { ConfirmDialog } from '@/components/Modal'
 import { PageHeader } from '@/components/PageHeader'
 import { Banner, Button, EmptyState, Skeleton } from '@/components/ui'
 import { t } from '@/i18n'
 import { useAccess } from '@/permissions'
-import { AddGitConnectionDialog } from '@/routes/NewService'
 import { NotFoundPage } from '@/routes/ErrorPages'
 
 type Connection = components['schemas']['GitConnection']

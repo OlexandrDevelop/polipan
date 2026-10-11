@@ -2,11 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
-import { MetricsPanel } from '@/components/MetricsPanel'
+import { lazyNamed } from '@/lazy'
 import { NodeBars } from '@/components/NodeBars'
 import { DataList } from '@/components/DataList'
 import { ErrorBanner } from '@/components/ErrorBanner'
@@ -23,6 +23,8 @@ import { nodeTone } from '@/status'
 type Dialog = 'drain' | 'delete' | { orphan: string } | null
 
 // One label per line: key=value.
+const MetricsPanel = lazyNamed(() => import('@/components/MetricsPanel'), 'MetricsPanel')
+
 function labelsText(labels: Record<string, string> | undefined): string {
   return Object.entries(labels ?? {})
     .map(([k, v]) => `${k}=${v}`)
@@ -311,7 +313,9 @@ export function NodeDetailPage() {
         </Card>
         <Card className="space-y-3 lg:col-span-2">
           <h2 className="font-semibold">{t('nodes.metrics')}</h2>
-          <MetricsPanel kind="node" id={id} />
+          <Suspense fallback={<Skeleton />}>
+            <MetricsPanel kind="node" id={id} />
+          </Suspense>
         </Card>
         <Card className="space-y-1 text-sm">
           <h2 className="font-semibold">{t('nodes.details')}</h2>

@@ -62,15 +62,33 @@ export function useLogStream(serviceId: string, frozen: boolean) {
     held.current = []
     seen.current = new Set()
     let lostAt = 0
-    const push = (entry: LogEntry) => {
-      if (frozenRef.current) {
-        held.current.push(entry)
-        setPending(held.current.length)
-      } else {
-        setLines((prev) => cap([...prev, entry]))
+    // Lines are collected and drawn once per frame. 1 000 lines per second are about 16 lines
+    // per frame, so the list changes a little each frame and never in one big step (quality,
+    // section 3).
+    let incoming: LogEntry[] = []
+    let shownPending = 0
+    let frame = 0
+    const flush = () => {
+      frame = 0
+      if (incoming.length > 0) {
+        const batch = incoming
+        incoming = []
+        setLines((prev) => cap([...prev, ...batch]))
+      }
+      if (held.current.length !== shownPending) {
+        shownPending = held.current.length
+        setPending(shownPending)
       }
     }
-    return openStream(
+    const schedule = () => {
+      if (frame === 0) frame = requestAnimationFrame(flush)
+    }
+    const push = (entry: LogEntry) => {
+      if (frozenRef.current) held.current.push(entry)
+      else incoming.push(entry)
+      schedule()
+    }
+    const closeStream = openStream(
       `/api/v1/services/${encodeURIComponent(serviceId)}/logs/stream`,
       ['log', 'gap'],
       {
@@ -103,6 +121,10 @@ export function useLogStream(serviceId: string, frozen: boolean) {
         },
       },
     )
+    return () => {
+      cancelAnimationFrame(frame)
+      closeStream()
+    }
   }, [serviceId])
 
   return { lines, setLines, pending, lost }

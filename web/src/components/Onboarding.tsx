@@ -8,7 +8,7 @@ import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { useMe } from '@/auth'
 import { ErrorBanner } from '@/components/ErrorBanner'
-import { Button, Card, Skeleton, StatusBadge, TextField } from '@/components/ui'
+import { Button, Card, StatusBadge, TextField } from '@/components/ui'
 import { t } from '@/i18n'
 import { AddNodeDialog } from '@/routes/Nodes'
 import { useNodes, useProjects } from '@/scope'
@@ -113,7 +113,9 @@ export function Onboarding() {
       />
     )
   }
-  if (all.some((q) => q.isPending && q.fetchStatus !== 'idle')) return <Skeleton lines={2} />
+  // Nothing is shown while the checklist loads. A skeleton would move the page when a finished
+  // setup removes the checklist again (CLS, quality section 3).
+  if (all.some((q) => q.isPending && q.fetchStatus !== 'idle')) return null
 
   // The first service decides where the links of step 3 and 4 go.
   const firstEnv = environments[0]

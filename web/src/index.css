@@ -4,6 +4,44 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Fonts: two families, woff2, Latin and Latin-ext where the budget allows (quality, section 3).
+   Inter has no Latin-ext file: it is 85 KB and the budget is 120 KB for all fonts. The
+   browser uses the system font for those few letters. */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-ext-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 /* Tokens of docs/spec/ui/design-tokens.json */
 :root,
 :root[data-theme='light'] {
@@ -42,10 +80,20 @@ body {
   @apply bg-bg font-sans text-base text-text antialiased;
 }
 
+/* REQ-UI-027: no animation, no transition and no smooth scrolling. State changes still show. */
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0ms !important;
+  *,
+  ::before,
+  ::after {
+    animation: none !important;
     transition-duration: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline-color: Highlight;
   }
 }
 
@@ -57,5 +105,15 @@ body {
 @media (prefers-contrast: more) {
   :focus-visible {
     outline-width: 3px;
+  }
+}
+
+/* REQ-UI-017: on touch input a link that stands alone is at least 44 px high. A link inside a
+   sentence keeps the line height. */
+@media (pointer: coarse) {
+  main a[href]:not(.sr-only):not(p a):not(dd a):not(li > span a) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
   }
 }

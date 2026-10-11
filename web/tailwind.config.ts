@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Config } from 'tailwindcss'
+import plugin from 'tailwindcss/plugin'
 
 // Colors come from the CSS variables in src/index.css (docs/spec/ui/design-tokens.json).
 export default {
@@ -35,4 +36,11 @@ export default {
       },
     },
   },
+  plugins: [
+    // The custom "coarse" screen stops Tailwind from making max-* variants, so "max-sm" is
+    // added here. It is the phone layout (below 640 px).
+    plugin(({ addVariant }) => {
+      addVariant('max-sm', '@media (max-width: 639.98px)')
+    }),
+  ],
 } satisfies Config

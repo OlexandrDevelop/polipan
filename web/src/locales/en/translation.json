@@ -1937,5 +1937,11 @@
   "shortcuts.enabled": "Use single-key shortcuts",
   "palette.deploy": "Deploy {name}…",
   "palette.rollback": "Roll back {name}…",
-  "palette.metrics": "Open metrics of {name}"
+  "palette.metrics": "Open metrics of {name}",
+  "nav.more": "More",
+  "nav.loaded": "Loaded: {title}",
+  "list.show_more": "Show {count} more",
+  "list.shown": "Showing {shown} of {total}",
+  "nav.home": "Home",
+  "nav.deploys": "Deploys"
 }

@@ -228,24 +228,23 @@ export function CheckboxField({
 }: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
   const id = useId()
   return (
-    <div className="flex items-start gap-3">
-      <input
-        id={id}
-        type="checkbox"
-        aria-describedby={hint ? `${id}-hint` : undefined}
-        className="mt-1 size-4 accent-primary coarse:size-6"
-        {...rest}
-      />
-      <div>
-        <label htmlFor={id} className="text-sm font-medium">
-          {label}
-        </label>
-        {hint && (
-          <p id={`${id}-hint`} className="text-sm text-muted">
-            {hint}
-          </p>
-        )}
-      </div>
+    <div>
+      {/* The whole row is the label, so on touch input the target is at least 44 px (REQ-UI-017). */}
+      <label className="flex min-h-8 items-start gap-3 py-1 coarse:min-h-11">
+        <input
+          id={id}
+          type="checkbox"
+          aria-describedby={hint ? `${id}-hint` : undefined}
+          className="mt-0.5 size-4 shrink-0 accent-primary coarse:size-6"
+          {...rest}
+        />
+        <span className="text-sm font-medium">{label}</span>
+      </label>
+      {hint && (
+        <p id={`${id}-hint`} className="ml-7 text-sm text-muted coarse:ml-9">
+          {hint}
+        </p>
+      )}
     </div>
   )
 }

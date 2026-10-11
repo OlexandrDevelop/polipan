@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  lazyRouteComponent,
+} from '@tanstack/react-router'
 import {
   ForgotPasswordPage,
   HomeRedirect,
@@ -13,7 +18,7 @@ import { ConfigAsCodePage } from '@/routes/ConfigAsCode'
 import { AuditPage } from '@/routes/Audit'
 import { AlertSettingsPage } from '@/routes/AlertSettings'
 import { AlertsPage } from '@/routes/AlertsPage'
-import { LogsPage, validateLogsSearch } from '@/routes/LogsPage'
+import { validateLogsSearch } from '@/logsSearch'
 import { OrgSettingsPage } from '@/routes/OrgSettings'
 import { SsoPage, validateSsoSearch } from '@/routes/Sso'
 import { GitConnectionsPage } from '@/routes/GitConnections'
@@ -25,7 +30,6 @@ import { NotFoundPage } from '@/routes/ErrorPages'
 import { AppShell, RootLayout } from '@/routes/Layout'
 import { DeploymentPage } from '@/routes/DeploymentPage'
 import { DeploymentsPage } from '@/routes/DeploymentsPage'
-import { NewServicePage } from '@/routes/NewService'
 import type { StartPath } from '@/routes/NewService'
 import { BackupsPage } from '@/routes/BackupsPage'
 import { BackupTargetsPage } from '@/routes/BackupTargets'
@@ -38,7 +42,6 @@ import { PreviewsPage } from '@/routes/Previews'
 import { ProfilePage } from '@/routes/Profile'
 import { ProjectPage } from '@/routes/ProjectPage'
 import { DashboardPage, ProjectsPage } from '@/routes/Projects'
-import { ReleaseDiffPage } from '@/routes/ReleaseDiffPage'
 import { ServicePage, validateServiceSearch } from '@/routes/ServicePage'
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFoundPage })
@@ -164,7 +167,7 @@ const alertSettingsRoute = createRoute({
 const logsRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'logs',
-  component: LogsPage,
+  component: lazyRouteComponent(() => import('@/routes/LogsPage'), 'LogsPage'),
   // The filters stay in the URL, so a link restores the search (UI-37).
   validateSearch: validateLogsSearch,
 })
@@ -233,7 +236,7 @@ const environmentRoute = createRoute({
 const newServiceRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'p/$project/e/$env/new',
-  component: NewServicePage,
+  component: lazyRouteComponent(() => import('@/routes/NewService'), 'NewServicePage'),
   // The chosen start path of the wizard stays in the URL (UI-32).
   validateSearch: (search: Record<string, unknown>): { source?: StartPath } =>
     search.source === 'git' ||
@@ -252,7 +255,7 @@ const deploymentRoute = createRoute({
 const releaseDiffRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'p/$project/e/$env/s/$service/releases/$release/diff/$other',
-  component: ReleaseDiffPage,
+  component: lazyRouteComponent(() => import('@/routes/ReleaseDiffPage'), 'ReleaseDiffPage'),
 })
 const serviceRoute = createRoute({
   getParentRoute: () => orgRoute,
