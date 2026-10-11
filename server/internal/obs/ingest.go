@@ -164,6 +164,21 @@ func (in *Ingest) scope(ctx context.Context, nodeID string) (*nodeScope, error) 
 	return sc, nil
 }
 
+// fresh reads the scope of a node again when the cached one is more than a second old. It returns nil when the cache
+// is new (nothing can have changed) or the database failed. This is for a batch that names a service the cache does
+// not know: the service was placed after the cache was made.
+func (in *Ingest) fresh(ctx context.Context, nodeID string, old *nodeScope) *nodeScope {
+	if in.now().Sub(old.at) < time.Second {
+		return nil
+	}
+	in.refresh(nodeID)
+	sc, err := in.scope(ctx, nodeID)
+	if err != nil {
+		return nil
+	}
+	return sc
+}
+
 // refresh forgets the cached scope of a node, so a service that was placed a moment ago is accepted.
 func (in *Ingest) refresh(nodeID string) {
 	in.mu.Lock()
@@ -204,7 +219,9 @@ func (in *Ingest) metrics(w http.ResponseWriter, r *http.Request, nodeID string,
 	}
 	text, dropped := in.cleanSeries(nodeID, sc, series)
 	if dropped > 0 {
-		in.refresh(nodeID)
+		if fresh := in.fresh(r.Context(), nodeID, sc); fresh != nil { // a service that was placed a moment ago
+			text, dropped = in.cleanSeries(nodeID, fresh, series)
+		}
 		in.log().Debug("ingest: dropped series", "node", nodeID, "count", dropped)
 	}
 	if text == "" {
@@ -305,13 +322,24 @@ func (in *Ingest) logs(w http.ResponseWriter, r *http.Request, nodeID string, sc
 			return
 		}
 	}
-	out, dropped, err := in.cleanLogs(nodeID, sc, r.Body)
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "bad body", http.StatusBadRequest)
+		return
+	}
+	out, dropped, err := in.cleanLogs(nodeID, sc, bytes.NewReader(raw))
 	if err != nil {
 		http.Error(w, "bad log batch", http.StatusBadRequest)
 		return
 	}
 	if dropped > 0 {
-		in.refresh(nodeID)
+		// The first lines of a new container can come before the scope cache knows its service. Look again before
+		// the lines are given up: the agent counts a 204 as done and never sends them again.
+		if fresh := in.fresh(r.Context(), nodeID, sc); fresh != nil {
+			if out2, dropped2, err := in.cleanLogs(nodeID, fresh, bytes.NewReader(raw)); err == nil {
+				out, dropped = out2, dropped2
+			}
+		}
 	}
 	if out.Len() > 0 {
 		q := url.Values{}

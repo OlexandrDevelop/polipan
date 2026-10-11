@@ -3,9 +3,14 @@
 package obs
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/polipan/polipan/server/internal/db"
+	"github.com/polipan/polipan/server/internal/db/dbtest"
+	"github.com/polipan/polipan/server/internal/shared/clock"
 )
 
 // REQ-OBS-100: the server sets the org, project and environment labels from its own data. An agent cannot write
@@ -107,5 +112,56 @@ func TestServiceMetricQueriesCarryTheOrg(t *testing.T) {
 	}
 	if _, err := Expr("cpu", Scope{OrgID: `x"} or {org="y`, ServiceID: "svc"}, time.Minute); err == nil {
 		t.Fatal("a bad org id was accepted")
+	}
+}
+
+// The first lines of a new container can come before the cached scope of the node knows its service. The ingest
+// reads the scope again, so the lines are not given up (REQ-OBS-102: no loss).
+func TestIngestReadsTheScopeAgainForANewService(t *testing.T) {
+	pool := dbtest.NewDatabase(t, dbtest.Admin(t))
+	ctx := context.Background()
+	if _, err := db.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO orgs (id, name, slug) VALUES ('org_1','A','a')`,
+		`INSERT INTO projects (id, org_id, name, slug) VALUES ('prj_1','org_1','p','p')`,
+		`INSERT INTO environments (id, project_id, name, slug, kind) VALUES ('env_1','prj_1','prod','prod','production')`,
+		`INSERT INTO nodes (id, org_id, name, state) VALUES ('nod_1','org_1','n','ready')`,
+	} {
+		if _, err := pool.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clk := clock.NewFake(time.Now())
+	in := &Ingest{DB: pool, Clock: clk}
+	sc, err := in.scope(ctx, "nod_1")
+	if err != nil || len(sc.svc) != 0 {
+		t.Fatalf("scope %v %v", sc, err)
+	}
+	for _, q := range []string{
+		`INSERT INTO services (id, environment_id, name, type, source_type, config) VALUES ('svc_1','env_1','web','app','image','{}')`,
+		`INSERT INTO releases (id, service_id, number, image_ref, image_digest, config_snapshot, variable_snapshot, secret_versions, source)
+		   VALUES ('rel_1','svc_1',1,'x@sha256:a','sha256:a','{}','{}','{}','{}')`,
+		`INSERT INTO placements (id, service_id, node_id, release_id, replica_index, color, role) VALUES ('plc_1','svc_1','nod_1','rel_1',0,'blue','live')`,
+	} {
+		if _, err := pool.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if in.fresh(ctx, "nod_1", sc) != nil {
+		t.Fatal("the scope was read again at once: a flood of unknown services would hit the database")
+	}
+	clk.Advance(2 * time.Second)
+	fresh := in.fresh(ctx, "nod_1", sc)
+	if fresh == nil || fresh.svc["svc_1"].org != "org_1" || fresh.svc["svc_1"].project != "prj_1" {
+		t.Fatalf("fresh scope %+v", fresh)
+	}
+	line := `{"_time":"2026-10-10T10:00:00Z","_msg":"first line","service":"svc_1"}` + "\n"
+	if out, dropped, _ := in.cleanLogs("nod_1", sc, strings.NewReader(line)); dropped != 1 || out.Len() != 0 {
+		t.Fatal("the old scope should drop the line")
+	}
+	if out, dropped, _ := in.cleanLogs("nod_1", fresh, strings.NewReader(line)); dropped != 0 || !strings.Contains(out.String(), `"org":"org_1"`) {
+		t.Fatalf("the fresh scope: %d dropped, %s", dropped, out)
 	}
 }
