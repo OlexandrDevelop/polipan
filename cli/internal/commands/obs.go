@@ -20,7 +20,7 @@ func (a *app) obsCommands() []*cobra.Command {
 
 func (a *app) printLogLine(v any) {
 	m, _ := v.(map[string]any)
-	fmt.Fprintf(a.out(), "%s %s %s\n", str(m, "time"), strings.ToUpper(str(m, "level")), str(m, "message"))
+	_, _ = fmt.Fprintf(a.out(), "%s %s %s\n", str(m, "time"), strings.ToUpper(str(m, "level")), str(m, "message"))
 }
 
 func (a *app) logsCmd() *cobra.Command {
@@ -41,12 +41,12 @@ func (a *app) logsCmd() *cobra.Command {
 			f, _ := a.format()
 			return readSSE(resp.Body, func(data string) {
 				if f != "table" {
-					fmt.Fprintln(a.out(), data)
+					_, _ = fmt.Fprintln(a.out(), data)
 					return
 				}
 				v, err := decodeJSON([]byte(data))
 				if err != nil {
-					fmt.Fprintln(a.out(), data)
+					_, _ = fmt.Fprintln(a.out(), data)
 					return
 				}
 				a.printLogLine(v)
@@ -184,12 +184,12 @@ func (a *app) metricsCmd() *cobra.Command {
 		m, _ := v.(map[string]any)
 		series, _ := m["series"].([]any)
 		tw := tabwriter.NewWriter(a.out(), 0, 8, 2, ' ', 0)
-		fmt.Fprintln(tw, "METRIC\tLAST\tMIN\tMAX\tAVG\tTREND")
+		_, _ = fmt.Fprintln(tw, "METRIC\tLAST\tMIN\tMAX\tAVG\tTREND")
 		for _, s := range series {
 			sm, _ := s.(map[string]any)
 			vals := pointValues(sm["points"])
 			if len(vals) == 0 {
-				fmt.Fprintf(tw, "%s\t-\t-\t-\t-\t\n", str(sm, "metric"))
+				_, _ = fmt.Fprintf(tw, "%s\t-\t-\t-\t-\t\n", str(sm, "metric"))
 				continue
 			}
 			lo, hi, sum := vals[0], vals[0], 0.0
@@ -202,7 +202,7 @@ func (a *app) metricsCmd() *cobra.Command {
 				}
 				sum += x
 			}
-			fmt.Fprintf(tw, "%s\t%.4g\t%.4g\t%.4g\t%.4g\t%s\n", str(sm, "metric"), vals[len(vals)-1], lo, hi, sum/float64(len(vals)), sparkline(vals))
+			_, _ = fmt.Fprintf(tw, "%s\t%.4g\t%.4g\t%.4g\t%.4g\t%s\n", str(sm, "metric"), vals[len(vals)-1], lo, hi, sum/float64(len(vals)), sparkline(vals))
 		}
 		return tw.Flush()
 	})
@@ -272,7 +272,7 @@ func (a *app) eventsCmd() *cobra.Command {
 			return err
 		}
 		defer func() { _ = resp.Body.Close() }()
-		return readSSE(resp.Body, func(data string) { fmt.Fprintln(a.out(), data) })
+		return readSSE(resp.Body, func(data string) { _, _ = fmt.Fprintln(a.out(), data) })
 	})
 	c.Flags().StringSliceVar(&topics, "topics", nil, "topics to listen to, comma separated")
 	return c

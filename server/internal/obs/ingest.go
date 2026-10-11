@@ -236,7 +236,7 @@ func (in *Ingest) metrics(w http.ResponseWriter, r *http.Request, nodeID string,
 		http.Error(w, "metrics storage is not reachable", http.StatusServiceUnavailable)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := check(resp); err != nil {
 		in.log().Warn("ingest: metrics store", "err", err)
 		http.Error(w, "metrics storage refused the data", http.StatusServiceUnavailable)
@@ -356,7 +356,7 @@ func (in *Ingest) logs(w http.ResponseWriter, r *http.Request, nodeID string, sc
 			http.Error(w, "log storage is not reachable", http.StatusServiceUnavailable)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if err := check(resp); err != nil {
 			in.log().Warn("ingest: log store", "err", err)
 			http.Error(w, "log storage refused the data", http.StatusServiceUnavailable)

@@ -13,7 +13,7 @@ func diskUsage(path string) (used, total uint64, err error) {
 		return 0, 0, err
 	}
 	bs := uint64(st.Bsize) //nolint:unconvert // the type differs per architecture
-	total = uint64(st.Blocks) * bs
-	used = (uint64(st.Blocks) - uint64(st.Bfree)) * bs
+	total = st.Blocks * bs
+	used = (st.Blocks - st.Bfree) * bs
 	return used, total, nil
 }

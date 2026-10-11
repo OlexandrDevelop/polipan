@@ -25,7 +25,7 @@ func (a *app) confirm(action, name string) error {
 	if !a.interactive() {
 		return usageErr("%s needs a confirmation: add --yes to run it in a shell that is not interactive", action)
 	}
-	fmt.Fprintf(a.err(), "%s. Type %q to confirm: ", action, name)
+	_, _ = fmt.Fprintf(a.err(), "%s. Type %q to confirm: ", action, name)
 	line, err := a.readLine(true)
 	if err != nil {
 		return err
@@ -44,7 +44,7 @@ func (a *app) confirmYN(question string) error {
 	if !a.interactive() {
 		return usageErr("%s needs a confirmation: add --yes to run it in a shell that is not interactive", question)
 	}
-	fmt.Fprintf(a.err(), "%s [y/N]: ", question)
+	_, _ = fmt.Fprintf(a.err(), "%s [y/N]: ", question)
 	line, err := a.readLine(true)
 	if err != nil {
 		return err
@@ -61,7 +61,7 @@ func (a *app) readLine(echo bool) (string, error) {
 			stty(f, "-echo")
 			defer func() {
 				stty(f, "echo")
-				fmt.Fprintln(a.err())
+				_, _ = fmt.Fprintln(a.err())
 			}()
 		}
 	}
@@ -134,7 +134,7 @@ func (a *app) prompt(label string) (string, error) {
 	if !a.interactive() {
 		return "", usageErr("the %s is needed: use the file or stdin flag", label)
 	}
-	fmt.Fprintf(a.err(), "%s: ", label)
+	_, _ = fmt.Fprintf(a.err(), "%s: ", label)
 	v, err := a.readLine(false)
 	if err != nil {
 		return "", err

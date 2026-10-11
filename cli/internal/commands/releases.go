@@ -49,11 +49,11 @@ func (a *app) releaseCommands() []*cobra.Command {
 			m, _ := v.(map[string]any)
 			changes, _ := m["changes"].([]any)
 			if len(changes) == 0 {
-				fmt.Fprintln(a.out(), "No differences.")
+				_, _ = fmt.Fprintln(a.out(), "No differences.")
 			}
 			for _, c := range changes {
 				cm, _ := c.(map[string]any)
-				fmt.Fprintf(a.out(), "%s: %s -> %s\n", str(cm, "path"), cell(cm["before"]), cell(cm["after"]))
+				_, _ = fmt.Fprintf(a.out(), "%s: %s -> %s\n", str(cm, "path"), cell(cm["before"]), cell(cm["after"]))
 			}
 			return nil
 		}

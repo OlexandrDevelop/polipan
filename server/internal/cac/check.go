@@ -200,8 +200,8 @@ func (p *Parsed) checkService(eff *Effective, where string) []Issue {
 			singleWriter = true
 		}
 	}
-	if strat := s.strategy(); singleWriter && (strat == "blue_green" || strat == "canary") && !eff.DeployFromEnv["strategy"] {
-		add(at("deploy", "strategy"), fmt.Sprintf("the strategy %s is not allowed with a single-writer volume. Use recreate", strat))
+	if strategy := s.strategy(); singleWriter && (strategy == "blue_green" || strategy == "canary") && !eff.DeployFromEnv["strategy"] {
+		add(at("deploy", "strategy"), fmt.Sprintf("the strategy %s is not allowed with a single-writer volume. Use recreate", strategy))
 	}
 	if b := s.Backup; b != nil {
 		if b.Volume != "" && !vols[b.Volume] {

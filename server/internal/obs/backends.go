@@ -61,7 +61,7 @@ func (b *Backends) do(ctx context.Context, method, base, path string, q url.Valu
 	}
 	resp, err := b.HTTP.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	return resp, nil
 }
@@ -73,8 +73,8 @@ func check(resp *http.Response) error {
 	}
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 	msg := strings.TrimSpace(string(b))
-	switch {
-	case resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity:
+	switch resp.StatusCode {
+	case http.StatusBadRequest, http.StatusUnprocessableEntity:
 		return fmt.Errorf("%w: %s", ErrBadQuery, msg)
 	default:
 		return fmt.Errorf("%w: status %d: %s", ErrUnavailable, resp.StatusCode, msg)
@@ -95,7 +95,7 @@ func (b *Backends) up(ctx context.Context, base string) bool {
 	if err != nil {
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
 	return resp.StatusCode == http.StatusOK
 }

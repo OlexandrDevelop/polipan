@@ -91,7 +91,7 @@ func (f *File) EffectiveService(env, name string) (*Effective, bool) {
 					eff.DeployFromEnv[k] = true
 				}
 			}
-			merged = mergeMaps(merged, map[string]any{"deploy": map[string]any(e.Deploy)})
+			merged = mergeMaps(merged, map[string]any{"deploy": e.Deploy})
 		}
 		if ov, ok := e.Services[name]; ok {
 			if v, set := ov["enabled"].(bool); set && !v {

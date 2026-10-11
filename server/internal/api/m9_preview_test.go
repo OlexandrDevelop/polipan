@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -74,7 +73,7 @@ func (m *m9) previewSetup(settings map[string]any) *previewFixture {
 }
 
 // prEvent sends a signed pull request event of Gitea.
-func (m *m9) prEvent(f *previewFixture, action string, number int, sha, branch string, o map[string]any) *http.Response {
+func (m *m9) prEvent(f *previewFixture, action string, number int, sha, branch string, o map[string]any) {
 	m.t.Helper()
 	pr := map[string]any{"number": number, "title": "Add a page", "html_url": fmt.Sprintf("https://gitea.example.com/acme/shop/pulls/%d", number),
 		"merged": false, "user": map[string]any{"login": "ann"},
@@ -99,7 +98,6 @@ func (m *m9) prEvent(f *previewFixture, action string, number int, sha, branch s
 	if rec.Code != 202 {
 		m.t.Fatalf("pull request event %s: %d %s", action, rec.Code, rec.Body)
 	}
-	return rec.Result()
 }
 
 // settle runs the preview pass until the preview has the state (or fails the test).

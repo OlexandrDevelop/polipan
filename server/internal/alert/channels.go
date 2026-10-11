@@ -84,7 +84,7 @@ func (e *Engine) postRaw(ctx context.Context, orgID, url string, raw []byte, hea
 	if err != nil {
 		return nil, nil, redactURL(err, url)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 	return resp, b, nil
 }
@@ -181,7 +181,7 @@ func (e *Engine) telegramSend(ctx context.Context, ch *Channel, token, text stri
 	}
 	body := map[string]any{"chat_id": str(ch.Config, "chat_id"), "text": text, "disable_web_page_preview": true}
 	url := api + "/bot" + token + "/sendMessage"
-	resp, b, err := e.postJSON(ctx, ch.OrgID, url, body, nil)
+	resp, b, err := e.postJSON(ctx, ch.OrgID, url, body, nil) //nolint:bodyclose // postRaw has read and closed the body
 	if err != nil {
 		return err
 	}
@@ -218,7 +218,7 @@ func (e *Engine) sendSlack(ctx context.Context, ch *Channel, hook string, m *Mes
 	if c := str(ch.Config, "channel"); c != "" {
 		body["channel"] = c
 	}
-	resp, b, err := e.postJSON(ctx, ch.OrgID, hook, body, nil)
+	resp, b, err := e.postJSON(ctx, ch.OrgID, hook, body, nil) //nolint:bodyclose // postRaw has read and closed the body
 	if err != nil {
 		return err
 	}
@@ -240,7 +240,7 @@ func (e *Engine) sendWebhook(ctx context.Context, ch *Channel, secret string, m 
 	if secret != "" {
 		headers["X-Polipan-Signature"] = Sign(secret, raw)
 	}
-	resp, b, err := e.postRaw(ctx, ch.OrgID, str(ch.Config, "url"), raw, headers)
+	resp, b, err := e.postRaw(ctx, ch.OrgID, str(ch.Config, "url"), raw, headers) //nolint:bodyclose // postRaw has read and closed the body
 	if err != nil {
 		return err
 	}
@@ -300,7 +300,7 @@ func (e *Engine) sendEmail(ctx context.Context, ch *Channel, password string, m 
 		_ = conn.Close()
 		return fmt.Errorf("the mail server did not greet: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	if mode == "starttls" {
 		if err := c.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
 			return fmt.Errorf("STARTTLS failed: %w", err)

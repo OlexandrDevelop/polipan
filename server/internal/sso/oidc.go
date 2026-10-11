@@ -163,7 +163,7 @@ func (c Config) do(req *http.Request, out any) error {
 	if err != nil {
 		return fmt.Errorf("sso: request to %s failed: %w", req.URL.Host, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
 		return err

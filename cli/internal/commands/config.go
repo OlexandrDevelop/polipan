@@ -3,6 +3,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -111,7 +112,7 @@ func (a *app) configCommands() []*cobra.Command {
 		}
 		m, _ := v.(map[string]any)
 		changes, _ := m["changes"].([]any)
-		if countActions(changes, "create", "update", "delete") == 0 && !(prune && countActions(changes, "unmanaged") > 0) {
+		if countActions(changes, "create", "update", "delete") == 0 && (!prune || countActions(changes, "unmanaged") <= 0) {
 			return nil
 		}
 		if err := a.confirmYN("Apply this plan?"); err != nil {
@@ -161,7 +162,8 @@ func (a *app) planConfig(name string, data []byte) (any, error) {
 	}
 	r, err := a.call("planProjectConfig", apiops.Input{Path: []string{pid}, ContentType: "application/yaml", Body: data})
 	if err != nil {
-		if ae, ok := err.(*apiError); ok && ae.Status == 422 {
+		var ae *apiError
+		if errors.As(err, &ae) && ae.Status == 422 {
 			return nil, failErr(ExitError, "%s: %s", name, ae.Message)
 		}
 		return nil, err
@@ -198,9 +200,9 @@ func (a *app) reportProblems(name string, ps []schema.Problem) error {
 		for _, p := range ps {
 			loc := fmt.Sprintf("%s:%d", name, p.Line)
 			if p.Path != "" {
-				fmt.Fprintf(a.err(), "%s: %s: %s\n", loc, p.Path, p.Message)
+				_, _ = fmt.Fprintf(a.err(), "%s: %s: %s\n", loc, p.Path, p.Message)
 			} else {
-				fmt.Fprintf(a.err(), "%s: %s\n", loc, p.Message)
+				_, _ = fmt.Fprintf(a.err(), "%s: %s\n", loc, p.Message)
 			}
 		}
 	}
@@ -232,18 +234,18 @@ func (a *app) printPlan(v any) error {
 	for _, c := range changes {
 		cm, _ := c.(map[string]any)
 		act := str(cm, "action")
-		fmt.Fprintf(w, "%s %s %s/%s\n", sym[act], act, str(cm, "resource"), str(cm, "name"))
+		_, _ = fmt.Fprintf(w, "%s %s %s/%s\n", sym[act], act, str(cm, "resource"), str(cm, "name"))
 		fields, _ := cm["fields"].([]any)
 		for _, f := range fields {
 			fm, _ := f.(map[string]any)
-			fmt.Fprintf(w, "    %s: %s -> %s\n", str(fm, "path"), cell(fm["before"]), cell(fm["after"]))
+			_, _ = fmt.Fprintf(w, "    %s: %s -> %s\n", str(fm, "path"), cell(fm["before"]), cell(fm["after"]))
 		}
 	}
 	if len(changes) == 0 {
-		fmt.Fprintln(w, "No changes.")
+		_, _ = fmt.Fprintln(w, "No changes.")
 	}
-	fmt.Fprintf(w, "\nPlan: %d to create, %d to update, %d to delete, %d unmanaged.\n",
+	_, _ = fmt.Fprintf(w, "\nPlan: %d to create, %d to update, %d to delete, %d unmanaged.\n",
 		countActions(changes, "create"), countActions(changes, "update"), countActions(changes, "delete"), countActions(changes, "unmanaged"))
-	fmt.Fprintf(w, "Plan hash: %s\n", strings.TrimSpace(str(m, "plan_hash")))
+	_, _ = fmt.Fprintf(w, "Plan hash: %s\n", strings.TrimSpace(str(m, "plan_hash")))
 	return nil
 }

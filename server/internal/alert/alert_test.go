@@ -88,7 +88,7 @@ func smtpServer(t *testing.T, r *receiver) (host, port string) {
 				return
 			}
 			go func() {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				rd := bufio.NewReader(c)
 				w := func(s string) { _, _ = fmt.Fprintf(c, "%s\r\n", s) }
 				w("220 fake ESMTP")

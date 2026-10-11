@@ -120,7 +120,7 @@ func (r *run) canary(ctx context.Context, from int, resumed bool) *deployErr {
 	}
 	for i := from; i < len(steps) && steps[i] < 100; i++ {
 		p := steps[i]
-		if !(resumed && i == from) {
+		if !resumed || i != from {
 			if e := r.shiftTo(ctx, p); e != nil {
 				return e
 			}

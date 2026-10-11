@@ -5,6 +5,7 @@ package alert
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -65,7 +66,7 @@ func (e *Engine) buildMessage(ctx context.Context, instanceID, kind string) (*Me
 			if dep := detailStr(m.Details, "deployment_id"); dep != "" {
 				m.Link += "/deployments/" + dep
 			}
-		} else if err != pgx.ErrNoRows {
+		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
 	}

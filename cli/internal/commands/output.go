@@ -80,7 +80,7 @@ func (a *app) done(msg string) error {
 
 // info prints a hint to stderr. It never goes to stdout, so pipes stay clean.
 func (a *app) info(format string, args ...any) {
-	fmt.Fprintf(a.err(), format+"\n", args...)
+	_, _ = fmt.Fprintf(a.err(), format+"\n", args...)
 }
 
 func plainNumbers(v any) any {
@@ -192,13 +192,13 @@ func (a *app) rows(rows []map[string]any, cols []string, empty bool) error {
 	for i, c := range cs {
 		heads[i] = c.header
 	}
-	fmt.Fprintln(tw, strings.Join(heads, "\t"))
+	_, _ = fmt.Fprintln(tw, strings.Join(heads, "\t"))
 	for _, r := range rows {
 		cells := make([]string, len(cs))
 		for i, c := range cs {
 			cells[i] = a.colored(c.path, cell(lookupPath(r, c.path)))
 		}
-		fmt.Fprintln(tw, strings.Join(cells, "\t"))
+		_, _ = fmt.Fprintln(tw, strings.Join(cells, "\t"))
 	}
 	return tw.Flush()
 }
@@ -230,7 +230,7 @@ func (a *app) fields(m map[string]any, cols []string) error {
 		if val == nil && len(cols) == 0 {
 			continue
 		}
-		fmt.Fprintf(tw, "%s\t%s\n", strings.ToLower(c.header), a.colored(c.path, cell(val)))
+		_, _ = fmt.Fprintf(tw, "%s\t%s\n", strings.ToLower(c.header), a.colored(c.path, cell(val)))
 	}
 	return tw.Flush()
 }

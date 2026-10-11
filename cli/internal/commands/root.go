@@ -49,7 +49,7 @@ func Execute(opts Options, args []string) int {
 	defer stop()
 	err := root.ExecuteContext(ctx)
 	if err != nil {
-		fmt.Fprintln(opts.Err, "polipan:", err)
+		_, _ = fmt.Fprintln(opts.Err, "polipan:", err)
 	}
 	return ExitCode(err)
 }
@@ -173,9 +173,9 @@ func (a *app) versionCmd() *cobra.Command {
 			}
 		}
 		if f, ferr := a.format(); ferr == nil && f == "table" {
-			fmt.Fprintf(a.out(), "polipan %s (%s)\n", a.opts.Version, a.opts.Commit)
+			_, _ = fmt.Fprintf(a.out(), "polipan %s (%s)\n", a.opts.Version, a.opts.Commit)
 			if serverLine != "" {
-				fmt.Fprintln(a.out(), serverLine)
+				_, _ = fmt.Fprintln(a.out(), serverLine)
 			}
 			return nil
 		}

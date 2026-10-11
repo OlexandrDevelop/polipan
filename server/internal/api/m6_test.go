@@ -63,7 +63,7 @@ func newM6Env(t *testing.T) *m6Env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var logOut io.Writer = io.Discard
+	logOut := io.Discard
 	if os.Getenv("M6_LOG") != "" {
 		logOut = os.Stderr
 	}

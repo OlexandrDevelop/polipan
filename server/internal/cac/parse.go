@@ -4,6 +4,7 @@ package cac
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -115,8 +116,8 @@ func (p *Parsed) validateSchema(raw []byte) []Issue {
 	if verr == nil {
 		return nil
 	}
-	ve, ok := verr.(*jsonschema.ValidationError)
-	if !ok {
+	var ve *jsonschema.ValidationError
+	if !errors.As(verr, &ve) {
 		return []Issue{{Line: 1, Message: verr.Error()}}
 	}
 	pr := message.NewPrinter(language.English)

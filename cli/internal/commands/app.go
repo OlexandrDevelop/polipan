@@ -160,16 +160,16 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			q = " ?" + strings.Join(keys, ",")
 		}
 		if err != nil {
-			fmt.Fprintf(t.debug, "debug: %s %s%s failed: %v\n", r.Method, r.URL.Path, q, err)
+			_, _ = fmt.Fprintf(t.debug, "debug: %s %s%s failed: %v\n", r.Method, r.URL.Path, q, err)
 		} else {
-			fmt.Fprintf(t.debug, "debug: %s %s%s -> %d (%s)\n", r.Method, r.URL.Path, q, resp.StatusCode, time.Since(start).Round(time.Millisecond))
+			_, _ = fmt.Fprintf(t.debug, "debug: %s %s%s -> %d (%s)\n", r.Method, r.URL.Path, q, resp.StatusCode, time.Since(start).Round(time.Millisecond))
 		}
 	}
 	return resp, err
 }
 
 func (a *app) httpClient(token string) *http.Client {
-	base := http.RoundTripper(http.DefaultTransport)
+	base := http.DefaultTransport
 	if a.opts.HTTPClient != nil && a.opts.HTTPClient.Transport != nil {
 		base = a.opts.HTTPClient.Transport
 	}

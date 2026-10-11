@@ -546,7 +546,7 @@ func (a *app) gitCmd() *cobra.Command {
 			body["installation_id"] = instID
 		}
 		for field, s := range map[string]*secretSource{"token": tok, "private_key": key, "webhook_secret": whs} {
-			if !s.set() && !(field == "token" && provider != "github") {
+			if !s.set() && (field != "token" || provider == "github") {
 				continue
 			}
 			v, err := a.readSecret(s, field != "webhook_secret")

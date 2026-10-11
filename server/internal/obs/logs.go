@@ -72,7 +72,7 @@ func textFilter(text string) (string, error) {
 	if len(text) >= 2 && strings.HasPrefix(text, "/") && strings.HasSuffix(text, "/") {
 		re := text[1 : len(text)-1]
 		if _, err := regexp.Compile(re); err != nil {
-			return "", fmt.Errorf("%w: bad regex: %v", ErrBadQuery, err)
+			return "", fmt.Errorf("%w: bad regex: %w", ErrBadQuery, err)
 		}
 		return "~" + quote(re), nil
 	}
@@ -203,7 +203,7 @@ func (b *Backends) runQuery(ctx context.Context, query string, start, end time.T
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := check(resp); err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ func (b *Backends) runQuery(ctx context.Context, query string, start, end time.T
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	return out, nil
 }
@@ -343,7 +343,7 @@ func (b *Backends) Tail(ctx context.Context, f LogFilter, fn func(LogLine) error
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := check(resp); err != nil {
 		return err
 	}
@@ -375,7 +375,7 @@ func (b *Backends) Tail(ctx context.Context, f LogFilter, fn func(LogLine) error
 			if ctx.Err() != nil || err == io.EOF {
 				return ctx.Err()
 			}
-			return fmt.Errorf("%w: %v", ErrUnavailable, err)
+			return fmt.Errorf("%w: %w", ErrUnavailable, err)
 		}
 	}
 }
@@ -411,7 +411,7 @@ func (b *Backends) CountLogs(ctx context.Context, f LogFilter, start, end time.T
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := check(resp); err != nil {
 		return 0, err
 	}
@@ -421,7 +421,7 @@ func (b *Backends) CountLogs(ctx context.Context, f LogFilter, start, end time.T
 		if err == io.EOF {
 			return 0, nil
 		}
-		return 0, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return 0, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	s, _ := row["c"].(string)
 	n, _ := strconv.Atoi(s)

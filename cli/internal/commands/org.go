@@ -429,7 +429,7 @@ func (a *app) auditCmd() *cobra.Command {
 			return err
 		}
 		defer func() { _ = resp.Body.Close() }()
-		var w io.Writer = a.out()
+		w := a.out()
 		if outFile != "" {
 			f, err := os.OpenFile(outFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 			if err != nil {

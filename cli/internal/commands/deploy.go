@@ -161,21 +161,21 @@ func (a *app) followDeployment(ctx context.Context, id string) error {
 		v, err := decodeJSON([]byte(data))
 		m, ok := v.(map[string]any)
 		if err != nil || !ok {
-			fmt.Fprintln(a.err(), data)
+			_, _ = fmt.Fprintln(a.err(), data)
 			return
 		}
 		d, _ := m["data"].(map[string]any)
 		switch str(m, "type") {
 		case "state":
-			fmt.Fprintf(a.err(), "state: %s\n", str(m, "state"))
+			_, _ = fmt.Fprintf(a.err(), "state: %s\n", str(m, "state"))
 		case "log":
 			line := str(d, "line")
 			if line == "" {
 				line = str(d, "message")
 			}
-			fmt.Fprintln(a.out(), line)
+			_, _ = fmt.Fprintln(a.out(), line)
 		default:
-			fmt.Fprintf(a.err(), "%s: %s\n", str(m, "type"), data)
+			_, _ = fmt.Fprintf(a.err(), "%s: %s\n", str(m, "type"), data)
 		}
 	})
 }
@@ -315,7 +315,7 @@ func (a *app) deploymentCmd() *cobra.Command {
 		if f, _ := a.format(); f == "table" {
 			for _, it := range items {
 				m, _ := it.(map[string]any)
-				fmt.Fprintln(a.out(), str(m, "line"))
+				_, _ = fmt.Fprintln(a.out(), str(m, "line"))
 			}
 			return nil
 		}

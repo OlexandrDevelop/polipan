@@ -59,7 +59,7 @@ func (k jwk) public() (crypto.PublicKey, error) {
 			return nil, errors.New("sso: bad EC key")
 		}
 		pub := &ecdsa.PublicKey{Curve: elliptic.P256(), X: new(big.Int).SetBytes(x), Y: new(big.Int).SetBytes(y)}
-		if !pub.Curve.IsOnCurve(pub.X, pub.Y) {
+		if !pub.IsOnCurve(pub.X, pub.Y) {
 			return nil, errors.New("sso: EC point is not on the curve")
 		}
 		return pub, nil

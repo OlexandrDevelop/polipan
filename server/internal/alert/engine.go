@@ -5,6 +5,7 @@ package alert
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -236,7 +237,7 @@ func (e *Engine) ProcessEvents(ctx context.Context) (int, error) {
 	}
 	var cursor int64
 	err = tx.QueryRow(ctx, `SELECT event_id FROM alert_cursor WHERE name = $1`, eventCursor).Scan(&cursor)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		// First start: events from before the engine are old news. Start after the newest one.
 		if err := tx.QueryRow(ctx, `SELECT COALESCE(MAX(id), 0) FROM events WHERE topic = 'alert'`).Scan(&cursor); err != nil {
 			return 0, err
@@ -304,7 +305,7 @@ func (e *Engine) scopeOf(ctx context.Context, q dbq, rtype, object string, d map
 		err := q.QueryRow(ctx, `SELECT e.project_id, e.id FROM services s JOIN environments e ON e.id = s.environment_id WHERE s.id = $1`, sid).Scan(&pid, &eid)
 		if err == nil {
 			sc["service_id"], sc["project_id"], sc["environment_id"] = sid, pid, eid
-		} else if err != pgx.ErrNoRows {
+		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
 	}
@@ -407,7 +408,7 @@ func (e *Engine) suppressedBy(ctx context.Context, q dbq, rtype, serviceID strin
 	var node string
 	err := q.QueryRow(ctx, `SELECT n.id FROM placements p JOIN nodes n ON n.id = p.node_id
 		WHERE p.service_id = $1 AND n.state = 'down' ORDER BY n.id LIMIT 1`, serviceID).Scan(&node)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

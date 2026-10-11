@@ -330,10 +330,14 @@ func TestBufferCapDropsOldest(t *testing.T) {
 	}
 	// What is left is the newest part, in order, with no gap.
 	first := 0
-	fmt.Sscanf(got[0], "%d", &first)
+	if _, err := fmt.Sscanf(got[0], "%d", &first); err != nil {
+		t.Fatal(err)
+	}
 	for i, m := range got {
 		var v int
-		fmt.Sscanf(m, "%d", &v)
+		if _, err := fmt.Sscanf(m, "%d", &v); err != nil {
+			t.Fatal(err)
+		}
 		if v != first+i {
 			t.Fatalf("line %d is %d, want %d", i, v, first+i)
 		}

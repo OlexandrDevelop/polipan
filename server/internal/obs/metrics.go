@@ -215,13 +215,13 @@ func (b *Backends) QueryRange(ctx context.Context, metric, query string, from, t
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := check(resp); err != nil {
 		return nil, err
 	}
 	var r promResult
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	if r.Status != "success" {
 		return nil, fmt.Errorf("%w: %s", ErrBadQuery, r.Error)
@@ -261,13 +261,13 @@ func (b *Backends) Query(ctx context.Context, query string, at time.Time) ([]Sam
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := check(resp); err != nil {
 		return nil, err
 	}
 	var r promResult
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	if r.Status != "success" {
 		return nil, fmt.Errorf("%w: %s", ErrBadQuery, r.Error)

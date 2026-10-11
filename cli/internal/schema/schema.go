@@ -8,9 +8,11 @@ package schema
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -67,7 +69,9 @@ func Validate(data []byte) ([]Problem, error) {
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		line := 1
 		if m := regexp.MustCompile(`line (\d+)`).FindStringSubmatch(err.Error()); m != nil {
-			fmt.Sscan(m[1], &line)
+			if n, err := strconv.Atoi(m[1]); err == nil {
+				line = n
+			}
 		}
 		return []Problem{{Line: line, Message: "invalid YAML: " + strings.TrimPrefix(err.Error(), "yaml: ")}}, nil
 	}
@@ -83,8 +87,8 @@ func Validate(data []byte) ([]Problem, error) {
 	if verr == nil {
 		return nil, nil
 	}
-	ve, ok := verr.(*jsonschema.ValidationError)
-	if !ok {
+	var ve *jsonschema.ValidationError
+	if !errors.As(verr, &ve) {
 		return nil, verr
 	}
 	pr := message.NewPrinter(language.English)

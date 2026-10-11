@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -158,9 +159,5 @@ func min2(a, b time.Duration) time.Duration {
 }
 
 func asStatus(err error, out **StatusError) bool {
-	se, ok := err.(*StatusError)
-	if ok {
-		*out = se
-	}
-	return ok
+	return errors.As(err, out)
 }
