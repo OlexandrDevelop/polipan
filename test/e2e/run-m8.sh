@@ -50,7 +50,7 @@ if [ -z "${SKIP_BUILD:-}" ]; then
   step "Build the server and the agent"
   out=$(mktemp -d)
   docker run --rm -v "$root":/src -v pp-gocache:/root/.cache/go-build -v pp-gomod:/go/pkg/mod -v "$out":/out -w /src \
-    -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false golang:1.23 \
+    -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false golang:1.26 \
     sh -c 'go build -trimpath -ldflags "-s -w" -o /out/polipan-server ./server/cmd/polipan-server && go build -trimpath -ldflags "-s -w" -o /out/polipan-agent ./agent/cmd/polipan-agent && chown -R '"$(id -u):$(id -g)"' /out'
   mkdir -p "$out/server" "$out/agent"
   cp "$out/polipan-server" "$out/server/" && cp test/e2e/m8/server.Dockerfile "$out/server/Dockerfile"

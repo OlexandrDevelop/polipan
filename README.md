@@ -18,7 +18,7 @@ Self-hosted, open source server panel (Apache-2.0). Spec: [docs/spec/README.md](
 
 ## Build
 
-You need Go 1.23+, Node.js 20+ and Docker. Run `make help` for all targets.
+You need Go 1.26+, Node.js 20+ and Docker. Run `make help` for all targets.
 
 ```sh
 make build     # web app, then server, agent and cli into ./bin

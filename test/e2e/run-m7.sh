@@ -60,7 +60,7 @@ if [ -z "${SKIP_BUILD:-}" ]; then
   # Build the committed code only: other work in the tree must not change the test.
   git archive HEAD | tar -x -C "$src"
   docker run --rm -v "$src":/src -v pp-gocache:/root/.cache/go-build -v pp-gomod:/go/pkg/mod -v "$out":/out -w /src \
-    -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false golang:1.23 \
+    -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false golang:1.26 \
     go build -trimpath -ldflags "-s -w" -o /out/polipan-server ./server/cmd/polipan-server
   cp test/e2e/m7/server.Dockerfile "$out/Dockerfile"
   docker build -q -t polipan-server:m7 "$out" >/dev/null

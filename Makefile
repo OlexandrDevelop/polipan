@@ -124,5 +124,16 @@ gate8: ## Gate 8: license check and SPDX headers
 	sh test/ci/check-licenses-go.sh
 	sh test/ci/check-licenses-web.sh
 
+.PHONY: vuln
+vuln: ## Dependency scan: govulncheck for the server and the Terraform provider, npm audit for the web runtime packages
+	go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+	cd terraform-provider && go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+	cd web && npm ci --no-audit --no-fund && npm audit --omit=dev --audit-level=high
+
+.PHONY: fuzz
+fuzz: ## Fuzz the parsers of untrusted input, FUZZTIME each (default 20s). Needs no database.
+	@for t in cac:FuzzParse tpl:FuzzImportCompose tpl:FuzzParseManifest git:FuzzWebhook obs:FuzzTextFilter sso:FuzzVerifyIDToken; do \
+		go test ./server/internal/$${t%%:*}/ -run '^$$' -fuzz "^$${t##*:}$$" -fuzztime $(or $(FUZZTIME),20s) || exit 1; done
+
 .PHONY: gates
 gates: lint gate3 gate4 gate5 gate6 gate8 ## All gates that need no database

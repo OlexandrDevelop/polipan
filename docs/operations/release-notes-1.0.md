@@ -26,3 +26,12 @@ These risks are known and accepted for 1.0. Each one is linked from the
 | AR-5 | The `preview` node label is optional. Without it, previews can run on any node. | Previews still get only `preview = true` values and never mount production volumes. |
 | AR-6 | The live build isolation test (`test/e2e/sec06.sh`) needs root, Docker and nftables. It was not run in the hardening sandbox. Unit tests of the compose file and the nftables rules pass. | Run `sudo test/e2e/sec06.sh` before tagging. |
 | AR-7 | Cosign keyless signing, the SBOM and the checksum check of the installer can only be proven on a real release. `make release-test` checks the scripts and the reproducible build. | The first tag will run `release.yml`. Check the signature by hand once. |
+
+## Dependency scan
+
+- `govulncheck` (server, agent, CLI, Terraform provider): no reachable vulnerability. The Go toolchain moved to 1.26
+  and `x/net`, `x/crypto`, `x/text`, `grpc` and `pgx` were updated for this.
+- `npm audit` for the runtime packages of the web app: no finding.
+- AR-8: `npm audit` reports 5 high and 2 moderate findings in development tools only (`tailwindcss`, `chokidar`,
+  `braces`, `micromatch`, `fast-glob`, `postcss-*`). They run at build time on trusted input and are not shipped.
+  The CI gate checks the runtime packages (`--omit=dev`). Fix with the next Tailwind major upgrade.

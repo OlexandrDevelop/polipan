@@ -2,7 +2,7 @@
 # polipan command line client. Build from the repository root:
 #   docker build -f deploy/docker/cli.Dockerfile -t polipan-cli .
 
-FROM golang:1.23-bookworm@sha256:167053a2bb901972bf2c1611f8f52c44d5fe7e762e5cab213708d82c421614db AS build
+FROM golang:1.26-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c AS build
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG TARGETOS=linux

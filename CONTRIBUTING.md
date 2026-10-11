@@ -10,7 +10,7 @@ Thank you for your help. This file tells you how to send a change.
 
 ## Set up
 
-You need Go 1.23+, Node.js 20+ and Docker.
+You need Go 1.26+, Node.js 20+ and Docker.
 
 Run `make help` to see all targets. The main ones:
 
