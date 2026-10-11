@@ -245,6 +245,12 @@ cmd_destroy() {
   [ "$all" = "--all" ] || say "The Ubuntu image stays in $dl. Use 'destroy --all' to delete it too."
 }
 
+# Copies an image of this computer to the VM (compressed).
+load_image() {
+  say "Copying $1 to the VM (compressed)"
+  docker save "$1" | gzip -1 | vm_ssh 'gunzip | sudo docker load' >/dev/null
+}
+
 # Copies the images and the files of the repository into the VM and runs the installer.
 cmd_install() {
   running || fail "the VM is not running"
@@ -254,10 +260,7 @@ cmd_install() {
     make images >/dev/null
   fi
   local img
-  for img in polipan-server:dev polipan-agent:dev; do
-    say "Copying $img to the VM (compressed)"
-    docker save "$img" | gzip -1 | vm_ssh 'gunzip | sudo docker load' >/dev/null
-  done
+  for img in polipan-server:dev polipan-agent:dev; do load_image "$img"; done
   say "Copying deploy/ to the VM"
   tar -C "$root" -c deploy | vm_ssh 'rm -rf /tmp/polipan && mkdir /tmp/polipan && tar -C /tmp/polipan -x'
   say "Running deploy/install.sh (local images, no domain)"
@@ -286,6 +289,11 @@ docker network rm polipan >/dev/null 2>&1 || true
 rm -rf /var/lib/polipan-agent /var/lib/polipan /etc/docker/certs.d/172.31.251.10:5000 /etc/polipan/master.key
 docker image prune -f >/dev/null
 EOS
+  # The agent image is only used by the installer, so a clean-up of unused images can remove it.
+  local img
+  for img in polipan-server:dev polipan-agent:dev; do
+    vm_ssh "sudo docker image inspect $img >/dev/null 2>&1" || load_image "$img"
+  done
   say "Installing again from the images in the VM"
   vm_ssh "sudo sh /tmp/polipan/deploy/install.sh --server-image polipan-server:dev --agent-image polipan-agent:dev --address 127.0.0.1:$http_port" | tee "$vmdir/install.log"
   print_setup_url
