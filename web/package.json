@@ -12,11 +12,11 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "generate:api": "openapi-typescript ../api/openapi.yaml -o ../api/gen/schema.d.ts",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --project=laptop && npm run test:built",
     "build:check": "POLIPAN_WEB_OUT=dist-check vite build --emptyOutDir",
     "check:parity": "node scripts/check-parity.mjs",
     "check:budget": "node scripts/check-budget.mjs dist-check",
-    "test:built": "playwright test --project=built",
+    "test:built": "playwright test --project=built --workers=1",
     "test:visual": "playwright test visual.spec.ts"
   },
   "dependencies": {
