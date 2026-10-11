@@ -321,15 +321,6 @@ func (h *Handlers) ListSsoProviders(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, out)
 }
 
-// ssoOwnerRole answers 403 and returns true when the role is owner and the caller is not an owner.
-func ssoOwnerRole(w http.ResponseWriter, r *http.Request, role string) bool {
-	if role == auth.RoleOwner && PrincipalFrom(r.Context()).OrgRole != auth.RoleOwner {
-		forbidOwnerChange(w, r)
-		return true
-	}
-	return false
-}
-
 // buildProvider merges a write body into the current provider (nil for a new one) and checks every rule.
 // It writes the answer and returns nil when the result is not valid.
 func (h *Handlers) buildProvider(w http.ResponseWriter, r *http.Request, cur *store.SSOProvider, body gen.SsoProviderWrite) *store.SSOProvider {
@@ -401,6 +392,16 @@ func (h *Handlers) buildProvider(w http.ResponseWriter, r *http.Request, cur *st
 	if p.Kind != sso.KindOIDC {
 		p.GroupsClaim = nil
 	}
+	// A generic OIDC provider decides who is "verified" for any email, so whoever sets its issuer, client or groups claim
+	// can sign in as any member, an owner too. That needs an owner (REQ-RBAC-008).
+	if p.Kind == sso.KindOIDC && PrincipalFrom(r.Context()).OrgRole != auth.RoleOwner {
+		changed := cur == nil || !samePtr(p.IssuerURL, cur.IssuerURL) || p.ClientID != cur.ClientID ||
+			body.ClientSecret != nil || !samePtr(p.GroupsClaim, cur.GroupsClaim)
+		if changed {
+			forbidOwnerChange(w, r)
+			return nil
+		}
+	}
 	if body.AllowedDomains != nil {
 		p.AllowedDomains = sso.NormalizeDomains(*body.AllowedDomains)
 	}
@@ -450,6 +451,13 @@ func (h *Handlers) buildProvider(w http.ResponseWriter, r *http.Request, cur *st
 		p.ClientSecretEnc = enc
 	}
 	return p
+}
+
+func samePtr(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func defaultScopes(kind string, given []string) []string {
@@ -631,9 +639,6 @@ func (h *Handlers) ReplaceGroupMappings(w http.ResponseWriter, r *http.Request, 
 			invalid(w, r, "group_value", "a GitHub group is written org/team")
 			return
 		}
-		if ssoOwnerRole(w, r, role) {
-			return
-		}
 		if p.Kind == sso.KindGitHub {
 			group = strings.ToLower(group)
 		}
@@ -648,6 +653,19 @@ func (h *Handlers) ReplaceGroupMappings(w http.ResponseWriter, r *http.Request, 
 		seen[key] = true
 		list = append(list, store.GroupMapping{GroupValue: group, Role: role, ProjectID: m.ProjectId})
 	}
+	// Only an owner may add, change or remove a mapping to owner: dropping one would demote the SSO owners at their
+	// next login. A non-owner may send the owner mappings again unchanged.
+	if PrincipalFrom(r.Context()).OrgRole != auth.RoleOwner {
+		current, err := h.Store.ListGroupMappings(r.Context(), p.OrgID, p.ID)
+		if err != nil {
+			internalError(w, r, err)
+			return
+		}
+		if !sameOwnerMappings(current, list) {
+			forbidOwnerChange(w, r)
+			return
+		}
+	}
 	out, err := h.Store.ReplaceGroupMappings(r.Context(), p.OrgID, p.ID, list)
 	if memberFailed(w, r, err) {
 		return
@@ -657,4 +675,27 @@ func (h *Handlers) ReplaceGroupMappings(w http.ResponseWriter, r *http.Request, 
 		res[i] = mappingJSON(m)
 	}
 	WriteJSON(w, http.StatusOK, res)
+}
+
+// sameOwnerMappings tells if two lists have the same mappings to owner.
+func sameOwnerMappings(a, b []store.GroupMapping) bool {
+	set := func(list []store.GroupMapping) map[string]bool {
+		out := map[string]bool{}
+		for _, m := range list {
+			if m.Role == auth.RoleOwner {
+				out[m.GroupValue] = true
+			}
+		}
+		return out
+	}
+	x, y := set(a), set(b)
+	if len(x) != len(y) {
+		return false
+	}
+	for k := range x {
+		if !y[k] {
+			return false
+		}
+	}
+	return true
 }

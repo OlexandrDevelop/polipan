@@ -483,3 +483,49 @@ func TestT_E2E_11_SSOWithFakeProvider(t *testing.T) {
 		t.Fatalf("test login: %s", rec.Header().Get("Location"))
 	}
 }
+
+// SEC-1 and SEC-2 (REQ-RBAC-008): an admin cannot become an owner through SSO. A generic OIDC provider can be made or
+// pointed to another issuer, client or groups claim only by an owner, and only an owner can change a mapping to owner.
+func TestREQ_SSO_AdminCannotReachOwner(t *testing.T) {
+	e := newSSOEnv(t)
+	owner := e.owner()
+	admin := e.userClient("usr_adm", "adm@example.com", "admin")
+	oidcBody := func(name string) map[string]any {
+		return map[string]any{"kind": "oidc", "name": name, "issuer_url": e.fake.Base, "client_id": e.fake.ClientID, "client_secret": "s"}
+	}
+	if rec := admin.do("POST", "/api/v1/sso-providers", oidcBody("Mine")); rec.Code != 403 {
+		t.Fatalf("an admin made an OIDC provider: %d %s", rec.Code, rec.Body)
+	}
+	admin.ok(201, "POST", "/api/v1/sso-providers", map[string]any{"kind": "github", "name": "GH", "client_id": "a", "client_secret": "b", "allowed_domains": []string{"example.com"}})
+
+	idp := e.provider(owner, map[string]any{"kind": "oidc", "name": "Keycloak", "issuer_url": e.fake.Base, "groups_claim": "groups"})
+	for name, patch := range map[string]map[string]any{
+		"issuer":        {"issuer_url": e.fake.Base + "/other"},
+		"client id":     {"client_id": "other"},
+		"client secret": {"client_secret": "new"},
+		"groups claim":  {"groups_claim": "roles"},
+	} {
+		if rec := admin.do("PATCH", "/api/v1/sso-providers/"+idp, patch); rec.Code != 403 {
+			t.Fatalf("an admin changed the %s: %d %s", name, rec.Code, rec.Body)
+		}
+	}
+	admin.ok(200, "PATCH", "/api/v1/sso-providers/"+idp, map[string]any{"name": "Keycloak 2", "default_role": "viewer"})
+
+	// Mappings to owner: only an owner changes them.
+	owner.ok(200, "PUT", "/api/v1/sso-providers/"+idp+"/group-mappings", []map[string]any{{"group_value": "root", "role": "owner"}})
+	if rec := admin.do("PUT", "/api/v1/sso-providers/"+idp+"/group-mappings", []map[string]any{}); rec.Code != 403 {
+		t.Fatalf("an admin dropped the owner mapping: %d", rec.Code)
+	}
+	admin.ok(200, "PUT", "/api/v1/sso-providers/"+idp+"/group-mappings", []map[string]any{{"group_value": "root", "role": "owner"}, {"group_value": "eng", "role": "developer"}})
+
+	// A new issuer or client of the owner drops the linked identities.
+	e.fake.Next = map[string]any{"sub": "o-1", "email": "owner@example.com", "email_verified": true, "groups": []string{}}
+	e.browse(idp, "")
+	if e.count(`SELECT count(*) FROM sso_identities`) != 1 {
+		t.Fatal("the owner was not linked")
+	}
+	owner.ok(200, "PATCH", "/api/v1/sso-providers/"+idp, map[string]any{"client_id": "other"})
+	if e.count(`SELECT count(*) FROM sso_identities`) != 0 {
+		t.Fatal("the identities stayed after the client changed")
+	}
+}

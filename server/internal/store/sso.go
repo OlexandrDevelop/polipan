@@ -178,6 +178,13 @@ func (s *Store) UpdateSSOProvider(ctx context.Context, p *SSOProvider) (*SSOProv
 		return nil, err
 	}
 	diff := map[string]any{"before": ssoDiff(before), "after": ssoDiff(after)}
+	// Another issuer or client is another identity space: the old subjects must not log in to it.
+	if !samePtrs(before.IssuerURL, after.IssuerURL) || before.ClientID != after.ClientID {
+		if _, err := tx.Exec(ctx, `DELETE FROM sso_identities WHERE provider_id = $1`, p.ID); err != nil {
+			return nil, err
+		}
+		diff["identities_reset"] = true
+	}
 	if p.ClientSecretEnc != nil {
 		diff["client_secret_changed"] = true
 	}
@@ -562,4 +569,11 @@ func (s *Store) syncProjectRoles(ctx context.Context, tx pgx.Tx, actor audit.Eve
 	e.Action, e.TargetType, e.TargetID = "sso.project_roles", "user", res.UserID
 	e.Diff = map[string]any{"before": before, "after": after}
 	return audit.Write(ctx, tx, e)
+}
+
+func samePtrs(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }

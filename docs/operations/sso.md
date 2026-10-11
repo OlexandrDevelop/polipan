@@ -49,7 +49,8 @@ It is applied at **every login**:
   never changed by a mapping.
 - When a user leaves the group, the access ends at the next login (an admin can end the sessions at once).
 - The last owner is never demoted or removed by a mapping.
-- Only an owner can map a group to `owner`. A project role cannot be `owner`.
+- Only an owner can add, change or remove a mapping to `owner`. A project role cannot be `owner`.
+- Only an owner can add a generic OIDC provider, or change its issuer, client ID, client secret or groups claim: whoever controls those can sign in as any member. When the issuer or client ID changes, the linked identities are removed.
 
 ## Require SSO and break-glass
 
