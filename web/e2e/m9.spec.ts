@@ -34,6 +34,8 @@ function withPreviews(): MockState {
         pr_number: 7,
         state: 'failed',
         expires_at: '2026-09-01T10:00:00Z',
+        failure_reason: 'api: secret STRIPE_KEY is not marked for previews',
+        waiting_for_label: true,
       },
     },
   ]
@@ -69,6 +71,16 @@ test('UI-18 UI-36 the previews list marks states, deletes with the typed name an
   await expect(page.getByRole('heading', { level: 1, name: 'Preview pr-12' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Open preview' })).toBeVisible()
 
+  // Extend the expiry by 7 days: the new date shows.
+  const expires = page.locator('dd', { has: page.locator('time') })
+  const before = await expires.locator('time').first().getAttribute('datetime')
+  await page
+    .getByRole('group', { name: 'Extend expiry' })
+    .getByRole('button', { name: '+7 days' })
+    .click()
+  await expect(expires.locator('time').first()).not.toHaveAttribute('datetime', before ?? '')
+  expect(state.extendCalls).toEqual([7])
+
   await page.getByRole('link', { name: 'Previews', exact: true }).first().click()
   await table
     .getByRole('row', { name: /acme\/shop #12/ })
@@ -81,6 +93,13 @@ test('UI-18 UI-36 the previews list marks states, deletes with the typed name an
   await confirm.click()
   await expect(table.getByRole('row', { name: /acme\/shop #12/ })).toHaveCount(0)
   expect(state.deletedEnvironments).toEqual(['e-pr12'])
+})
+
+test('UI-36 a failed preview shows the reason and the label note', async ({ page }) => {
+  await mockApi(page, withPreviews())
+  await page.goto('/o/acme/p/shop/previews/pr-7')
+  await expect(page.getByText('api: secret STRIPE_KEY is not marked for previews')).toBeVisible()
+  await expect(page.getByText('A maintainer must add the label polipan-preview')).toBeVisible()
 })
 
 test('UI-18 an empty list explains the next step and a preview can be created by hand', async ({

@@ -48,6 +48,39 @@ function Redeploy({ service }: { service: Service }) {
   )
 }
 
+const EXTEND_STEPS = [1, 7]
+
+// Moves the expiry of a preview by some days (updateEnvironment, settings.extend_days).
+function ExtendExpiry({ environmentId, projectId }: { environmentId: string; projectId?: string }) {
+  const queryClient = useQueryClient()
+  const extend = useMutation({
+    mutationFn: (days: number) =>
+      unwrap(
+        api.PATCH('/environments/{environment_id}', {
+          params: { path: { environment_id: environmentId } },
+          // The generated type of settings is empty, the server accepts extend_days (1 to 365).
+          body: { settings: { extend_days: days } as unknown as Record<string, never> },
+        }),
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['environment', environmentId] })
+      await queryClient.invalidateQueries({ queryKey: ['previews', projectId] })
+    },
+  })
+  return (
+    <div className="mt-2 space-y-2">
+      <div role="group" aria-label={t('previews.extend')} className="flex flex-wrap gap-2">
+        {EXTEND_STEPS.map((days) => (
+          <Button key={days} loading={extend.isPending} onClick={() => extend.mutate(days)}>
+            {days === 1 ? t('previews.extend_day') : t('previews.extend_days', { days })}
+          </Button>
+        ))}
+      </div>
+      {extend.error && <ErrorBanner error={extend.error} title={t('previews.extend_failed')} />}
+    </div>
+  )
+}
+
 // UI-36: one preview environment.
 export function PreviewDetailPage() {
   const {
@@ -127,8 +160,15 @@ export function PreviewDetailPage() {
       />
       {env.preview?.state === 'failed' && (
         <Banner variant="danger" title={t('previews.failed_title')}>
-          {t('previews.failed_text')}
+          {env.preview.failure_reason ? (
+            <p className="break-words">{env.preview.failure_reason}</p>
+          ) : (
+            t('previews.failed_text')
+          )}
         </Banner>
+      )}
+      {env.preview?.waiting_for_label && (
+        <Banner variant="warning">{t('previews.waiting_label')}</Banner>
       )}
       <Card>
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
@@ -152,6 +192,7 @@ export function PreviewDetailPage() {
             <dt className="font-semibold">{t('previews.col_expires')}</dt>
             <dd>
               <Time value={env.preview?.expires_at} />
+              {allowed && env.id && <ExtendExpiry environmentId={env.id} projectId={project.id} />}
             </dd>
           </div>
         </dl>

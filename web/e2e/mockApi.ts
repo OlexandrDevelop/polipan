@@ -43,6 +43,8 @@ export interface MockState {
   // M9: preview environments and promotion.
   previews: Schemas['Environment'][]
   deletedEnvironments: string[]
+  // The days of each extend call of a preview.
+  extendCalls: number[]
   createPreviewCalls: { repo: string; pr_number?: number; base_environment_id?: string }[]
   // The bodies of the real (not dry run) promote calls.
   promoteCalls: Schemas['PromoteRequest'][]
@@ -106,6 +108,7 @@ export function defaultState(role: Schemas['Role'] = 'owner'): MockState {
     metricsDown: false,
     previews: [],
     deletedEnvironments: [],
+    extendCalls: [],
     createPreviewCalls: [],
     promoteCalls: [],
     promoteMissing: [],
@@ -278,6 +281,17 @@ export async function mockApi(page: Page, state: MockState) {
       if (method === 'DELETE') {
         state.deletedEnvironments.push(previewEnv[1])
         return route.fulfill({ status: 204 })
+      }
+      if (method === 'PATCH' && found) {
+        const body = request.postDataJSON() as { settings?: { extend_days?: number } }
+        const days = body.settings?.extend_days ?? 0
+        const from = new Date(found.preview?.expires_at ?? Date.now())
+        found.preview = {
+          ...found.preview,
+          expires_at: new Date(from.getTime() + days * 86400000).toISOString(),
+        }
+        state.extendCalls.push(days)
+        return json(route, found)
       }
       if (method === 'GET' && previewEnv[2]) return json(route, [])
       if (method === 'GET' && found) return json(route, found)

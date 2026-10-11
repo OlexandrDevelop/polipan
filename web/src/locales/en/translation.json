@@ -1880,5 +1880,10 @@
   "previews.failed_text": "Check that every secret the services need is marked for previews, then deploy again.",
   "previews.redeploy": "Redeploy",
   "previews.redeploy_started": "Deploy started.",
-  "previews.redeploy_failed": "The deploy did not start."
+  "previews.redeploy_failed": "The deploy did not start.",
+  "previews.extend": "Extend expiry",
+  "previews.extend_days": "+{days} days",
+  "previews.extend_failed": "The expiry was not changed.",
+  "previews.waiting_label": "A maintainer must add the label polipan-preview to build the new commit.",
+  "previews.extend_day": "+1 day"
 }
