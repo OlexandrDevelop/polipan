@@ -6,7 +6,7 @@ table, and fails when a row is missing, a named test does not exist, or an accep
 
 | # | Tests | Accepted risks |
 |---|---|---|
-| 1 | TestJoinTokenSingleUseAndExpiry, TestJoinRefused, TestM1_NodesAndJoinToken | |
+| 1 | TestAC_NODE_02_JoinTokenSingleUseAndExpiry, TestJoinRefused, TestM1_NodesAndJoinToken | |
 | 2 | TestM10b_RevokedCertCannotConnect, TestConnectMTLS, TestREQ_NODE_008_DeleteNodeForce | |
 | 3 | TestREQ_SEC_100_NodeGetsOnlyItsOwnSecrets, TestREQ_SEC_106_ApplyIsolation | AR-4 |
 | 4 | TestConnectMTLS, TestJoinRefused | |
