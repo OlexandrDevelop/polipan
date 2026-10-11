@@ -79,7 +79,11 @@ build() { # build REF NAME
     -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false -e GOCACHE=/tmp/gocache -e HOME=/tmp "$go_image" \
     go build -trimpath -o /out/polipan-server ./server/cmd/polipan-server
 }
-if [ -z "${POLIPAN_UPGRADE_GOMODCACHE:-}" ]; then docker volume create "$cache_volume" >/dev/null; fi
+if [ -z "${POLIPAN_UPGRADE_GOMODCACHE:-}" ]; then
+  docker volume create "$cache_volume" >/dev/null
+  # A new volume belongs to root, but the build runs as the current user.
+  docker run --rm -v "$cache_volume:/m" alpine:3.20 chmod 0777 /m
+fi
 say "Building the old server ($from)"
 build "$from" old
 say "Building the new server ($to)"
