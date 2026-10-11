@@ -133,3 +133,16 @@ func TestNoNode(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Services without limits count as zero load, so the scores tie. A tie goes to the node with fewer workloads.
+func TestScheduleTieGoesToTheNodeWithFewerWorkloads(t *testing.T) {
+	nodes := []Node{{ID: "a", Name: "a", State: "ready", Placements: 3}, {ID: "b", Name: "b", State: "ready", Placements: 1}, {ID: "c", Name: "c", State: "ready", Placements: 1}}
+	res, err := Schedule(nodes, Request{})
+	if err != nil || len(res.NodeIDs) != 1 || res.NodeIDs[0] != "b" {
+		t.Fatalf("got %v %v, want b (fewest workloads, then the lower name)", res, err)
+	}
+	res, _ = Schedule(nodes, Request{Replicas: 3, NoSpread: true})
+	if got := res.NodeIDs; got[0] != "b" || got[1] != "c" {
+		t.Fatalf("replicas %v: each choice must count the workload of the one before", got)
+	}
+}

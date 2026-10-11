@@ -10,8 +10,8 @@ Run the suites again with `make perf` and `make chaos`, and the live runs with `
 
 | Target | Result | How it was measured | Verdict |
 |---|---|---|---|
-| 200 services, 20 nodes | 200 services live on 20 nodes, 10 per node, 0 failed deploys | `TestPerf_ScaleTarget`: real PostgreSQL, real gRPC gateway with mTLS, 20 fake agents that send a heartbeat every second | Met (control plane only, see limits) |
-| 50 deploys per hour | First deploy of the 200 services: 63.6 s in waves of 20 = 188.7 deploys per minute. 50 redeploys: 13.5 s = 221.9 per minute. A wave of 20 at once: p95 2 s at the start, 5 s with 200 services. | same test | Met: the rate is about 220 times the target of 0.83 per minute |
+| 200 services, 20 nodes | 200 services (no resource limits) live on 20 nodes, 10 per node, 0 failed deploys | `TestPerf_ScaleTarget`: real PostgreSQL, real gRPC gateway with mTLS, 20 fake agents that send a heartbeat every second | Met (control plane only, see limits) |
+| 50 deploys per hour | First deploy of the 200 services: 28.7 s in waves of 20 = 418 deploys per minute. 50 redeploys: 11.5 s = 261 per minute. | same test | Met: the rate is more than 300 times the target of 0.83 per minute |
 | Log search over 1 GB in 3 s | 3.9 million lines, 1024 MB of JSON (189 MB on disk), 773 matches. Search "timeout" in 7 days: 62 ms. One service: 15 ms. Regex in one environment: 75 ms. Newest 100 lines with no text: 209-243 ms. Three runs each. | `TestPerf_LogSearch1GB`: a real VictoriaLogs v1.9.1 and the panel's own `Backends.Search` | Met: the slowest search is 0.24 s |
 
 Limits of these numbers (said plainly):
@@ -20,7 +20,7 @@ Limits of these numbers (said plainly):
   database, gateway, state push), not Docker, image pulls or health check waits. A real deploy is dominated by the pull
   and the health check, not by the control plane. This machine has no second server, so the lab setup of 3 VMs or 20 real
   nodes was not built.
-- The deploy waves get slower as placements grow (2 s per wave at the start, 5 s at the end), because the desired state of
+- The deploy waves get slower as placements grow, because the desired state of
   a node is rebuilt from its placements. This is fine at 200 services. It is the place to look first for 1000 services.
 
 ### Bugs the performance run found
@@ -29,9 +29,11 @@ Limits of these numbers (said plainly):
    connection (`releaseSource`). With more simultaneous deploys than pool connections (the default pool is the number of
    CPU cores) every connection waited for another one and the whole control plane stopped. The first run with 50 deploys at
    once hung for 12 minutes at 0 % CPU. The query now runs before the transaction starts.
-2. **Scheduler piles services on one node (reported as F-27, not fixed).** Services without `resources` count as zero load, so
-   all 20 nodes tie and 118 services went to the first node until its address range was full. With `resources` set the
-   same run spread evenly.
+2. **Scheduler piled services on one node (F-27, fixed).** Services without `resources` count as zero load, so all
+   20 nodes tied and 118 services went to the first node until its address range was full. A tie now goes to the node with
+   fewer workloads, scheduler decisions are taken one at a time, and the nodes of a decision are reserved until its
+   placements are saved. The same run now puts 10 services on each node. A burst of 200 deploys at once also spreads evenly,
+   but the fake agents of the test then lose their streams, so the test runs in waves of 20.
 
 ## 2. Chaos (scenarios of [13](../spec/13-testing-and-quality.md#2-test-levels))
 

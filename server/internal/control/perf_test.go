@@ -64,14 +64,11 @@ func TestPerf_ScaleTarget(t *testing.T) {
 	if err := m.env.Pool.QueryRow(ctx, `SELECT environment_id FROM services WHERE id = $1`, m.serviceID).Scan(&envID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.env.Pool.Exec(ctx, `UPDATE services SET config = jsonb_set(config, '{resources}', '{"cpu_millis":100,"memory_bytes":134217728}') WHERE id = $1`, m.serviceID); err != nil {
-		t.Fatal(err)
-	}
 	ids := []string{m.serviceID}
 	for i := 1; i < services; i++ {
 		id := gateway.NewID("svc")
 		if _, err := m.env.Pool.Exec(ctx, `INSERT INTO services (id, environment_id, name, type, source_type, config) VALUES ($1,$2,$3,'app','image',
-			'{"image":"nginx:1.27","port":8080,"health":{"type":"tcp","port":8080},"strategy_options":{"drain_seconds":0},"resources":{"cpu_millis":100,"memory_bytes":134217728}}')`, id, envID, fmt.Sprintf("web-%03d", i)); err != nil {
+			'{"image":"nginx:1.27","port":8080,"health":{"type":"tcp","port":8080},"strategy_options":{"drain_seconds":0}}')`, id, envID, fmt.Sprintf("web-%03d", i)); err != nil {
 			t.Fatal(err)
 		}
 		ids = append(ids, id)
@@ -149,5 +146,11 @@ func TestPerf_ScaleTarget(t *testing.T) {
 	// The desired state of a node holds only its own workloads.
 	var placements int
 	_ = m.env.Pool.QueryRow(ctx, `SELECT count(*) FROM placements WHERE role = 'live'`).Scan(&placements)
-	t.Logf("PERF live placements: %d for %d services on %d nodes", placements, services, nodes)
+	var most int
+	_ = m.env.Pool.QueryRow(ctx, `SELECT COALESCE(MAX(c), 0) FROM (SELECT count(*) c FROM placements WHERE role = 'live' GROUP BY node_id) x`).Scan(&most)
+	t.Logf("PERF live placements: %d for %d services on %d nodes, the busiest node has %d (services have no resource limits)", placements, services, nodes, most)
+	// Services without limits must spread: no node may take more than twice its share.
+	if most > 2*(services+nodes-1)/nodes {
+		t.Errorf("the busiest node has %d of %d services on %d nodes", most, services, nodes)
+	}
 }

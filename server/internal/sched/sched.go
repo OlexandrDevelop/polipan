@@ -27,6 +27,9 @@ type Node struct {
 	UsedMemoryBytes uint64
 	// Replicas of the service that is scheduled, already on this node.
 	Replicas int
+	// Placements is the number of workloads of all services on the node, including the ones that are reserved by
+	// deployments that are not saved yet. It breaks a tie of the score, so services without limits spread out.
+	Placements int
 }
 
 // Request is what to place.
@@ -85,7 +88,7 @@ func contains(list []string, s string) bool {
 //  4. a service with a local volume goes to the node of the volume
 //  5. score = free memory share + free CPU share, minus 1 for each replica of the service already on the node
 //     (when spread is on)
-//  6. the best score wins, a tie goes to the lower node name
+//  6. the best score wins, a tie goes to the node with fewer workloads, then to the lower node name
 func Schedule(nodes []Node, req Request) (*Result, error) {
 	if req.Replicas <= 0 {
 		req.Replicas = 1
@@ -114,7 +117,7 @@ func Schedule(nodes []Node, req Request) (*Result, error) {
 			if !req.NoSpread {
 				s -= float64(n.Replicas)
 			}
-			if best < 0 || s > bestScore {
+			if best < 0 || s > bestScore || (s == bestScore && n.Placements < pool[best].Placements) {
 				best, bestScore = i, s
 			}
 		}
@@ -124,6 +127,7 @@ func Schedule(nodes []Node, req Request) (*Result, error) {
 		n := &pool[best]
 		res.NodeIDs = append(res.NodeIDs, n.ID)
 		n.Replicas++
+		n.Placements++
 		n.UsedCPUMillis += req.CPUMillis
 		n.UsedMemoryBytes += req.MemoryBytes
 	}

@@ -22,11 +22,12 @@ type plc struct{ id, node string }
 
 // run is one deployment that runs now (08 sections 4 to 7).
 type run struct {
-	c   *Control
-	ad  *activeDep
-	d   *deployment
-	svc *svcInfo
-	cfg serviceConfig // config of the new release
+	reserved []string // nodes reserved by the scheduler until the placements are saved
+	c        *Control
+	ad       *activeDep
+	d        *deployment
+	svc      *svcInfo
+	cfg      serviceConfig // config of the new release
 
 	node        string   // the node of the first replica (pre_deploy runs there)
 	nodes       []string // the node of every new replica, in order
@@ -66,6 +67,7 @@ func nodesOf(l ...[]plc) []string {
 // the next start finishes it (recover.go).
 func (c *Control) runDeployment(ctx context.Context, ad *activeDep, d *deployment, resume bool) {
 	r := &run{c: c, ad: ad, d: d}
+	defer r.unreserve()
 	var derr *deployErr
 	if resume {
 		derr = r.resume(ctx)
@@ -488,6 +490,7 @@ func (r *run) startContainers(ctx context.Context) *deployErr {
 	if err != nil {
 		return fail(ReasonContainerStartFailed, "save placement: %v", err)
 	}
+	r.unreserve() // the rows are in the database now
 	return nil
 }
 

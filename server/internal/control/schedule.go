@@ -24,7 +24,8 @@ func (c *Control) schedNodes(ctx context.Context, q dbq, orgID string, keep []st
 		`SELECT n.id, n.name, n.state, n.labels, n.capacity,
 		        COALESCE(SUM((r.config_snapshot->'resources'->>'cpu_millis')::numeric) FILTER (WHERE p.role IN ('live','candidate','draining')), 0),
 		        COALESCE(SUM((r.config_snapshot->'resources'->>'memory_bytes')::numeric) FILTER (WHERE p.role IN ('live','candidate','draining')), 0),
-		        COUNT(p.id) FILTER (WHERE p.id = ANY($2))
+		        COUNT(p.id) FILTER (WHERE p.id = ANY($2)),
+		        COUNT(p.id) FILTER (WHERE p.role IN ('live','candidate','draining'))
 		   FROM nodes n LEFT JOIN placements p ON p.node_id = n.id LEFT JOIN releases r ON r.id = p.release_id
 		  WHERE n.org_id = $1
 		  GROUP BY n.id ORDER BY n.name, n.id`, orgID, keep)
@@ -37,7 +38,7 @@ func (c *Control) schedNodes(ctx context.Context, q dbq, orgID string, keep []st
 		var n sched.Node
 		var labels, capRaw []byte
 		var usedCPU, usedMem float64
-		if err := rows.Scan(&n.ID, &n.Name, &n.State, &labels, &capRaw, &usedCPU, &usedMem, &n.Replicas); err != nil {
+		if err := rows.Scan(&n.ID, &n.Name, &n.State, &labels, &capRaw, &usedCPU, &usedMem, &n.Replicas, &n.Placements); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(labels, &n.Labels)
@@ -139,19 +140,35 @@ func (r *run) schedule(ctx context.Context) ([]string, *deployErr) {
 			return nodes, nil
 		}
 	}
+	// One decision at a time: a deployment that is decided at the same moment must see the nodes that the others
+	// took. The nodes of a decision are reserved until its placements are saved (unreserve).
+	c.schedMu.Lock()
 	nodes, err := c.schedNodes(ctx, c.DB, r.svc.orgID, keepIDs)
 	if err != nil {
+		c.schedMu.Unlock()
 		return nil, fail(ReasonInternal, "read nodes: %v", err)
+	}
+	for i := range nodes {
+		nodes[i].Placements += c.reserved[nodes[i].ID]
 	}
 	res, err := sched.Schedule(nodes, req)
 	if err != nil {
 		req.IgnoreCapacity = true
 		var again *sched.Result
 		if again, _ = sched.Schedule(nodes, req); again == nil {
+			c.schedMu.Unlock()
 			return nil, nodeError(err)
 		}
 		res = again
 	}
+	if c.reserved == nil {
+		c.reserved = map[string]int{}
+	}
+	for _, id := range res.NodeIDs {
+		c.reserved[id]++
+	}
+	r.reserved = append(r.reserved, res.NodeIDs...)
+	c.schedMu.Unlock()
 	for _, w := range res.Warnings {
 		c.event(ctx, d.id, map[string]any{"type": "log", "data": map[string]any{"stream": "deploy", "line": "scheduler: " + w}})
 	}
@@ -230,4 +247,17 @@ func allocIP(ctx context.Context, q dbq, nodeID string) (string, error) {
 		}
 	}
 	return "", errors.New("no free address in the subnet of the node")
+}
+
+// unreserve gives back the nodes that schedule reserved. It is safe to call it more than once.
+func (r *run) unreserve() {
+	c := r.c
+	c.schedMu.Lock()
+	defer c.schedMu.Unlock()
+	for _, id := range r.reserved {
+		if c.reserved[id] > 0 {
+			c.reserved[id]--
+		}
+	}
+	r.reserved = nil
 }

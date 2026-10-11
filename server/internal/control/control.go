@@ -84,6 +84,11 @@ type Control struct {
 	stop   context.CancelFunc
 	wg     sync.WaitGroup
 
+	// schedMu serializes the decisions of the scheduler. reserved counts, for each node, the workloads of deployments
+	// that were decided and are not saved in the database yet.
+	schedMu  sync.Mutex
+	reserved map[string]int
+
 	mu       sync.Mutex
 	active   map[string]*activeDep // deployments run by this process
 	draining map[string]bool       // nodes whose drain runs in this process
