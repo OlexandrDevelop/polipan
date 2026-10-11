@@ -184,6 +184,18 @@ func (m *m3) placementOf(t *testing.T, release string) string {
 	return m.q(t, `SELECT id FROM placements WHERE release_id = $1 AND service_id = $2 ORDER BY created_at DESC LIMIT 1`, release, m.serviceID)
 }
 
+// waitFor polls cond until it is true. It fails the test after 10 seconds.
+func (m *m3) waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timeout: %s", what)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func (m *m3) waitState(t *testing.T, id, want string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -522,12 +534,11 @@ func TestAC_REL_03_PrunedRelease(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		m.mustDeploy(t)
 	}
-	if got := m.q(t, `SELECT string_agg(number::text, ',' ORDER BY number) FROM releases WHERE pruned_at IS NOT NULL`); got != "1,2" {
-		t.Fatalf("pruned releases: %s", got)
-	}
-	if m.sim.count("prune") == 0 {
-		t.Fatal("no image gc command")
-	}
+	// The prune runs after the deployment is live, so wait for it (poll with a timeout).
+	m.waitFor(t, "pruned releases 1,2 and the image gc command", func() bool {
+		return m.q(t, `SELECT COALESCE(string_agg(number::text, ',' ORDER BY number), '') FROM releases WHERE pruned_at IS NOT NULL`) == "1,2" &&
+			m.sim.count("prune") > 0
+	})
 	if _, _, err := m.ctl.DeployWith(context.Background(), orchestrator.DeployParams{ServiceID: m.serviceID, RollbackReleaseID: m.releaseID(t, 1)}); !errors.Is(err, orchestrator.ErrImagePruned) {
 		t.Fatalf("pruned: %v", err)
 	}
@@ -797,9 +808,11 @@ func TestImageGCKeepsSharedDigest(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		m.mustDeploy(t)
 	}
-	if m.q(t, `SELECT count(*) FROM releases WHERE pruned_at IS NOT NULL`) != "2" {
-		t.Fatal("releases were not pruned")
-	}
+	// The prune runs after the deployment is live. Close waits for every run, so the prune is done after it.
+	m.waitFor(t, "two pruned releases", func() bool {
+		return m.q(t, `SELECT count(*) FROM releases WHERE pruned_at IS NOT NULL`) == "2"
+	})
+	m.ctl.Close()
 	if m.sim.count("prune") != 0 || len(m.sim.gc) != 0 {
 		t.Fatalf("the image of kept releases was removed: %v", m.sim.gc)
 	}

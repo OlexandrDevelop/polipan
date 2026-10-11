@@ -28,7 +28,7 @@ func (e *Engine) HealthSamples() []metrics.HealthSample {
 			continue
 		}
 		replica := w.Labels["polipan.replica"]
-		out = append(out, metrics.HealthSample{Service: w.ServiceId, Release: w.ReleaseId, Replica: replica, Up: s.health == "healthy"})
+		out = append(out, metrics.HealthSample{Service: w.ServiceId, Release: w.ReleaseId, Replica: replica, Up: s.health == "healthy", DurationSeconds: s.duration.Seconds()})
 	}
 	return out
 }

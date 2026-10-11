@@ -742,7 +742,8 @@ func TestAC_AUDIT_01_VariableChangeSearchExport(t *testing.T) {
 		t.Fatalf("bad cursor: %d", rec.Code)
 	}
 	for _, q := range []string{"actor_id=" + str(ev, "actor_id"), "target_type=variable", "project_id=" + projectID,
-		"from=" + e.clk.Now().Add(-time.Hour).Format(time.RFC3339) + "&to=" + e.clk.Now().Add(time.Hour).Format(time.RFC3339)} {
+		// The "+" of a +02:00 time zone must be escaped in a query, else it is read as a space.
+		"from=" + url.QueryEscape(e.clk.Now().Add(-time.Hour).Format(time.RFC3339)) + "&to=" + url.QueryEscape(e.clk.Now().Add(time.Hour).Format(time.RFC3339))} {
 		if r := owner.ok(200, "GET", "/api/v1/audit-events?"+q, nil); len(r["items"].([]any)) == 0 {
 			t.Fatalf("filter %s found nothing", q)
 		}

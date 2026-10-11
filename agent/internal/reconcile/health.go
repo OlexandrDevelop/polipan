@@ -36,6 +36,7 @@ type hstate struct {
 	lastStatus  int
 	lastBody    string
 	checked     time.Time
+	duration    time.Duration // how long the last check took (polipan_health_check_duration_seconds)
 	next        time.Time
 	containerID string
 	startedAt   time.Time
@@ -181,7 +182,9 @@ func (e *Engine) runProbe(ctx context.Context, w *agentv1.WorkloadSpec, c docker
 		}
 	}
 	e.mu.Unlock()
+	probeStart := time.Now()
 	res := e.probeOnce(ctx, w, c, started)
+	took := time.Since(probeStart)
 
 	healthy, unhealthy := int(hc.HealthyThreshold), int(hc.UnhealthyThreshold)
 	if healthy <= 0 {
@@ -228,7 +231,7 @@ func (e *Engine) runProbe(ctx context.Context, w *agentv1.WorkloadSpec, c docker
 	if s.health == "unknown" {
 		s.health = "starting"
 	}
-	s.lastErr, s.lastStatus, s.lastBody, s.checked = res.err, res.status, res.body, now
+	s.lastErr, s.lastStatus, s.lastBody, s.checked, s.duration = res.err, res.status, res.body, now, took
 	// Until the container is healthy, it is checked every second at most, so a service that is ready early
 	// switches early (the fast rollback needs this). After that the interval of the config applies.
 	iv := secondsOr(hc.IntervalSeconds, 5*time.Second)
