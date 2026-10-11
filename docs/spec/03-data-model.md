@@ -311,6 +311,8 @@ CREATE TABLE deployments (
   failure_detail text,
   actor_id text REFERENCES users(id),
   idempotency_key text,
+  batch_id text,                             -- deployments of one project-wide promotion share it (F04)
+  after_deployment_id text REFERENCES deployments(id) ON DELETE SET NULL,  -- waits until that deployment is live
   started_at timestamptz,
   finished_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),

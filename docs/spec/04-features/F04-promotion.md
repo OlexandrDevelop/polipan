@@ -28,6 +28,8 @@ A user promotes a Release from one environment (for example `staging`) to anothe
 
 A promotion is a Deployment with `trigger = promotion`. States are the deploy states of [08](../08-deploy-engine.md#2-state-machine). The batch (project-wide) is a record `promotion_batches` in the `events` stream with per-service results (not a separate table in v1: results are in the deployments).
 
+The deployments of a batch share `batch_id`. Each one after the first has `after_deployment_id` and waits in the queue until the deployment before it is `live`. If that one ends in another state, the waiting deployment is `cancelled` with the reason `batch_stopped`, and so are the ones that wait for it. The answer of the batch lists one Deployment for each service that is not skipped, in the order of the run.
+
 ## Edge cases
 
 - Staging has newer config than the Release being promoted: only the **Release** is promoted. Live (unreleased) config changes are ignored. The UI states this.

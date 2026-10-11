@@ -47,6 +47,8 @@ stateDiagram-v2
 
 The state is stored in the environment's `settings` (`preview_state`) and shown in the UI.
 
+A preview that a user makes by hand for a branch (REQ-PREV-014) has the environment name `br-<branch>-<4 hash chars>` and no PR number. It builds the head of the branch. A preview of a PR number without a branch builds the branch of the base service. The project settings are `previews.max_active`, `previews.ttl_days`, `previews.cleanup_grace_minutes` (`preview_cleanup_grace`, default 60), `previews.from_forks`, `previews.node_selector`, `previews.seed_command` and `previews.strategy`. The `seed_command` runs once: it is added to the `pre_deploy` of the services of the PR until the first deployment is live.
+
 ## Edge cases
 
 - Many pushes in a row: the engine supersedes queued builds ([08](../08-deploy-engine.md#10-concurrency-and-queue)).
