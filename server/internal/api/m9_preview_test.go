@@ -347,7 +347,7 @@ func TestAC_PREV_05_ForkRules(t *testing.T) {
 	releases := m.q(`SELECT count(*) FROM releases r JOIN services s ON s.id = r.service_id WHERE s.environment_id = $1`, env)
 	m.prEvent(f, "synchronized", 8, commitB, "evil", map[string]any{"fork": true, "labels": []any{map[string]any{"name": "polipan-preview"}}})
 	_, _, removed := m.fake.Snapshot()
-	if len(removed) != 1 || removed[0] != "acme/shop#8:polipan-preview" {
+	if len(removed) == 0 || removed[len(removed)-1] != "acme/shop#8:polipan-preview" {
 		t.Fatalf("the label was not removed: %v", removed)
 	}
 	m.pv.Tick(context.Background())
@@ -498,5 +498,36 @@ func TestAC_PREV_05_ForkLabelRemovalFails(t *testing.T) {
 	m.settle("pr-8", "active")
 	if m.q(`SELECT source->>'commit_sha' FROM releases r JOIN services s ON s.id = r.service_id WHERE s.environment_id = $1 AND s.name = 'web' ORDER BY r.number DESC LIMIT 1`, env) != commitB {
 		t.Fatal("the commit was not built after the label was added again")
+	}
+}
+
+// SEC-1: a fork author closes the PR, pushes and reopens it. The label of the old commit must not approve the new one.
+func TestAC_PREV_05_ForkCloseAndReopenWithNewCommit(t *testing.T) {
+	m := newM9(t)
+	f := m.previewSetup(nil)
+	f.c.ok(200, "PATCH", "/api/v1/projects/"+f.project, map[string]any{"settings": map[string]any{"previews": map[string]any{"enabled": true, "base_environment_id": f.staging, "from_forks": true}}})
+	lbl := []any{map[string]any{"name": "polipan-preview"}}
+	m.prEvent(f, "label_updated", 8, commitA, "evil", map[string]any{"fork": true, "labels": lbl})
+	m.settle("pr-8", "active")
+	env := m.previewEnv("pr-8")
+	releases := m.q(`SELECT count(*) FROM releases r JOIN services s ON s.id = r.service_id WHERE s.environment_id = $1`, env)
+	m.prEvent(f, "closed", 8, commitA, "evil", map[string]any{"fork": true, "labels": lbl})
+	// The label stays in this event list on purpose (a provider that did not remove it): reopen with a new commit.
+	m.prEvent(f, "reopened", 8, commitB, "evil", map[string]any{"fork": true, "labels": lbl})
+	m.prEvent(f, "label_updated", 8, commitB, "evil", map[string]any{"fork": true, "labels": lbl})
+	m.pv.Tick(context.Background())
+	if m.q(`SELECT count(*) FROM releases r JOIN services s ON s.id = r.service_id WHERE s.environment_id = $1`, env) != releases {
+		t.Fatal("unapproved fork code was built after close, push and reopen")
+	}
+	_, _, removed := m.fake.Snapshot()
+	if len(removed) < 2 {
+		t.Fatalf("the label was not removed on close and on reopen: %v", removed)
+	}
+	// The same commit that was approved comes back with a reopen: no new build, back to active.
+	m.prEvent(f, "label_updated", 8, commitB, "evil", map[string]any{"fork": true})
+	m.prEvent(f, "label_updated", 8, commitB, "evil", map[string]any{"fork": true, "labels": lbl})
+	m.settle("pr-8", "active")
+	if m.q(`SELECT source->>'commit_sha' FROM releases r JOIN services s ON s.id = r.service_id WHERE s.environment_id = $1 AND s.name = 'web' ORDER BY r.number DESC LIMIT 1`, env) != commitB {
+		t.Fatal("the commit was not built after a new approval")
 	}
 }

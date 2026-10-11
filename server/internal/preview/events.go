@@ -178,6 +178,11 @@ func (s *Service) handleProject(ctx context.Context, c candidate, pr *git.PullRe
 	conn := s.connectionFor(ctx, c.OrgID, trackedSvc.Source)
 
 	if pr.Action == git.PRClosed {
+		if fork && cfg.FromForks {
+			// The label does not stay on a closed PR: a push to a closed PR sends no event, so the label could not be
+			// told from an approval of the new commit when the PR is reopened.
+			s.removeLabel(ctx, c.OrgID, conn, pr)
+		}
 		if env == nil || env.State == StateClosing {
 			return res
 		}
@@ -193,8 +198,11 @@ func (s *Service) handleProject(ctx context.Context, c candidate, pr *git.PullRe
 		return res
 	}
 	if fork {
-		if pr.Action == git.PRSynchronize {
-			// A new push to a fork: the label is taken away, the new code is not built until a maintainer adds it again.
+		// A fork commit is built only after a maintainer approved that commit with the label. The labels stay on a PR
+		// when it is closed or pushed to, so only the commit that was built (approved_sha) is known to be approved.
+		approved := env != nil && pr.HeadSHA == env.str("approved_sha")
+		if pr.Action != git.PRLabels && !approved {
+			// A new push, or a reopened PR with a commit that nobody approved: the label is taken away and nothing is built.
 			removed := s.removeLabel(ctx, c.OrgID, conn, pr)
 			if env != nil {
 				// label_absent: the label is known to be off. When the removal failed, the label may still be there, and
@@ -206,17 +214,18 @@ func (s *Service) handleProject(ctx context.Context, c candidate, pr *git.PullRe
 			res.Action = "waiting_for_label"
 			return res
 		}
-		if !pr.HasLabel(LabelName) {
-			if env != nil && env.boolean("waiting_for_label") {
-				_ = s.setSettings(ctx, env.ID, map[string]any{"label_absent": true})
+		if pr.Action == git.PRLabels {
+			if !pr.HasLabel(LabelName) {
+				if env != nil {
+					_ = s.setSettings(ctx, env.ID, map[string]any{"label_absent": true})
+				}
+				res.Action, res.Reason = "waiting_for_label", "the label "+LabelName+" is missing"
+				return res
 			}
-			res.Action, res.Reason = "waiting_for_label", "the label "+LabelName+" is missing"
-			return res
-		}
-		// The label is on the PR, but the new commit was not approved yet: the label must have been off since the push.
-		if env != nil && env.boolean("waiting_for_label") && !env.boolean("label_absent") {
-			res.Action, res.Reason = "waiting_for_label", "the label was not removed since the last push: remove it and add it again"
-			return res
+			if env != nil && !approved && !env.boolean("label_absent") {
+				res.Action, res.Reason = "waiting_for_label", "the label was not removed since the last push: remove it and add it again"
+				return res
+			}
 		}
 	}
 	branch := pr.HeadRef
@@ -289,7 +298,7 @@ func (s *Service) createEnv(ctx context.Context, c candidate, cfg Config, baseID
 	title, prURL string, now time.Time, actor store.Actor) (*envState, []store.PreviewService, error) {
 	domain := s.previewDomain(ctx, c.OrgID)
 	settings := map[string]any{"preview_state": StateCreating, "connection_id": conn, "head_sha": sha, "head_ref": branch,
-		"pr_title": title, "pr_url": prURL, "preview_pending": map[string]any{}, "waiting_for_label": false}
+		"pr_title": title, "pr_url": prURL, "preview_pending": map[string]any{}, "waiting_for_label": false, "approved_sha": sha}
 	in := store.PreviewCreate{OrgID: c.OrgID, ProjectID: c.ProjectID, BaseEnvID: baseID, Slug: slug, Repo: repo, Number: number, Fork: fork,
 		Settings: settings, TTL: cfg.TTL(), Now: now, MaxActive: cfg.Max(), Actor: actor,
 		HostFor: func(service string) string { return Host(slug, service, domain) },
@@ -398,7 +407,7 @@ func sourceOfMap(cfg map[string]any) *git.Source {
 // push builds the new commit of a PR in the existing preview (REQ-PREV-004). It extends the TTL.
 func (s *Service) push(ctx context.Context, env *envState, cfg Config, pr *git.PullRequest, branch string) error {
 	now := s.Clock.Now()
-	kv := map[string]any{"head_sha": pr.HeadSHA, "head_ref": branch, "waiting_for_label": false, "label_absent": false, "preview_failure": "", "close_at": ""}
+	kv := map[string]any{"head_sha": pr.HeadSHA, "head_ref": branch, "waiting_for_label": false, "label_absent": false, "approved_sha": pr.HeadSHA, "preview_failure": "", "close_at": ""}
 	if env.State == StateFailed || env.State == StateClosing {
 		kv["preview_state"] = StateCreating
 	}
