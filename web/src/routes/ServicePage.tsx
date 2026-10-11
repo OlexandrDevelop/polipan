@@ -16,7 +16,7 @@ import { Time } from '@/components/Time'
 import {
   Banner,
   Button,
-  Card,
+  Panel,
   EmptyState,
   EnvironmentBadges,
   Skeleton,
@@ -139,17 +139,16 @@ function Overview({
         </Banner>
       )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="space-y-1">
-          <h2 className="font-semibold">
-            {service.source_type === 'git' ? t('service.source_git') : t('service.source')}
-          </h2>
+        <Panel
+          title={service.source_type === 'git' ? t('service.source_git') : t('service.source')}
+          className="space-y-1"
+        >
           <p className="break-all font-mono text-sm">{sourceText(service)}</p>
           <p className="text-sm text-muted">
             {t('service.port')}: {config.port ? String(config.port) : '-'}
           </p>
-        </Card>
-        <Card className="space-y-1">
-          <h2 className="font-semibold">{t('service.release')}</h2>
+        </Panel>
+        <Panel title={t('service.release')} className="space-y-1">
           {releases.isPending && Boolean(service.live_release_id) ? (
             <Skeleton lines={1} />
           ) : (
@@ -170,9 +169,8 @@ function Overview({
           <p className="text-sm text-muted">
             {t('service.desired')}: {tState('status.desired', service.desired_state)}
           </p>
-        </Card>
-        <Card className="space-y-1">
-          <h2 className="font-semibold">{t('service.replicas')}</h2>
+        </Panel>
+        <Panel title={t('service.replicas')} className="space-y-1">
           {(service.placements ?? []).length === 0 && (
             <p className="text-muted">{t('service.no_placements')}</p>
           )}
@@ -184,9 +182,8 @@ function Overview({
               </li>
             ))}
           </ul>
-        </Card>
-        <Card className="space-y-1 sm:col-span-2 lg:col-span-3">
-          <h2 className="font-semibold">{t('service.urls')}</h2>
+        </Panel>
+        <Panel title={t('service.urls')} className="space-y-1 sm:col-span-2 lg:col-span-3">
           {domains.isPending && <Skeleton lines={1} />}
           {domains.isError && (
             <ErrorBanner error={domains.error} onRetry={() => void domains.refetch()} />
@@ -207,7 +204,7 @@ function Overview({
               </li>
             ))}
           </ul>
-        </Card>
+        </Panel>
       </div>
     </div>
   )
@@ -581,7 +578,7 @@ export function ServicePage() {
         {live.isError && <ErrorBanner error={live.error} onRetry={() => void live.refetch()} />}
       </div>
       <nav aria-label={t('service.tabs')} className="mb-4">
-        <ul className="flex gap-1 overflow-x-auto border-b border-border">
+        <ul className="flex gap-1 overflow-x-auto border-b border-border-strong">
           {visibleTabs.map((id) => (
             <li key={id}>
               <Link

@@ -265,6 +265,21 @@ dialog {
   box-shadow: var(--shadow-popover);
 }
 
+.counter-roll {
+  display: inline-block;
+  animation: counter-roll var(--motion-base) var(--ease);
+}
+@keyframes counter-roll {
+  from {
+    opacity: 0;
+    transform: translateY(40%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @keyframes live-pulse {
   50% {
     opacity: 0.35;
@@ -300,7 +315,12 @@ dialog {
   }
 }
 
-/* Traffic bar packets: translate only. */
+/* Traffic bar packets: translate only. The track is a size container, so 100cqw is its width. */
+.packet-track {
+  position: relative;
+  overflow: hidden;
+  container-type: inline-size;
+}
 .packet {
   position: absolute;
   top: 50%;
@@ -323,7 +343,7 @@ dialog {
     opacity: 1;
   }
   to {
-    transform: translateX(var(--track-w, 240px));
+    transform: translateX(100cqw);
     opacity: 0;
   }
 }
@@ -360,18 +380,26 @@ dialog {
   }
 }
 
-/* Log line typewriter: the text is in the DOM at once. A mask reveals it with a transform. */
+/* Log line typewriter: the text is in the DOM at once. A cover of the log background slides
+   away from left to right. Only transform animates. */
 .typed {
-  animation: typed 160ms steps(8) 1;
+  position: relative;
 }
-@keyframes typed {
+.typed::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--color-surface);
+  transform-origin: right center;
+  animation: type-reveal 240ms steps(16) 1 forwards;
+  pointer-events: none;
+}
+@keyframes type-reveal {
   from {
-    opacity: 0.2;
-    transform: translateX(-4px);
+    transform: scaleX(1);
   }
   to {
-    opacity: 1;
-    transform: none;
+    transform: scaleX(0);
   }
 }
 

@@ -1981,5 +1981,8 @@
   "shortcuts.vim_action": "Move the cursor row, open it, first row, last row",
   "shortcuts.calm_action": "Toggle Calm mode",
   "shortcuts.fx_action": "Cycle effects",
-  "shortcuts.colon_action": "Open the command line"
+  "shortcuts.colon_action": "Open the command line",
+  "list.keys_hint": "move and open a row",
+  "dashboard.overview": "overview",
+  "dashboard.refresh_hint": "refresh: 10 s"
 }

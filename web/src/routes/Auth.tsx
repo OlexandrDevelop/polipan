@@ -21,7 +21,10 @@ function AuthCard({ title, children }: { title: string; children: ReactNode }) {
     <main id="main" tabIndex={-1} className="grid min-h-screen place-items-center p-4 outline-none">
       <div className="w-full max-w-[400px] space-y-4">
         <PageHeader title={title} />
-        <Card className="space-y-4">{children}</Card>
+        <Card className="space-y-4 border-primary">{children}</Card>
+        <p className="text-center text-muted">
+          <span aria-hidden="true">$ </span>polipan
+        </p>
       </div>
     </main>
   )
@@ -55,7 +58,7 @@ function SsoButtons({ providers }: { providers: SsoLoginProvider[] }) {
         <a
           key={p.id}
           href={`/api/v1/auth/sso/${p.id}/start`}
-          className="flex min-h-9 w-full items-center justify-center rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-surface-hover"
+          className="flex min-h-9 w-full items-center justify-center border border-border-strong px-3 py-1.5 font-medium hover:bg-raised"
         >
           {t('login.sso_with', { name: p.name ?? '' })}
         </a>

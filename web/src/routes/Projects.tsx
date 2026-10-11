@@ -11,10 +11,22 @@ import { Modal } from '@/components/Modal'
 import { Onboarding } from '@/components/Onboarding'
 import { useAlertInstances } from '@/alerts'
 import { PageHeader } from '@/components/PageHeader'
-import { Button, Card, EmptyState, Skeleton, StatusBadge, TextField } from '@/components/ui'
+import { Counter, Sparkline, useHistory } from '@/components/Live'
+import {
+  Button,
+  Card,
+  EmptyState,
+  Meter,
+  Panel,
+  Skeleton,
+  StatusBadge,
+  TextField,
+} from '@/components/ui'
+import { DataList } from '@/components/DataList'
 import { t, tState } from '@/i18n'
 import { useAccess } from '@/permissions'
 import { useNodes, useProjects } from '@/scope'
+import type { Node } from '@/scope'
 import { nodeTone } from '@/status'
 import { VerifiedBadge, worstPolicy } from '@/routes/ServiceBackups'
 
@@ -92,7 +104,7 @@ function ProjectCards({ onCreate }: { onCreate: () => void }) {
       {projects.data.map((project) => (
         <li key={project.id}>
           <Card>
-            <h2 className="break-words text-lg font-semibold">
+            <h3 className="break-words text-lg font-bold">
               <Link
                 to="/o/$org/p/$project"
                 params={{ org, project: project.slug ?? '' }}
@@ -100,8 +112,8 @@ function ProjectCards({ onCreate }: { onCreate: () => void }) {
               >
                 {project.name}
               </Link>
-            </h2>
-            <p className="text-sm text-muted">{project.slug}</p>
+            </h3>
+            <p className="text-muted">{project.slug}</p>
           </Card>
         </li>
       ))}
@@ -135,12 +147,12 @@ function AlertsCard({ org }: { org: string }) {
   const alerts = useAlertInstances()
   const firing = (alerts.data ?? []).filter((a) => a.state === 'firing')
   return (
-    <Card className="space-y-2">
-      <h2 className="font-semibold">
-        <Link to="/o/$org/alerts" params={{ org }} className="text-primary underline">
+    <div className="space-y-1">
+      <h3>
+        <Link to="/o/$org/alerts" params={{ org }} className="text-muted underline">
           {t('dashboard.alerts')}
         </Link>
-      </h2>
+      </h3>
       {alerts.isPending && <Skeleton lines={1} />}
       {alerts.isError && <ErrorBanner error={alerts.error} onRetry={() => void alerts.refetch()} />}
       {alerts.data && firing.length === 0 && (
@@ -151,7 +163,7 @@ function AlertsCard({ org }: { org: string }) {
           <StatusBadge tone="danger" label={t('dashboard.firing', { count: firing.length })} />
         </p>
       )}
-    </Card>
+    </div>
   )
 }
 
@@ -165,23 +177,93 @@ function BackupsCard({ org }: { org: string }) {
   })
   const worst = worstPolicy(policies.data ?? [])
   return (
-    <Card className="space-y-2">
-      <h2 className="font-semibold">
-        <Link to="/o/$org/backups" params={{ org }} className="text-primary underline">
+    <div className="space-y-1">
+      <h3>
+        <Link to="/o/$org/backups" params={{ org }} className="text-muted underline">
           {t('dashboard.backups')}
         </Link>
-      </h2>
+      </h3>
       {policies.isPending && <Skeleton lines={1} />}
       {policies.isError && (
         <ErrorBanner error={policies.error} onRetry={() => void policies.refetch()} />
       )}
       {policies.data && !worst && <StatusBadge tone="warning" label={t('backup.badge.none')} />}
       {worst && <VerifiedBadge policy={worst} />}
-    </Card>
+    </div>
   )
 }
 
 // UI-03 (basic): the nodes by state, alerts, backups and the projects. Each part shows its own error.
+// One node of the dashboard "top" view: state, CPU, memory and disk as text meters, and a
+// sparkline of the CPU values seen while the page is open.
+function NodeCpu({ node }: { node: Node }) {
+  const cpu = node.capacity?.cpu_millis
+    ? Math.round(((node.usage?.cpu_millis ?? 0) / node.capacity.cpu_millis) * 100)
+    : undefined
+  const history = useHistory(cpu)
+  if (cpu === undefined) return <span>-</span>
+  return (
+    <span className="inline-flex items-center gap-2 whitespace-nowrap">
+      <Meter value={cpu} label={t('nodes.cpu')} />
+      <Sparkline values={history} className="hidden text-primary xl:block" />
+    </span>
+  )
+}
+
+function percentOf(used?: number, total?: number): number | undefined {
+  return used !== undefined && total ? Math.round((used / total) * 100) : undefined
+}
+
+function NodesTable({ org, nodes }: { org: string; nodes: Node[] }) {
+  return (
+    <DataList
+      caption={t('dashboard.nodes')}
+      rows={nodes}
+      rowKey={(n) => n.id ?? ''}
+      columns={[
+        {
+          header: t('nodes.name'),
+          primary: true,
+          cell: (n) => (
+            <Link
+              to="/o/$org/nodes/$node"
+              params={{ org, node: n.id ?? '' }}
+              className="text-primary underline"
+            >
+              {n.name}
+            </Link>
+          ),
+        },
+        {
+          header: t('nodes.state'),
+          cell: (n) => (
+            <StatusBadge tone={nodeTone(n.state)} label={tState('status.node', n.state)} />
+          ),
+        },
+        { header: t('nodes.cpu'), cell: (n) => <NodeCpu node={n} /> },
+        {
+          header: t('nodes.memory'),
+          cardHidden: true,
+          cell: (n) => {
+            const v = percentOf(n.usage?.memory_bytes, n.capacity?.memory_bytes)
+            return v === undefined ? '-' : <Meter value={v} label={t('nodes.memory')} />
+          },
+        },
+        {
+          header: t('nodes.disk'),
+          cardHidden: true,
+          cell: (n) => {
+            const v = percentOf(n.usage?.disk_bytes, n.capacity?.disk_bytes)
+            return v === undefined ? '-' : <Meter value={v} label={t('nodes.disk')} />
+          },
+        },
+      ]}
+    />
+  )
+}
+
+// UI-03, the "top" view: overview tiles with big numbers, a nodes panel with meters, and the
+// projects.
 export function DashboardPage() {
   const { org } = useParams({ from: '/o/$org' })
   const [creating, setCreating] = useState(false)
@@ -199,51 +281,63 @@ export function DashboardPage() {
     <section className="space-y-6">
       <PageHeader title={t('dashboard.title')} />
       <Onboarding />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <h2 className="font-semibold">{t('dashboard.projects')}</h2>
-          {projects.isError ? (
-            <ErrorBanner error={projects.error} onRetry={() => void projects.refetch()} />
-          ) : (
-            <p className="text-2xl">{projects.data?.length ?? '-'}</p>
-          )}
-        </Card>
-        <Card className="space-y-2">
-          <h2 className="font-semibold">
-            <Link to="/o/$org/nodes" params={{ org }} className="text-primary underline">
-              {t('dashboard.nodes')}
-            </Link>
-          </h2>
-          {nodes.isPending && <Skeleton lines={1} />}
-          {nodes.isError && (
-            <ErrorBanner error={nodes.error} onRetry={() => void nodes.refetch()} />
-          )}
-          {nodes.data && byState.size === 0 && (
-            <p className="text-muted">{t('dashboard.no_nodes')}</p>
-          )}
-          <ul className="space-y-1">
-            {[...byState.entries()].map(([state, count]) => (
-              <li key={state} className="flex items-center gap-2">
-                <StatusBadge tone={nodeTone(state)} label={tState('status.node', state)} />
-                <span>{count}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-        <AlertsCard org={org} />
-        <BackupsCard org={org} />
-      </div>
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">{t('dashboard.projects')}</h2>
-          {canCreate === 'allow' && (projects.data?.length ?? 0) > 0 && (
+      <Panel title={t('dashboard.overview')}>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-1">
+            <h3 className="text-muted">{t('dashboard.projects')}</h3>
+            {projects.isError ? (
+              <ErrorBanner error={projects.error} onRetry={() => void projects.refetch()} />
+            ) : (
+              <p className="text-2xl font-bold">
+                <Counter value={projects.data?.length ?? '-'} />
+              </p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <h3>
+              <Link to="/o/$org/nodes" params={{ org }} className="text-muted underline">
+                {t('dashboard.nodes')}
+              </Link>
+            </h3>
+            {nodes.isPending && <Skeleton lines={1} />}
+            {nodes.isError && (
+              <ErrorBanner error={nodes.error} onRetry={() => void nodes.refetch()} />
+            )}
+            {nodes.data && byState.size === 0 && (
+              <p className="text-muted">{t('dashboard.no_nodes')}</p>
+            )}
+            <ul className="space-y-1">
+              {[...byState.entries()].map(([state, count]) => (
+                <li key={state} className="flex items-center gap-2">
+                  <StatusBadge tone={nodeTone(state)} label={tState('status.node', state)} />
+                  <span className="font-bold">
+                    <Counter value={count} />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <AlertsCard org={org} />
+          <BackupsCard org={org} />
+        </div>
+      </Panel>
+      {(nodes.data?.length ?? 0) > 0 && (
+        <Panel title={t('dashboard.nodes')} hint={t('dashboard.refresh_hint')}>
+          <NodesTable org={org} nodes={nodes.data ?? []} />
+        </Panel>
+      )}
+      <Panel
+        title={t('dashboard.projects')}
+        hint={
+          canCreate === 'allow' && (projects.data?.length ?? 0) > 0 ? (
             <Button variant="primary" onClick={() => setCreating(true)}>
               {t('projects.create')}
             </Button>
-          )}
-        </div>
+          ) : undefined
+        }
+      >
         <ProjectCards onCreate={() => setCreating(true)} />
-      </div>
+      </Panel>
       {creating && <CreateProjectDialog onClose={() => setCreating(false)} />}
     </section>
   )

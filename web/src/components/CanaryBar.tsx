@@ -7,7 +7,7 @@ import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { ConfirmDialog } from '@/components/Modal'
-import { Button, Card, StatusBadge } from '@/components/ui'
+import { Button, Panel, StatusBadge } from '@/components/ui'
 import { t, tState } from '@/i18n'
 import { formatValue } from '@/metrics'
 import type { Access } from '@/permissions'
@@ -82,11 +82,11 @@ export function CanaryBar({
   const pending = (action: string) => call.isPending && call.variables === action
 
   return (
-    <Card className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold">{t('canary.title')}</h2>
-        {paused && <StatusBadge tone="warning" label={t('canary.paused')} />}
-      </div>
+    <Panel
+      title={t('canary.title')}
+      className="space-y-4"
+      hint={paused ? <StatusBadge tone="warning" label={`❚❚ ${t('canary.paused')}`} /> : undefined}
+    >
       {steps.length > 0 && (
         <ol aria-label={t('canary.steps')} className="flex flex-wrap gap-2">
           {steps.map((p) => {
@@ -115,7 +115,7 @@ export function CanaryBar({
         </ol>
       )}
       <section aria-label={t('canary.gate')} className="space-y-2">
-        <h3 className="text-sm font-semibold">{t('canary.gate')}</h3>
+        <h3 className="font-bold">{t('canary.gate')}</h3>
         {!shown ? (
           <p className="text-sm text-muted">{t('canary.no_gate')}</p>
         ) : (
@@ -210,6 +210,6 @@ export function CanaryBar({
           }}
         />
       )}
-    </Card>
+    </Panel>
   )
 }

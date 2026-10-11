@@ -92,18 +92,16 @@ function LiveTail({ serviceId }: { serviceId: string }) {
           autoComplete="off"
           spellCheck={false}
         />
-        <SelectField
-          label={t('logs.filter_level')}
-          value={level}
-          onChange={(e) => setLevel(e.target.value)}
-        >
-          <option value="">{t('logsearch.any')}</option>
-          {LEVELS.map((l) => (
-            <option key={l} value={l}>
-              {t(`logs.level.${l}`)}
-            </option>
-          ))}
-        </SelectField>
+        <fieldset className="space-y-1">
+          <legend className="font-medium">{t('logs.filter_level')}</legend>
+          <div className="flex flex-wrap gap-1">
+            {['', ...LEVELS].map((l) => (
+              <Button key={l} aria-pressed={level === l} onClick={() => setLevel(l)}>
+                {l === '' ? t('logsearch.any') : t(`logs.level.${l as 'error'}`)}
+              </Button>
+            ))}
+          </div>
+        </fieldset>
         <SelectField
           label={t('logs.filter_replica')}
           value={replica}

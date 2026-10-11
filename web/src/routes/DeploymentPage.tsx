@@ -14,7 +14,8 @@ import { ErrorBanner } from '@/components/ErrorBanner'
 import { PageHeader } from '@/components/PageHeader'
 import { RollbackDialog } from '@/components/RollbackDialog'
 import { Time } from '@/components/Time'
-import { Banner, Button, CheckboxField, Skeleton, StatusBadge } from '@/components/ui'
+import { TrafficLanes } from '@/components/Traffic'
+import { Banner, Button, CheckboxField, Skeleton, Spinner, StatusBadge } from '@/components/ui'
 import { formatTime, t, tState } from '@/i18n'
 import { openStream } from '@/live'
 import { useMe } from '@/auth'
@@ -157,26 +158,6 @@ function BuildLog({ lines }: { lines: BuildLine[] }) {
 
 function weightOf(items: { weight?: number }[]): number {
   return items.reduce((sum, p) => sum + (p.weight ?? 0), 0)
-}
-
-// The share of traffic of the new and the old release. The weights come from the placements.
-function TrafficBar({ label, percent }: { label: string; percent: number }) {
-  const text = t('deployment.traffic_value', { label, percent })
-  return (
-    <div className="space-y-1">
-      <p className="text-sm">{text}</p>
-      <div
-        role="progressbar"
-        aria-label={text}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={percent}
-        className="h-3 overflow-hidden rounded-sm border border-border bg-bg"
-      >
-        <div className="h-full bg-primary" style={{ width: `${percent}%` }} />
-      </div>
-    </div>
-  )
 }
 
 // UI-08: one deployment with its steps, replicas, traffic, the canary bar and the
@@ -346,14 +327,14 @@ export function DeploymentPage() {
           {steps.length === 0 ? (
             <p className="text-muted">{tState('status.deployment', d.state)}</p>
           ) : (
-            <ol className="space-y-2">
+            <ol className="space-y-1">
               {steps.map((s, i) => {
                 const current = i === steps.length - 1 && live
                 return (
                   <li
                     key={`${s.state}-${i}`}
                     aria-current={current ? 'step' : undefined}
-                    className="flex flex-wrap items-center gap-2 text-sm"
+                    className={`flex flex-wrap items-center gap-2 px-2 py-0.5 ${current ? 'bg-selection' : ''}`}
                   >
                     <StatusBadge
                       tone={
@@ -362,6 +343,7 @@ export function DeploymentPage() {
                           : deploymentTone(s.state === 'failed' ? 'failed' : 'live')
                       }
                       label={tState('status.deployment', s.state)}
+                      glyph={current ? <Spinner /> : undefined}
                     />
                     <Time value={s.time} />
                     {s.message && <span className="w-full text-muted">{s.message}</span>}
@@ -397,8 +379,13 @@ export function DeploymentPage() {
             {totalWeight > 0 && (
               <div className="space-y-2 pt-2">
                 <h3 className="text-sm font-semibold">{t('deployment.traffic')}</h3>
-                <TrafficBar label={t('deployment.old_release')} percent={percent(oldWeight)} />
-                <TrafficBar label={t('deployment.new_release')} percent={percent(newWeight)} />
+                <TrafficLanes
+                  oldLabel={t('deployment.old_release')}
+                  newLabel={t('deployment.new_release')}
+                  oldPercent={percent(oldWeight)}
+                  newPercent={percent(newWeight)}
+                  flowing={(live || d.state === 'live') && d.canary_paused !== true}
+                />
               </div>
             )}
           </section>

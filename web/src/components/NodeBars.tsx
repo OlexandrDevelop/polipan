@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { Meter } from '@/components/ui'
 import { t } from '@/i18n'
 import type { Node } from '@/scope'
 
@@ -22,25 +23,11 @@ function Bar({
 }) {
   const known = used !== undefined && total !== undefined && total > 0
   const percent = known ? Math.min(100, Math.round((used / total) * 100)) : 0
-  const tone = percent >= 90 ? 'bg-danger' : percent >= 75 ? 'bg-warning' : 'bg-primary'
   return (
     <div className="min-w-32">
-      <div className="flex justify-between gap-2 text-xs">
-        <span>{label}</span>
-        <span className="text-muted">{known ? `${percent}%` : '-'}</span>
-      </div>
-      <div
-        role="meter"
-        aria-label={label}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={percent}
-        aria-valuetext={known ? text : t('nodes.usage_unknown')}
-        className="h-2 w-full overflow-hidden rounded-sm bg-surface"
-      >
-        <div className={`h-full ${tone}`} style={{ width: `${percent}%` }} />
-      </div>
-      <div className="text-xs text-muted">{known ? text : t('nodes.usage_unknown')}</div>
+      <div className="text-muted">{label}</div>
+      {known ? <Meter value={percent} label={label} /> : <span>{t('nodes.usage_unknown')}</span>}
+      <div className="text-muted">{known ? text : t('nodes.usage_unknown')}</div>
     </div>
   )
 }

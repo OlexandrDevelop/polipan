@@ -28,14 +28,13 @@ export function PageHeader({ title, context = [], badges, breadcrumb, actions }:
 
   return (
     <header className="mb-6 space-y-2">
-      {breadcrumb && <div className="text-sm text-muted">{breadcrumb}</div>}
+      {breadcrumb && <div className="text-muted">{breadcrumb}</div>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <h1
-            ref={heading}
-            tabIndex={-1}
-            className="break-words text-xl font-semibold outline-none"
-          >
+          <h1 ref={heading} tabIndex={-1} className="break-words text-xl font-bold outline-none">
+            <span aria-hidden="true" className="text-primary">
+              ${' '}
+            </span>
             {title}
           </h1>
           {badges}

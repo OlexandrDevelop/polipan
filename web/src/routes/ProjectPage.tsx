@@ -296,7 +296,7 @@ export function ProjectPage() {
                     to="/o/$org/p/$project/e/$env"
                     params={{ org: orgSlug, project: project.slug ?? '', env: e.slug ?? '' }}
                     aria-current={e.id === environment.id ? 'page' : undefined}
-                    className="block whitespace-nowrap border-b-4 border-transparent px-4 py-2 text-muted hover:text-text aria-[current=page]:border-primary aria-[current=page]:font-semibold aria-[current=page]:text-text"
+                    className="block min-h-8 whitespace-nowrap px-3 py-1 text-muted hover:bg-raised hover:text-text coarse:min-h-11 aria-[current=page]:bg-selection aria-[current=page]:font-bold aria-[current=page]:text-primary aria-[current=page]:underline aria-[current=page]:underline-offset-4"
                   >
                     {e.name}
                   </Link>

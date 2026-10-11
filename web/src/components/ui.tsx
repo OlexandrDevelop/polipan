@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useId } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type {
   ButtonHTMLAttributes,
   HTMLAttributes,
@@ -9,6 +9,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from 'react'
+import { useCalm } from '@/display'
 import { t } from '@/i18n'
 import type { Tone } from '@/status'
 
@@ -297,11 +298,20 @@ const toneGlyph: Record<Tone, string> = {
 }
 
 // Glyph and word in the state color. No pill and no fill.
-export function StatusBadge({ tone, label }: { tone: Tone; label: string }) {
+export function StatusBadge({
+  tone,
+  label,
+  glyph,
+}: {
+  tone: Tone
+  label: string
+  // Replaces the glyph, for example a spinner on the active step.
+  glyph?: ReactNode
+}) {
   return (
     <span className="inline-flex items-center gap-1.5 font-bold whitespace-nowrap">
       <span aria-hidden="true" className={toneClass[tone]}>
-        {toneGlyph[tone]}
+        {glyph ?? toneGlyph[tone]}
       </span>
       <span className="text-text">{label}</span>
     </span>
@@ -440,4 +450,19 @@ export function KeyHint({ k, children }: { k: string; children?: ReactNode }) {
       {children && <span aria-hidden="true"> {children}</span>}
     </span>
   )
+}
+
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+
+// A braille spinner for the active step: a text swap every 90 ms, so nothing moves. In Calm mode
+// it is the static glyph of the state.
+export function Spinner({ fallback = '▲' }: { fallback?: string }) {
+  const { calm } = useCalm()
+  const [frame, setFrame] = useState(0)
+  useEffect(() => {
+    if (calm) return
+    const id = window.setInterval(() => setFrame((f) => (f + 1) % SPINNER_FRAMES.length), 90)
+    return () => window.clearInterval(id)
+  }, [calm])
+  return <>{calm ? fallback : SPINNER_FRAMES[frame]}</>
 }

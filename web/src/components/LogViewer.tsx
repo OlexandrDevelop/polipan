@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { copyText } from '@/components/Copy'
+import { useCalm } from '@/display'
 import { Button, CheckboxField } from '@/components/ui'
 import { formatTime, formatDateTime, t } from '@/i18n'
 import { downloadText, hasMatch, highlight, lineText, parseAnsi, plainText } from '@/logText'
@@ -68,6 +69,8 @@ interface LogRowProps {
   wrap: boolean
   showService?: boolean
   showReplica?: boolean
+  // The newest live line is revealed by a cover that slides away (transform only).
+  fresh?: boolean
   onContext?: (entry: LogEntry) => void
   onCopy: (entry: LogEntry) => void
 }
@@ -79,6 +82,7 @@ const LogRow = memo(function LogRow({
   wrap,
   showService,
   showReplica,
+  fresh,
   onContext,
   onCopy,
 }: LogRowProps) {
@@ -95,7 +99,7 @@ const LogRow = memo(function LogRow({
         <time
           dateTime={l.time}
           title={new Date(l.time).toISOString()}
-          className="shrink-0 text-muted"
+          className="shrink-0 text-log-time max-sm:hidden"
         >
           {formatTime(l.time)}
         </time>
@@ -109,16 +113,26 @@ const LogRow = memo(function LogRow({
       <Level level={l.level} />
       {l.stream === 'stderr' && <span className="shrink-0 text-danger">{t('logs.stderr')}</span>}
       {l.match === false && <span className="sr-only">{t('logs.context_line')}</span>}
-      <span className={`min-w-0 flex-1 ${wrap ? 'whitespace-pre-wrap break-words' : ''}`}>
+      <span
+        className={`min-w-0 flex-1 ${wrap ? 'whitespace-pre-wrap break-words' : ''} ${fresh ? 'typed' : ''}`}
+        // Up to 4 characters per frame (16 ms).
+        style={
+          fresh
+            ? {
+                animationDuration: `${Math.min(400, Math.max(100, (l.message.length / 4) * 16))}ms`,
+              }
+            : undefined
+        }
+      >
         <Message entry={l} query={query} />
       </span>
-      <span className="flex shrink-0 gap-1 font-sans opacity-0 focus-within:opacity-100 group-focus:opacity-100 group-hover:opacity-100 coarse:opacity-100">
+      <span className="flex shrink-0 gap-1 opacity-0 focus-within:opacity-100 group-focus:opacity-100 group-hover:opacity-100 coarse:opacity-100">
         {onContext && l.match !== false && (
           <button
             type="button"
             tabIndex={-1}
             onClick={() => onContext(l)}
-            className="rounded-sm border border-border-strong px-1 text-xs"
+            className="border border-border-strong px-1 text-xs"
           >
             {t('logs.context')}
           </button>
@@ -128,7 +142,7 @@ const LogRow = memo(function LogRow({
           tabIndex={-1}
           onClick={() => onCopy(l)}
           aria-label={t('logs.copy_line')}
-          className="rounded-sm border border-border-strong px-1 text-xs"
+          className="border border-border-strong px-1 text-xs"
         >
           {t('common.copy')}
         </button>
@@ -190,6 +204,10 @@ export function LogViewer({
   const [announcement, setAnnouncement] = useState('')
   const [copied, setCopied] = useState('')
   const lastCount = useRef(lines.length)
+  const { calm } = useCalm()
+  const arrivals = useRef<number[]>([])
+  const seenCount = useRef(lines.length)
+  const [freshId, setFreshId] = useState('')
 
   const live = mode === 'live'
   const shown = live ? lines.slice(-limit) : lines.slice(0, limit)
@@ -199,6 +217,23 @@ export function LogViewer({
     [shown, query],
   )
   const [matchAt, setMatchAt] = useState(-1)
+
+  // Typewriter (section 5.1): only the newest line, only while following, and never when more
+  // than 20 lines came in the last second. The text is in the DOM at once.
+  useEffect(() => {
+    const added = lines.length - seenCount.current
+    seenCount.current = lines.length
+    if (added <= 0) return
+    const now = performance.now()
+    arrivals.current = [
+      ...arrivals.current.filter((at) => now - at < 1000),
+      ...Array(added).fill(now),
+    ]
+    const last = lines[lines.length - 1]
+    setFreshId(
+      live && follow && !calm && !table && arrivals.current.length <= 20 ? (last?.id ?? '') : '',
+    )
+  }, [lines, live, follow, calm, table])
 
   // Keep the end in view while following.
   useEffect(() => {
@@ -318,13 +353,11 @@ export function LogViewer({
             >
               {t('logs.next_match')}
             </Button>
-            <span className="text-sm text-muted">
-              {t('logs.match_count', { count: matches.length })}
-            </span>
+            <span className="text-muted">{t('logs.match_count', { count: matches.length })}</span>
           </span>
         )}
       </div>
-      <p id={`${id}-keys`} className="text-sm text-muted">
+      <p id={`${id}-keys`} className="text-muted max-sm:hidden">
         {t('logs.keys')}
       </p>
       <span role="status" className="sr-only">
@@ -338,7 +371,7 @@ export function LogViewer({
           tabIndex={0}
           role="region"
           aria-label={t('logs.table_label', { label })}
-          className="max-h-[60vh] overflow-auto rounded-sm border border-border"
+          className="max-h-[60vh] overflow-auto border border-border-strong"
         >
           <table className="w-full border-collapse text-left text-sm">
             <caption className="sr-only">{t('logs.table_label', { label })}</caption>
@@ -401,12 +434,12 @@ export function LogViewer({
             tabIndex={0}
             onKeyDown={onKeyDown}
             onScroll={onScroll}
-            className={`max-h-[60vh] min-h-24 overflow-auto rounded-sm border border-border bg-surface py-1 font-mono text-sm ${
+            className={`max-h-[60vh] min-h-24 overflow-auto border border-border-strong bg-surface py-1 ${
               wrap ? '' : 'whitespace-pre'
             }`}
           >
             {live && (hidden > 0 || onLoadOlder) && (
-              <div className="p-2 font-sans">
+              <div className="p-2">
                 <Button
                   loading={loadingOlder}
                   onClick={() => {
@@ -420,7 +453,7 @@ export function LogViewer({
                 </Button>
               </div>
             )}
-            {shown.length === 0 && <p className="p-3 font-sans text-muted">{empty}</p>}
+            {shown.length === 0 && <p className="p-3 text-muted">{empty}</p>}
             {shown.map((l) =>
               l.gap !== undefined ? (
                 <div
@@ -428,10 +461,11 @@ export function LogViewer({
                   data-line=""
                   data-id={l.id}
                   tabIndex={-1}
-                  className="px-2 py-1 font-sans text-warning"
+                  className="px-2 py-1 text-warning"
                 >
-                  <span aria-hidden="true">▲ </span>
+                  <span aria-hidden="true">── </span>
                   {t('logs.gap', { seconds: l.gap })}
+                  <span aria-hidden="true"> ──</span>
                 </div>
               ) : (
                 <LogRow
@@ -441,13 +475,14 @@ export function LogViewer({
                   wrap={wrap}
                   showService={showService}
                   showReplica={showReplica}
+                  fresh={l.id === freshId}
                   onContext={onContext}
                   onCopy={copy}
                 />
               ),
             )}
             {!live && (hidden > 0 || onLoadOlder) && (
-              <div className="p-2 font-sans">
+              <div className="p-2">
                 <Button
                   loading={loadingOlder}
                   onClick={() => {

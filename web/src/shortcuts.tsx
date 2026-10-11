@@ -52,7 +52,7 @@ export function useSingleKey(handler: (event: KeyboardEvent) => boolean, enabled
   useEffect(() => {
     if (!enabled || !on) return
     const onKey = (event: KeyboardEvent) => {
-      if (!isPlainKey(event) || isTyping(event)) return
+      if (!isPlainKey(event) || isTyping(event) || event.defaultPrevented) return
       if (handler(event)) event.preventDefault()
     }
     window.addEventListener('keydown', onKey)

@@ -34,6 +34,15 @@ export default {
         danger: 'var(--color-danger)',
         info: 'var(--color-info)',
       },
+      // The scale of tokens-terminal.json. 1rem is 13 px on a laptop and 14 px on a phone or a large screen.
+      fontSize: {
+        xs: ['12px', '16px'],
+        sm: ['1rem', '1.5385rem'],
+        base: ['1.077rem', '1.6923rem'],
+        lg: ['1.23rem', '1.846rem'],
+        xl: ['1.54rem', '2.154rem'],
+        '2xl': ['2.154rem', '2.77rem'],
+      },
       borderRadius: { none: '0', sm: '0', md: '0', lg: '2px', full: '0' },
       fontFamily: {
         sans: ['Inter Variable', 'system-ui', 'sans-serif'],
