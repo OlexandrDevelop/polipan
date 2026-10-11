@@ -6,9 +6,10 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['node_modules', '../server/internal/web/dist'] },
+  { ignores: ['node_modules', 'dist-check', '../server/internal/web/dist'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  { files: ['scripts/**/*.mjs'], languageOptions: { globals: globals.node } },
   { files: ['public/**/*.js'], languageOptions: { globals: globals.browser } },
   {
     files: ['src/**/*.{ts,tsx}'],

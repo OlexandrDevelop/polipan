@@ -9,6 +9,9 @@ import { setUp } from './quality'
 // lines per second come in. The log stream is replaced by a fake EventSource, so the test
 // controls the rate. Frame times come from requestAnimationFrame.
 
+// Frame timing depends on the load of the machine, so a failed run is tried again twice.
+test.describe.configure({ retries: 2 })
+
 async function fakeLogStream(page: Page) {
   await page.addInitScript(() => {
     const Native = window.EventSource
@@ -27,6 +30,7 @@ async function fakeLogStream(page: Page) {
       onerror: ((e: Event) => void) | null = null
       constructor() {
         super()
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         target = this
         setTimeout(() => this.onopen?.(new Event('open')), 0)
       }

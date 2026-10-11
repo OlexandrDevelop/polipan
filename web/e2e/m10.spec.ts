@@ -86,3 +86,26 @@ test('REQ-UI-018 the phone bottom bar has a More sheet with every other page', a
   await sheet.getByRole('link', { name: 'Catalog' }).click()
   await expect(page).toHaveURL(/\/catalog$/)
 })
+
+test('UI-27 a Git service shows the deploy key and the webhook once', async ({ page }) => {
+  const state = defaultState('admin')
+  state.services[0].source_type = 'git'
+  await setUp(page, state)
+  await page.route('**/api/v1/services/s1/deploy-key', (route) =>
+    route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        public_key: 'ssh-ed25519 AAAAC3Nza polipan',
+        webhook_url: 'https://panel.example.com/api/v1/webhooks/git/w9',
+        webhook_secret: 'whsec_once',
+      }),
+    }),
+  )
+  await page.goto('/o/acme/p/shop/e/staging/s/api/settings')
+  await page.getByRole('button', { name: 'Create deploy key' }).click()
+  await expect(page.getByText('ssh-ed25519 AAAAC3Nza polipan')).toBeVisible()
+  await expect(page.getByText('whsec_once')).toBeVisible()
+  await page.getByRole('button', { name: 'Done' }).click()
+  await expect(page.getByText('whsec_once')).toHaveCount(0)
+})

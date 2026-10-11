@@ -25,6 +25,7 @@ import {
 import { t, tState } from '@/i18n'
 import { accessFor, effectiveRole } from '@/permissions'
 import { lazyNamed } from '@/lazy'
+import { ServiceDeployKey } from '@/routes/ServiceDeployKey'
 import { useSingleKey } from '@/shortcuts'
 import { useMe } from '@/auth'
 import { NotFoundPage } from '@/routes/ErrorPages'
@@ -674,6 +675,7 @@ export function ServicePage() {
             environmentProtected={environment.protected}
             onChanged={changed}
           />
+          <ServiceDeployKey service={service} environmentProtected={environment.protected} />
           <ServicePlacement
             key={`${service.id}-${service.failover}-${service.allow_data_loss_failover}`}
             service={service}

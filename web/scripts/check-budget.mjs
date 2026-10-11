@@ -43,7 +43,9 @@ if (cssBytes > budget.css * KB) problems.push('CSS is over the budget')
 const fonts = assets.filter((f) => /\.(woff2?|ttf|otf)$/.test(f))
 const fontBytes = fonts.reduce((sum, f) => sum + statSync(join(dist, 'assets', f)).size, 0)
 const families = new Set(fonts.map((f) => f.split('-')[0]))
-report.push(`fonts ${(fontBytes / KB).toFixed(1)} KB, ${families.size} families (budget ${budget.fonts})`)
+report.push(
+  `fonts ${(fontBytes / KB).toFixed(1)} KB, ${families.size} families (budget ${budget.fonts})`,
+)
 if (fonts.some((f) => !f.endsWith('.woff2'))) problems.push('a font is not woff2')
 if (families.size > 2) problems.push('more than two font families')
 if (fontBytes > budget.fonts * KB) problems.push('fonts are over the budget')
@@ -64,7 +66,8 @@ for (const f of assets) {
 
 // REQ-UI-015: no inline script or inline handler in index.html.
 if (/<script(?![^>]*\bsrc=)[^>]*>/.test(html)) problems.push('index.html has an inline script')
-if (/\son[a-z]+=/.test(html) || /\sstyle=/.test(html)) problems.push('index.html has an inline handler or style')
+if (/\son[a-z]+=/.test(html) || /\sstyle=/.test(html))
+  problems.push('index.html has an inline handler or style')
 
 // REQ-UI-012: no third-party host in any built file. XML namespaces are not requests.
 // reactjs.org is in React's own error text and github.com is in a hint text. Neither is

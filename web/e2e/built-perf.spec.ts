@@ -9,6 +9,9 @@ import { setUp } from './quality'
 // browser, so this measures the app shell and the first render (not the network of the server).
 // The numbers are printed, so a person can see how far each is from its budget.
 
+// Frame timing depends on the load of the machine, so a failed run is tried again twice.
+test.describe.configure({ retries: 2 })
+
 interface Vitals {
   lcp: number
   cls: number

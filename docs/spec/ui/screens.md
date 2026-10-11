@@ -279,8 +279,8 @@ UI-23 is the settings page that hosts UI-44 and UI-45 as its two tabs.
 ### UI-28 Settings: Organization
 - **Purpose:** organization settings.
 - **Data:** `getOrg`, `getVersion`.
-- **Actions:** `updateOrg` (name, default domain suffix, preview domain, retention, ACME DNS provider, 2FA policy), `deleteOrg` (typed name).
-- **Content:** panel version, and an update notice only when the opt-in update check is on ([parity](parity.md) row "Updates of the panel").
+- **Actions:** `updateOrg` (name, default domain suffix, preview domain, retention, certificate email, 2FA policy), `deleteOrg` (typed slug, owner only). The DNS-01 provider is node (agent) configuration, not an organization setting, so it is not on this screen.
+- **Content:** panel version from `getVersion`. The update notice ([parity](parity.md) row "Updates of the panel") needs an update-check operation that does not exist yet, so v1 shows the version only (see the known gaps).
 - **Roles:** `org:read` all; `org:update` A, O; `org:delete` O.
 
 ### UI-29 Config as code
@@ -457,4 +457,5 @@ The UI is built on the current [openapi.yaml](../openapi.yaml). These items need
 | `getMe` returns the role, not the permission list | The UI uses a permission table generated from the [matrix](../10-security.md#permission-matrix) at build time | Add `permissions` to `Me` |
 | `rollbackService` has no `dry_run` | The rollback dialog is built from `getRelease` and `diffReleases` | Add `dry_run` to `rollbackService` |
 | No manual Docker prune or cleanup operation | Disk use and orphan volumes are shown in UI-40, cleanup is automatic image GC ([REQ-REL-006](../04-features/F02-rollback-and-releases.md)) | none needed |
+| No update-check operation | UI-28 shows the installed version only, with no update notice | Add the opt-in update check to `getVersion` (latest version and a flag) |
 | No onboarding progress storage | Progress is derived from data, "skipped" is kept on the device | none needed |

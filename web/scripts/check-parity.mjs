@@ -35,7 +35,8 @@ for (const line of tables.split('\n')) {
   rows++
   const ids = idsOf(cells[2] ?? '')
   if (ids.length === 0) problems.push(`parity row without a screen id: ${cells[1]}`)
-  for (const id of ids) if (!known.has(id)) problems.push(`parity row "${cells[1]}": ${id} is unknown`)
+  for (const id of ids)
+    if (!known.has(id)) problems.push(`parity row "${cells[1]}": ${id} is unknown`)
 }
 if (rows < 30) problems.push(`only ${rows} parity rows were read`)
 
@@ -102,7 +103,8 @@ for (const id of known) {
   if (!fragment) {
     problems.push(`${id} has no route entry in scripts/check-parity.mjs`)
   } else if (fragment.startsWith('tab:')) {
-    if (!servicePage.includes(`'${fragment.slice(4)}',`)) problems.push(`${id}: no service tab ${fragment}`)
+    if (!servicePage.includes(`'${fragment.slice(4)}',`))
+      problems.push(`${id}: no service tab ${fragment}`)
   } else if (!router.includes(fragment)) {
     problems.push(`${id}: no route with ${fragment} in router.tsx`)
   }

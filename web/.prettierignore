@@ -3,3 +3,4 @@ package-lock.json
 ../server/internal/web/dist
 test-results
 playwright-report
+dist-check

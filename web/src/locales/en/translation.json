@@ -1943,5 +1943,11 @@
   "list.show_more": "Show {count} more",
   "list.shown": "Showing {shown} of {total}",
   "nav.home": "Home",
-  "nav.deploys": "Deploys"
+  "nav.deploys": "Deploys",
+  "deploykey.title": "Deploy key and webhook",
+  "deploykey.text": "Make an SSH key for a private repository, and the webhook for push events. A new key replaces the old one.",
+  "deploykey.create": "Create deploy key",
+  "deploykey.failed": "The deploy key was not created.",
+  "deploykey.once": "The public key, the webhook URL and the secret are shown only once. Copy them now.",
+  "deploykey.public_key": "Public key"
 }

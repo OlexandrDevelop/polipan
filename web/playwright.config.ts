@@ -13,11 +13,18 @@ const builtPort = 5180
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: true,
+  // The images of the visual tests are made on Linux with the Playwright Chromium. Their path
+  // has no platform part, so there is one set (docs/spec/ui/quality.md, section 4).
+  snapshotPathTemplate: '{testDir}/__screenshots__/{arg}{ext}',
+  expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.001, animations: 'disabled', caret: 'hide' } },
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'line' : 'list',
   use: {
     baseURL: `http://localhost:${port}`,
     channel: process.env.PW_CHANNEL || undefined,
+    // Fixed, so dates and numbers look the same on every machine.
+    timezoneId: 'UTC',
+    locale: 'en-US',
     trace: 'retain-on-failure',
   },
   projects: [

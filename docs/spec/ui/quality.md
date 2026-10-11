@@ -45,7 +45,7 @@ Target: WCAG 2.1 AA for everything, and WCAG 2.2 AA for target size and focus wh
 | Initial JavaScript | ≤ 250 KB gzip (shell, router, API client, dashboard route) | Bundle-size gate on the Vite build |
 | Lazy chunks | Terminal, charts, diff viewer, log viewer, wizard: each ≤ 150 KB gzip | Same gate |
 | CSS | ≤ 60 KB gzip | Same gate |
-| Fonts | 2 families, woff2, subset Latin plus Latin-ext, ≤ 120 KB total, `font-display: swap`, preloaded | Same gate |
+| Fonts | 2 families, woff2, subset Latin plus Latin-ext, ≤ 120 KB total, `font-display: swap`, preloaded. The budget wins over Latin-ext: Inter ships Latin only (its Latin-ext file alone is 85 KB), so a rare letter falls back to the system font. | Same gate |
 | LCP | ≤ 2.0 s on a mid laptop; ≤ 3.5 s on a mid phone over 4G throttling | Lighthouse CI on dashboard and service page |
 | INP | ≤ 200 ms | Lighthouse CI / web-vitals in e2e |
 | CLS | ≤ 0.1 | Lighthouse CI |
