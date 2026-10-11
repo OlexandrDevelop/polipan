@@ -53,7 +53,7 @@ if [ -z "${SKIP_BUILD:-}" ]; then
     -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false golang:1.23 \
     sh -c 'go build -trimpath -ldflags "-s -w" -o /out/polipan-server ./server/cmd/polipan-server && go build -trimpath -ldflags "-s -w" -o /out/polipan-agent ./agent/cmd/polipan-agent && chown -R '"$(id -u):$(id -g)"' /out'
   mkdir -p "$out/server" "$out/agent"
-  cp "$out/polipan-server" "$out/server/" && cp test/e2e/m7/server.Dockerfile "$out/server/Dockerfile"
+  cp "$out/polipan-server" "$out/server/" && cp test/e2e/m8/server.Dockerfile "$out/server/Dockerfile"
   cp "$out/polipan-agent" "$out/agent/" && cp test/e2e/m8/agent.Dockerfile "$out/agent/Dockerfile"
   docker build -q -t polipan-server:m8 "$out/server" >/dev/null
   docker build -q -t polipan-agent:m8 "$out/agent" >/dev/null

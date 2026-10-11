@@ -756,6 +756,8 @@ def m4_setup():
     token = re.search(r"token=([0-9a-f]+)", open("/e2e/setup-url").read()).group(1)
     p.call("POST", "/setup/first-user", {"setup_token": token, "email": EMAIL, "name": "Owner", "password": PASSWORD}, expect=201)
     p.login()
+    # MinIO and the SFTP server are on the test host: the org allows private targets (REQ-SEC-104).
+    p.call("PATCH", "/org", {"settings": {"allow_private_targets": True}}, expect=200)
     _, proj = p.call("POST", "/projects", {"name": "Shop"}, expect=201)
     _, envs = p.call("GET", f"/projects/{proj['id']}/environments", expect=200)
     env = next(e for e in envs if e["kind"] == "production")
