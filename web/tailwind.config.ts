@@ -46,7 +46,14 @@ export default {
       borderRadius: { none: '0', sm: '0', md: '0', lg: '2px', full: '0' },
       fontFamily: {
         sans: ['Inter Variable', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono Variable', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+        mono: [
+          'JetBrains Mono Variable',
+          'ui-monospace',
+          'SFMono-Regular',
+          'Menlo',
+          'Consolas',
+          'monospace',
+        ],
       },
     },
   },
