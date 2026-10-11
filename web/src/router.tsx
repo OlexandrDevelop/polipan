@@ -15,6 +15,7 @@ import { AlertSettingsPage } from '@/routes/AlertSettings'
 import { AlertsPage } from '@/routes/AlertsPage'
 import { LogsPage, validateLogsSearch } from '@/routes/LogsPage'
 import { OrgSettingsPage } from '@/routes/OrgSettings'
+import { SsoPage, validateSsoSearch } from '@/routes/Sso'
 import { MembersPage } from '@/routes/Members'
 import { ProjectRolesPage } from '@/routes/ProjectRoles'
 import { TeamsPage } from '@/routes/Teams'
@@ -50,8 +51,10 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: LoginPage,
-  validateSearch: (search: Record<string, unknown>): { expired?: boolean } =>
-    search.expired ? { expired: true } : {},
+  validateSearch: (search: Record<string, unknown>): { expired?: boolean; sso_error?: string } => ({
+    ...(search.expired ? { expired: true } : {}),
+    ...(typeof search.sso_error === 'string' ? { sso_error: search.sso_error } : {}),
+  }),
 })
 const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -169,6 +172,13 @@ const orgSettingsRoute = createRoute({
   path: 'settings/organization',
   component: OrgSettingsPage,
 })
+const ssoRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'settings/sso',
+  component: SsoPage,
+  // "Test login" comes back to this page with its result in the address.
+  validateSearch: validateSsoSearch,
+})
 const profileRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: 'settings/profile',
@@ -272,6 +282,7 @@ const routeTree = rootRoute.addChildren([
     alertSettingsRoute,
     logsRoute,
     orgSettingsRoute,
+    ssoRoute,
     profileRoute,
     membersRoute,
     teamsRoute,

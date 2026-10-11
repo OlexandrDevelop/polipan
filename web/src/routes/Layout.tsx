@@ -176,6 +176,13 @@ export function AppShell() {
               </Link>
             </li>
           )}
+          {canOrg === 'allow' && (
+            <li className="flex-1 max-sm:hidden sm:flex-none">
+              <Link to="/o/$org/settings/sso" params={{ org }} className={navLink}>
+                {t('nav.sso')}
+              </Link>
+            </li>
+          )}
           <li className="flex-1 max-sm:hidden sm:flex-none">
             <Link to="/o/$org/settings/tokens" params={{ org }} className={navLink}>
               {t('nav.tokens')}

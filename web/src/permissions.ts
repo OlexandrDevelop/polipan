@@ -35,6 +35,7 @@ export type Permission =
   | 'backup:restore'
   | 'template:manage'
   | 'org:update'
+  | 'sso:manage'
   | 'member:read'
   | 'member:manage'
   | 'team:manage'
@@ -73,6 +74,8 @@ const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'backup:restore': 'admin',
   'template:manage': 'dev',
   'org:update': 'admin',
+  'sso:manage': 'admin',
+  'sso:manage': 'admin',
   'member:read': 'all',
   'member:manage': 'admin',
   'team:manage': 'admin',

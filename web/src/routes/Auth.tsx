@@ -11,7 +11,8 @@ import { CodeBlock } from '@/components/Copy'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { PageHeader } from '@/components/PageHeader'
 import { Banner, Button, Card, Skeleton, TextField } from '@/components/ui'
-import { t } from '@/i18n'
+import { hasKey, t } from '@/i18n'
+import type { MessageKey } from '@/i18n'
 import { queryClient } from '@/queryClient'
 
 // The centered card of the login and setup pages (responsive, section 3).
@@ -38,10 +39,40 @@ function lockMessage(error: ApiError): string {
   return t('login.locked')
 }
 
+type SsoLoginProvider = {
+  id?: string
+  name?: string
+  kind?: string
+  sso_required?: boolean
+  break_glass?: boolean
+}
+
+// The buttons of the SSO providers. A full page load starts the login: the provider answers with a redirect.
+function SsoButtons({ providers }: { providers: SsoLoginProvider[] }) {
+  return (
+    <div className="space-y-2">
+      {providers.map((p) => (
+        <a
+          key={p.id}
+          href={`/api/v1/auth/sso/${p.id}/start`}
+          className="flex min-h-9 w-full items-center justify-center rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-surface-hover"
+        >
+          {t('login.sso_with', { name: p.name ?? '' })}
+        </a>
+      ))}
+    </div>
+  )
+}
+
 export function LoginPage() {
   const search = useSearch({ from: '/login' })
   const me = useMe()
   const navigate = useNavigate()
+  const providers = useQuery({
+    queryKey: ['login-providers'],
+    queryFn: () => unwrap(api.GET('/auth/sso/providers')) as Promise<SsoLoginProvider[]>,
+  })
+  const [recovery, setRecovery] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [totp, setTotp] = useState('')
@@ -78,9 +109,37 @@ export function LoginPage() {
     login.mutate()
   }
 
+  const ssoList = providers.data ?? []
+  const ssoRequired = ssoList.some((p) => p.sso_required)
+  const breakGlass = ssoList.some((p) => p.break_glass)
+  // An SSO-required org shows no password form. A link to the recovery login appears only when break-glass is on.
+  const showPassword = !ssoRequired || recovery
+  const ssoErrorKey = `login.sso_error.${search.sso_error ?? ''}`
+
   return (
     <AuthCard title={t('login.title')}>
       {search.expired && <Banner variant="warning">{t('login.expired')}</Banner>}
+      {search.sso_error && (
+        <Banner variant="danger" title={t('login.sso_error')}>
+          {hasKey(ssoErrorKey) ? t(ssoErrorKey as MessageKey) : ''}
+        </Banner>
+      )}
+      {ssoRequired && !recovery && <Banner variant="info">{t('login.sso_forced')}</Banner>}
+      {ssoList.length > 0 && <SsoButtons providers={ssoList} />}
+      {ssoList.length > 0 && showPassword && (
+        <p className="text-center text-sm text-muted">{t('login.sso_or')}</p>
+      )}
+      {ssoRequired && !recovery && breakGlass && (
+        <p className="text-sm text-muted">
+          <button
+            type="button"
+            className="text-primary underline"
+            onClick={() => setRecovery(true)}
+          >
+            {t('login.recovery')}
+          </button>
+        </p>
+      )}
       {needsCode && <Banner variant="info">{t('login.totp_needed')}</Banner>}
       {error &&
         !needsCode &&
@@ -93,41 +152,43 @@ export function LoginPage() {
         ) : (
           <ErrorBanner error={error} />
         ))}
-      <form onSubmit={submit} className="space-y-4">
-        <TextField
-          label={t('login.email')}
-          type="email"
-          autoComplete="username"
-          inputMode="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <TextField
-          label={t('login.password')}
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        {askCode && (
+      {showPassword && (
+        <form onSubmit={submit} className="space-y-4">
           <TextField
-            label={t('login.totp_code')}
-            hint={t('login.totp_hint')}
-            autoComplete="one-time-code"
-            autoCapitalize="none"
-            spellCheck={false}
+            label={t('login.email')}
+            type="email"
+            autoComplete="username"
+            inputMode="email"
             required
-            autoFocus
-            value={totp}
-            onChange={(e) => setTotp(e.target.value)}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
-        )}
-        <Button type="submit" variant="primary" loading={login.isPending} className="w-full">
-          {t('login.submit')}
-        </Button>
-      </form>
+          <TextField
+            label={t('login.password')}
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          {askCode && (
+            <TextField
+              label={t('login.totp_code')}
+              hint={t('login.totp_hint')}
+              autoComplete="one-time-code"
+              autoCapitalize="none"
+              spellCheck={false}
+              required
+              autoFocus
+              value={totp}
+              onChange={(e) => setTotp(e.target.value)}
+            />
+          )}
+          <Button type="submit" variant="primary" loading={login.isPending} className="w-full">
+            {t('login.submit')}
+          </Button>
+        </form>
+      )}
       <p className="text-sm text-muted">
         <Link to="/forgot-password" className="text-primary underline">
           {t('login.forgot')}

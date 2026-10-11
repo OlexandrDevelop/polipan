@@ -164,10 +164,19 @@ func (h *Handlers) ssoFail(w http.ResponseWriter, r *http.Request, p *store.SSOP
 	h.auditSSOFailure(r, p, reason)
 	target := "/login?sso_error=" + url.QueryEscape(reason)
 	if test {
-		target = "/settings/sso?sso_test=error&reason=" + url.QueryEscape(reason)
+		target = h.ssoSettingsPath(r, p) + "?sso_test=error&reason=" + url.QueryEscape(reason)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, target, http.StatusFound)
+}
+
+// ssoSettingsPath is the address of the SSO settings page of the org of the provider.
+func (h *Handlers) ssoSettingsPath(r *http.Request, p *store.SSOProvider) string {
+	org, err := h.Store.GetOrg(r.Context(), p.OrgID)
+	if err != nil {
+		return "/"
+	}
+	return "/o/" + url.PathEscape(org.Slug) + "/settings/sso"
 }
 
 func (h *Handlers) auditSSOFailure(r *http.Request, p *store.SSOProvider, reason string) {
@@ -223,7 +232,7 @@ func (h *Handlers) FinishSsoLogin(w http.ResponseWriter, r *http.Request, provid
 	}
 	if st.Test {
 		h.setSSOCookie(w, "", -1)
-		http.Redirect(w, r, "/settings/sso?sso_test=ok", http.StatusFound)
+		http.Redirect(w, r, h.ssoSettingsPath(r, p)+"?sso_test=ok", http.StatusFound)
 		return
 	}
 	defaultRole := ""

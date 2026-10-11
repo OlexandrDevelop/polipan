@@ -479,7 +479,7 @@ func TestT_E2E_11_SSOWithFakeProvider(t *testing.T) {
 	// 5. the test login of the settings page makes no session and no user
 	e.fake.Next = map[string]any{"sub": "e-3", "email": "test@example.com", "email_verified": true}
 	rec = e.browse(idp, "?test=1")
-	if !strings.HasPrefix(rec.Header().Get("Location"), "/settings/sso?sso_test=ok") || sessionOf(rec) || e.count(`SELECT count(*) FROM users WHERE email = 'test@example.com'`) != 0 {
+	if !strings.HasPrefix(rec.Header().Get("Location"), "/o/default/settings/sso?sso_test=ok") || sessionOf(rec) || e.count(`SELECT count(*) FROM users WHERE email = 'test@example.com'`) != 0 {
 		t.Fatalf("test login: %s", rec.Header().Get("Location"))
 	}
 }
