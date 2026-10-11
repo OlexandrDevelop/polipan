@@ -12,6 +12,7 @@ import { Banner, Button, CheckboxField, SelectField, Skeleton, TextField } from 
 import { hasKey, t, tState } from '@/i18n'
 import { useNodes } from '@/scope'
 import type { Environment, Service } from '@/scope'
+import { newKey } from '../idempotency'
 
 type Plan = components['schemas']['DeployPlan']
 type Warning = components['schemas']['Warning']
@@ -60,7 +61,7 @@ export function DeployDialog({
   const [max5xx, setMax5xx] = useState('2')
   const [p95Ratio, setP95Ratio] = useState('1.5')
   // One key per opened dialog: a double click or a retry does not start two deployments.
-  const [key] = useState(() => crypto.randomUUID())
+  const [key] = useState(() => newKey())
   const git = service.source_type === 'git'
   const branch = ((service.config?.source ?? {}) as { branch?: string }).branch ?? 'main'
   const serviceId = service.id ?? ''

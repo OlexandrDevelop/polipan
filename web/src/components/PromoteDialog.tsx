@@ -22,6 +22,7 @@ import {
 import { hasKey, t, tState } from '@/i18n'
 import { accessFor, useRole } from '@/permissions'
 import type { Environment, Project } from '@/scope'
+import { newKey } from '../idempotency'
 
 type Plan = components['schemas']['PromotionPlan']
 type Deployment = components['schemas']['Deployment']
@@ -141,8 +142,7 @@ export function PromoteDialog({
   const hash = planData?.plan_hash
 
   const confirm = useMutation({
-    mutationFn: async () =>
-      (await send(body(false, hash), crypto.randomUUID())) as Deployment | Deployment[],
+    mutationFn: async () => (await send(body(false, hash), newKey())) as Deployment | Deployment[],
     onSuccess: async (answer) => {
       const list = Array.isArray(answer) ? answer : [answer]
       await Promise.all(

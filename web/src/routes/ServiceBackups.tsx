@@ -29,6 +29,7 @@ import { t, tState } from '@/i18n'
 import { accessFor } from '@/permissions'
 import type { Service } from '@/scope'
 import type { Tone } from '@/status'
+import { newKey } from '../idempotency'
 
 type Policy = components['schemas']['BackupPolicy']
 type Run = components['schemas']['BackupRun']
@@ -398,7 +399,7 @@ export function RestoreWizard({
         api.POST('/backup-runs/{run_id}/restore', {
           params: {
             path: { run_id: run.id ?? '' },
-            header: { 'Idempotency-Key': crypto.randomUUID() },
+            header: { 'Idempotency-Key': newKey() },
           },
           body: {
             target_id: targetId,
@@ -674,7 +675,7 @@ function PolicyCard({
         api.POST('/backup-policies/{policy_id}/run', {
           params: {
             path: { policy_id: policyId },
-            header: { 'Idempotency-Key': crypto.randomUUID() },
+            header: { 'Idempotency-Key': newKey() },
           },
         }),
       ),
@@ -686,7 +687,7 @@ function PolicyCard({
         api.POST('/backup-policies/{policy_id}/restore-checks', {
           params: {
             path: { policy_id: policyId },
-            header: { 'Idempotency-Key': crypto.randomUUID() },
+            header: { 'Idempotency-Key': newKey() },
           },
         }),
       ),

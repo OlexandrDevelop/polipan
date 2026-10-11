@@ -32,6 +32,7 @@ import { ExtraWizard } from '@/routes/NewServiceExtra'
 import type { ExtraSource } from '@/routes/NewServiceExtra'
 import { useScope } from '@/scope'
 import type { Environment, Project, Service } from '@/scope'
+import { newKey } from '../idempotency'
 
 type Deployment = components['schemas']['Deployment']
 export type SourceKind = 'git' | 'image'
@@ -718,7 +719,7 @@ export function NewServicePage() {
           api.POST('/services/{service_id}/deploy', {
             params: {
               path: { service_id: serviceId },
-              header: { 'Idempotency-Key': crypto.randomUUID() },
+              header: { 'Idempotency-Key': newKey() },
             },
             body: { dry_run: false },
           }),

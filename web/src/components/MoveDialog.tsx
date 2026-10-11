@@ -12,6 +12,7 @@ import { Banner, Button, SelectField, Skeleton } from '@/components/ui'
 import { t } from '@/i18n'
 import { useNodes } from '@/scope'
 import type { Node, Service } from '@/scope'
+import { newKey } from '../idempotency'
 
 interface Placement {
   nodes?: string[]
@@ -47,7 +48,7 @@ export function MoveDialog({ service, onClose }: { service: Service; onClose: ()
       ),
   })
   const [target, setTarget] = useState('')
-  const [key] = useState(() => crypto.randomUUID())
+  const [key] = useState(() => newKey())
   const local = (volumes.data ?? []).filter((v) => v.kind !== 'tmpfs')
   const current = new Set(
     (service.placements ?? []).filter((p) => p.role !== 'stopped').map((p) => p.node_id ?? ''),

@@ -13,6 +13,7 @@ import { t } from '@/i18n'
 import { accessFor } from '@/permissions'
 import { useServices } from '@/scope'
 import type { Service } from '@/scope'
+import { newKey } from '../idempotency'
 
 interface Base {
   org: string
@@ -24,7 +25,7 @@ interface Base {
 async function finalBackup(policyId: string): Promise<void> {
   await unwrap(
     api.POST('/backup-policies/{policy_id}/run', {
-      params: { path: { policy_id: policyId }, header: { 'Idempotency-Key': crypto.randomUUID() } },
+      params: { path: { policy_id: policyId }, header: { 'Idempotency-Key': newKey() } },
     }),
   )
   const deadline = Date.now() + 30 * 60 * 1000

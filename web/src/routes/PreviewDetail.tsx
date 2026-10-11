@@ -18,10 +18,11 @@ import { PreviewState, PreviewTitle, useDeletePreview, usePreviews } from '@/rou
 import { useProjects, useServices } from '@/scope'
 import type { Service } from '@/scope'
 import { serviceTone } from '@/status'
+import { newKey } from '../idempotency'
 
 function Redeploy({ service }: { service: Service }) {
   const queryClient = useQueryClient()
-  const [key] = useState(() => crypto.randomUUID())
+  const [key] = useState(() => newKey())
   const [started, setStarted] = useState(false)
   const deploy = useMutation({
     mutationFn: () =>

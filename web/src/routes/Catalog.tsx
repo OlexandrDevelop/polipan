@@ -26,6 +26,7 @@ import { t } from '@/i18n'
 import { accessFor } from '@/permissions'
 import { useMe } from '@/auth'
 import { useEnvironments, useProjects } from '@/scope'
+import { newKey } from '../idempotency'
 
 export type Template = components['schemas']['Template']
 
@@ -188,7 +189,7 @@ function useInstantiate(onDone: (services: components['schemas']['Service'][]) =
     mutationFn: ({ slug, body }: { slug: string; body: ReturnType<typeof instantiateBody> }) =>
       unwrap(
         api.POST('/templates/{slug}/instantiate', {
-          params: { path: { slug }, header: { 'Idempotency-Key': crypto.randomUUID() } },
+          params: { path: { slug }, header: { 'Idempotency-Key': newKey() } },
           body,
         }),
       ),

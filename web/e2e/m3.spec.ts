@@ -29,6 +29,30 @@ test('REQ-UI-007 AC-DEPLOY-04 the deploy dialog shows the plan before anything s
   expect(state.deployCalls.map((c) => c.dry_run)).toEqual([true, false])
 })
 
+test('the deploy dialog works on a page without a secure context (plain HTTP)', async ({
+  page,
+}) => {
+  // A panel opened on http://<server address> has no crypto.randomUUID. The dialog must still start the deployment.
+  await page.addInitScript(() => {
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined })
+  })
+  const state = defaultState()
+  await mockApi(page, state)
+  const keys: string[] = []
+  page.on('request', (r) => {
+    const key = r.headers()['idempotency-key']
+    if (r.method() === 'POST' && r.url().endsWith('/services/s1/deploy') && key) keys.push(key)
+  })
+  await page.goto(serviceUrl)
+  await page.getByRole('button', { name: 'Deploy', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Deploy', exact: true }).click()
+  await expect(page).toHaveURL(/\/deployments\/d1$/)
+  expect(keys.length).toBeGreaterThan(0)
+  for (const key of keys) {
+    expect(key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  }
+})
+
 test('REQ-UI-002 the deployment page moves to live steps without a reload', async ({ page }) => {
   const state = defaultState()
   state.deployments.d1 = {
