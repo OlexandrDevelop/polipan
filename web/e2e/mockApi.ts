@@ -40,6 +40,20 @@ export interface MockState {
   backupPolicies: Schemas['BackupPolicy'][]
   // true: the metrics store is down (503 monitoring_unavailable).
   metricsDown: boolean
+  // M9: preview environments and promotion.
+  previews: Schemas['Environment'][]
+  deletedEnvironments: string[]
+  createPreviewCalls: { repo: string; pr_number?: number; base_environment_id?: string }[]
+  // The bodies of the real (not dry run) promote calls.
+  promoteCalls: Schemas['PromoteRequest'][]
+  // Variables the target lacks. Set it to an empty list to fix them.
+  promoteMissing: string[]
+  // The hash of the current plan. The next confirm with a plan_changed flag changes it.
+  planHash: string
+  // true: the next real promote answers 409 plan_changed and the plan gets a new hash.
+  planChangesOnce: boolean
+  // The settings that the UI saved with PATCH /projects/p1.
+  projectSettings?: Schemas['ProjectSettings']
 }
 
 export const LEAKED_SECRET = 'sk_live_must_never_show'
@@ -90,6 +104,13 @@ export function defaultState(role: Schemas['Role'] = 'owner'): MockState {
     canaryCalls: [],
     backupPolicies: [],
     metricsDown: false,
+    previews: [],
+    deletedEnvironments: [],
+    createPreviewCalls: [],
+    promoteCalls: [],
+    promoteMissing: [],
+    planHash: 'ph1',
+    planChangesOnce: false,
     deployCalls: [],
     rollbackCalls: [],
     eventsDown: false,
@@ -123,6 +144,15 @@ const environment: Schemas['Environment'] = {
   slug: 'staging',
   kind: 'staging',
   protected: false,
+}
+
+const production: Schemas['Environment'] = {
+  id: 'e2',
+  project_id: 'p1',
+  name: 'Production',
+  slug: 'production',
+  kind: 'production',
+  protected: true,
 }
 
 function json(route: Route, body: unknown, status = 200) {
@@ -213,8 +243,96 @@ export async function mockApi(page: Page, state: MockState) {
       }
       return json(route, { deployments: [] }, 202)
     }
-    if (method === 'GET' && path === '/projects/p1/environments') return json(route, [environment])
+    if (method === 'GET' && path === '/projects/p1/environments') {
+      // Previews are in this list too, like on the server. The UI must not show them as tabs.
+      return json(route, [environment, production, ...state.previews])
+    }
+    if (method === 'PATCH' && path === '/projects/p1') {
+      const body = request.postDataJSON() as Schemas['ProjectUpdate']
+      state.projectSettings = body.settings
+      return json(route, { ...project, settings: body.settings })
+    }
+    if (method === 'GET' && path === '/projects/p1/previews') {
+      return json(
+        route,
+        state.previews.filter((p) => !state.deletedEnvironments.includes(p.id ?? '')),
+      )
+    }
+    if (method === 'POST' && path === '/projects/p1/previews') {
+      const body = request.postDataJSON() as MockState['createPreviewCalls'][number]
+      state.createPreviewCalls.push(body)
+      const created: Schemas['Environment'] = {
+        id: `e-pr${body.pr_number}`,
+        project_id: 'p1',
+        name: `pr-${body.pr_number}`,
+        slug: `pr-${body.pr_number}`,
+        kind: 'preview',
+        preview: { repo: body.repo, pr_number: body.pr_number, state: 'creating' },
+      }
+      state.previews.push(created)
+      return json(route, created, 202)
+    }
+    const previewEnv = path.match(/^\/environments\/(e-pr\d+)(\/services)?$/)
+    if (previewEnv) {
+      const found = state.previews.find((p) => p.id === previewEnv[1])
+      if (method === 'DELETE') {
+        state.deletedEnvironments.push(previewEnv[1])
+        return route.fulfill({ status: 204 })
+      }
+      if (method === 'GET' && previewEnv[2]) return json(route, [])
+      if (method === 'GET' && found) return json(route, found)
+    }
+    const promote = path.match(/^\/(releases|environments)\/(\w+)\/promote$/)
+    if (method === 'POST' && promote) {
+      const body = request.postDataJSON() as Schemas['PromoteRequest']
+      const plan: Schemas['PromotionPlan'] = {
+        plan_hash: state.planHash,
+        items: [
+          {
+            service: 'api',
+            source_release_id: 'r2',
+            image_digest: 'sha256:0123456789abcdef0123',
+            changes: [
+              { path: 'image_ref', before: 'nginx:1.26', after: 'nginx:1.27' },
+              { path: 'config.port', before: 8080, after: 80 },
+            ],
+            missing_variables: state.promoteMissing,
+            strategy: 'blue_green',
+          },
+        ],
+        warnings: [],
+      }
+      if (body.dry_run) return json(route, plan)
+      state.promoteCalls.push(body)
+      if (state.promoteMissing.length > 0) {
+        return json(
+          route,
+          {
+            code: 'missing_variables',
+            message: 'missing',
+            details: { names: state.promoteMissing },
+            request_id: 'mock',
+          },
+          422,
+        )
+      }
+      if (state.planChangesOnce) {
+        state.planChangesOnce = false
+        state.planHash = 'ph2'
+        return json(route, { code: 'plan_changed', message: 'changed', request_id: 'mock' }, 409)
+      }
+      if (body.plan_hash !== state.planHash) {
+        return json(route, { code: 'plan_changed', message: 'changed', request_id: 'mock' }, 409)
+      }
+      state.deployments.dp1 = newDeployment('dp1', 'r2', 'promotion')
+      return json(
+        route,
+        promote[1] === 'releases' ? state.deployments.dp1 : [state.deployments.dp1],
+        202,
+      )
+    }
     if (method === 'GET' && path === '/environments/e1/services') return json(route, state.services)
+    if (method === 'GET' && path === '/environments/e2/services') return json(route, state.services)
     if (method === 'GET' && path === '/services/s1') return json(route, service)
     if (method === 'GET' && path === '/events') {
       if (state.eventsDown) return json(route, { code: 'unavailable', message: 'paused' }, 503)
