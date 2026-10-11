@@ -152,7 +152,7 @@ paths:
       security: []
       x-permission: public
       responses:
-        '200': {description: OK, content: {application/json: {schema: {type: array, items: {type: object, properties: {id: {type: string}, name: {type: string}, kind: {type: string}}}}}}}
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {type: object, properties: {id: {type: string}, name: {type: string}, kind: {type: string}, sso_required: {type: boolean, description: "The organization requires SSO: the page hides the password form"}, break_glass: {type: boolean, description: "An owner may still log in with a password and 2FA: the page shows a recovery login link"}}}}}}}
   /auth/sso/{provider_id}/start:
     get:
       operationId: startSsoLogin

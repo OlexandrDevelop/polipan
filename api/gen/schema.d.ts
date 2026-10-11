@@ -3480,6 +3480,10 @@ export interface operations {
                         id?: string;
                         name?: string;
                         kind?: string;
+                        /** @description The organization requires SSO: the page hides the password form */
+                        sso_required?: boolean;
+                        /** @description An owner may still log in with a password and 2FA: the page shows a recovery login link */
+                        break_glass?: boolean;
                     }[];
                 };
             };
