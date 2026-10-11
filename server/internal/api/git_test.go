@@ -75,7 +75,7 @@ func (e *testEnv) hook(path string, h http.Header, body []byte) *httptest.Respon
 // AC-APP-03: a valid push webhook on a non-protected environment queues a deployment with
 // trigger git_push (actor system). A bad signature gives 401 and queues nothing. A replayed
 // delivery is refused. A protected environment does not auto deploy until an admin turns it on.
-func TestAC_APP_03_PushWebhookQueuesDeployment(t *testing.T) {
+func TestAC_APP_03_AC_AUDIT_03_PushWebhookQueuesDeployment(t *testing.T) {
 	e := gitEnv(t)
 	c := e.owner()
 	_, envs := c.project("shop")

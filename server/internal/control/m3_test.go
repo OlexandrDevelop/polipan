@@ -284,7 +284,7 @@ func TestAC_DEPLOY_02_HealthTimeoutBlueKeepsServing(t *testing.T) {
 }
 
 // AC-DEPLOY-04 and AC-VOL-02: a single-writer volume forces recreate. The plan shows it and the warning (REQ-DEPLOY-007).
-func TestAC_DEPLOY_04_ForcedRecreateSingleWriter(t *testing.T) {
+func TestAC_DEPLOY_04_AC_VOL_02_ForcedRecreateSingleWriter(t *testing.T) {
 	m := setupM3(t, nil)
 	m.exec(t, `INSERT INTO volumes (id, service_id, name, kind, mount_path, access_mode) VALUES ($1,$2,'data','volume','/data','single_writer')`,
 		gateway.NewID("vol"), m.serviceID)
@@ -451,7 +451,7 @@ func TestAC_DEPLOY_08_PreDeployFails(t *testing.T) {
 }
 
 // AC-REL-01, 02, 04, 05, 07: rollback to v2 is fast (no pull), goes live, restores the variables of v2, changes no domain or volume.
-func TestAC_REL_RollbackFastAndNormal(t *testing.T) {
+func TestAC_REL_01_02_04_05_07_RollbackFastAndNormal(t *testing.T) {
 	m := setupM3(t, nil)
 	var prj string
 	_ = m.env.Pool.QueryRow(context.Background(), `SELECT e.project_id FROM services s JOIN environments e ON e.id = s.environment_id WHERE s.id = $1`, m.serviceID).Scan(&prj)

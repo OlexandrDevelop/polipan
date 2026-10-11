@@ -124,6 +124,11 @@ gate8: ## Gate 8: license check and SPDX headers
 	sh test/ci/check-licenses-go.sh
 	sh test/ci/check-licenses-web.sh
 
+.PHONY: gate10
+gate10: ## Gate 10: every AC of the feature files has a test with its id in the name (script lists the missing ones)
+	sh test/ci/check-ac-tests.sh
+	go test ./test/repo ./server/internal/api -run 'TestM10b_ThreatModelRowsAreCovered'
+
 .PHONY: vuln
 vuln: ## Dependency scan: govulncheck for the server and the Terraform provider, npm audit for the web runtime packages
 	go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...

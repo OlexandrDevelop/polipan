@@ -126,7 +126,7 @@ func resticSnapshots(t *testing.T, repo, password string) []map[string]any {
 }
 
 // AC-BKP-01 and AC-BKP-02: the same data goes to every target. A target that fails does not stop the others.
-func TestRunTwoTargetsOneFails(t *testing.T) {
+func TestAC_OSS_05_RunTwoTargetsOneFails(t *testing.T) {
 	needRestic(t)
 	f := &fakeDocker{dump: strings.Repeat("row data\n", 5000), manifest: "tables=3\nrows=40\n"}
 	r := newRunner(f, t)
@@ -175,7 +175,7 @@ func TestDumpFailureMakesNoSnapshot(t *testing.T) {
 }
 
 // AC-BKP-05: with keep_daily 7, the 8th daily snapshot removes the oldest.
-func TestRetentionKeepDaily(t *testing.T) {
+func TestAC_BKP_05_RetentionKeepDaily(t *testing.T) {
 	needRestic(t)
 	f := &fakeDocker{dump: "data", manifest: "tables=1\nrows=1\n"}
 	r := newRunner(f, t)
@@ -221,7 +221,7 @@ func volumeJob(dir string) *pb.RunBackup {
 }
 
 // AC-BKP-09: a volume restore check restores to a temporary folder and compares the file count and the size with the manifest.
-func TestVolumeBackupAndCheck(t *testing.T) {
+func TestAC_BKP_09_VolumeBackupAndCheck(t *testing.T) {
 	needRestic(t)
 	vol := makeVolume(t, 40)
 	f := &fakeDocker{volume: vol}

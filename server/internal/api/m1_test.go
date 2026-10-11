@@ -220,7 +220,7 @@ func str(m map[string]any, k string) string {
 }
 
 // AC-AUTH-03: the first user is created once, then the endpoint is closed. Login, cookie flags, CSRF and lockout.
-func TestAC_AUTH_03_FirstUserLoginCSRF(t *testing.T) {
+func TestAC_AUTH_01_03_FirstUserLoginCSRF(t *testing.T) {
 	e := newTestEnv(t, "https://panel.example.com")
 	c := e.newClient()
 

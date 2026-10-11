@@ -134,7 +134,7 @@ func TestBuildOneRoute(t *testing.T) {
 	}
 }
 
-func TestBuildZeroUpstreams503(t *testing.T) {
+func TestAC_DOM_04_BuildZeroUpstreams503(t *testing.T) {
 	s := spec1()
 	s.Routes[0].Upstreams = nil
 	b, _ := BuildConfig(s, Options{})
@@ -377,7 +377,7 @@ func writeCert(t *testing.T, dir, host string, notAfter time.Time) {
 	}
 }
 
-func TestDomainStatus(t *testing.T) {
+func TestAC_DOM_05_DomainStatus(t *testing.T) {
 	dir := t.TempDir()
 	exp := time.Now().Add(60 * 24 * time.Hour).Truncate(time.Second)
 	writeCert(t, dir, "ok.example.com", exp)

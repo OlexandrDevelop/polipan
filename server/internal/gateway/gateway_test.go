@@ -21,7 +21,7 @@ import (
 )
 
 // AC-NODE-02: a token works once. A used or expired token is refused.
-func TestJoinTokenSingleUseAndExpiry(t *testing.T) {
+func TestAC_NODE_02_JoinTokenSingleUseAndExpiry(t *testing.T) {
 	env := gatewaytest.Start(t)
 	token := env.AddToken(t, "node-a", time.Hour)
 

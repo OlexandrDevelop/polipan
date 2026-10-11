@@ -100,7 +100,7 @@ data "polipan_service" "by_name" {
 // AC-TF-01: a project and a service are created, and the second plan shows no change.
 // The test framework plans again after every apply and fails when the plan is not empty. The
 // second step plans once more on its own (PlanOnly), and the import steps check REQ-TF-004.
-func TestAccProjectAndService(t *testing.T) {
+func TestAcc_AC_TF_01_ProjectAndService(t *testing.T) {
 	accPreCheck(t)
 	sfx := strings.ToLower(fmt.Sprint(os.Getpid()))
 	cfg := fmt.Sprintf(accProjectService, sfx)
@@ -180,7 +180,7 @@ resource "polipan_secret" "s" {
 `
 
 // AC-TF-02: the secret value is sensitive in the state, and the API returns no value.
-func TestAccSecretIsSensitive(t *testing.T) {
+func TestAcc_AC_TF_02_SecretIsSensitive(t *testing.T) {
 	accPreCheck(t)
 	sfx := strings.ToLower(fmt.Sprint(os.Getpid()))
 	secret1, secret2 := "s3cr3t-value-one-"+sfx, "s3cr3t-value-two-"+sfx

@@ -66,7 +66,7 @@ func permissionMatrix(t *testing.T) map[string]bool {
 }
 
 // REQ-API-101: the real OpenAPI file has x-permission on every operation, from the matrix or special.
-func TestREQ_API_101_SpecPermissionsAreValid(t *testing.T) {
+func TestAC_API_01_REQ_API_101_SpecPermissionsAreValid(t *testing.T) {
 	ops, err := api.ParseOperations(specapi.Spec)
 	if err != nil {
 		t.Fatal(err)

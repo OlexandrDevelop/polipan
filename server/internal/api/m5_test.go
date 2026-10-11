@@ -137,7 +137,7 @@ func (c *client) call(method, path string) int {
 // T-E2E-10, AC-RBAC-01, AC-RBAC-02: the matrix test is generated from the OpenAPI file and the matrix of the spec.
 // Every operation with a matrix permission is called by the four roles. A role that may not gets 403, a role
 // that may gets anything else. Then the protected production: a developer gets 403 on every P permission, on staging not.
-func TestT_E2E_10_PermissionMatrix(t *testing.T) {
+func TestT_E2E_10_AC_RBAC_01_02_PermissionMatrix(t *testing.T) {
 	e := newTestEnv(t, "")
 	owner := e.owner()
 	clients := []*client{owner,

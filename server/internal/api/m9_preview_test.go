@@ -145,7 +145,7 @@ func (m *m9) workloadEnv(envID, service string) map[string]string {
 // AC-PREV-01 to AC-PREV-04, AC-PREV-07, AC-VOL-04 (T-E2E-06 in one process): a PR opens, the preview deploys with a URL
 // in the PR comment, a push updates the same comment, the production secret is not in the container, the database is
 // new, no volume of the base is used, and the close of the PR deletes everything after the grace time.
-func TestAC_PREV_01_to_04_Lifecycle(t *testing.T) {
+func TestAC_PREV_01_to_04_AC_PREV_07_AC_VOL_04_Lifecycle(t *testing.T) {
 	m := newM9(t)
 	f := m.previewSetup(nil)
 	baseVols := m.q(`SELECT string_agg(v.id, ',') FROM volumes v JOIN services s ON s.id = v.service_id WHERE s.environment_id = $1`, f.staging)
