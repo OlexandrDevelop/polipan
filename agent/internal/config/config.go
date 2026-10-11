@@ -37,8 +37,14 @@ type Config struct {
 	ACMECAURL string
 	// ACMETrustedRoots is a PEM file that trusts ACMECAURL (tests with a local CA).
 	ACMETrustedRoots string
-	// CaddyImage is the Caddy image, empty = default.
+	// CaddyImage is the Caddy image, empty = default. A wildcard certificate by DNS-01 needs a Caddy build with the DNS module.
 	CaddyImage string
+	// DNS01Provider is the name of the Caddy DNS module (for example cloudflare) for the wildcard certificates, and DNS01Config
+	// its config as a JSON object (the credentials stay on this node). WildcardDomains is a comma list like *.preview.example.com
+	// (REQ-DOM-007). Without them every host gets its own certificate by HTTP-01.
+	DNS01Provider   string
+	DNS01Config     string
+	WildcardDomains string
 	// DockerSocket is the path of the Docker unix socket.
 	DockerSocket string
 	// MetricsAddr is where the agent serves its metrics for vmagent (12 section 7). Use a loopback address.
@@ -65,6 +71,9 @@ func FromEnv(getenv func(string) string) Config {
 	set(&c.ACMECAURL, "POLIPAN_AGENT_ACME_CA_URL")
 	set(&c.ACMETrustedRoots, "POLIPAN_AGENT_ACME_TRUSTED_ROOTS")
 	set(&c.CaddyImage, "POLIPAN_AGENT_CADDY_IMAGE")
+	set(&c.DNS01Provider, "POLIPAN_AGENT_DNS01_PROVIDER")
+	set(&c.DNS01Config, "POLIPAN_AGENT_DNS01_CONFIG")
+	set(&c.WildcardDomains, "POLIPAN_AGENT_WILDCARD_DOMAINS")
 	set(&c.DockerSocket, "POLIPAN_AGENT_DOCKER_SOCKET")
 	set(&c.MetricsAddr, "POLIPAN_AGENT_METRICS_ADDR")
 	if v := getenv("POLIPAN_AGENT_WIREGUARD_PORT"); v != "" {

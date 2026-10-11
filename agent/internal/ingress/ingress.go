@@ -48,6 +48,8 @@ type Config struct {
 	// ACMETrustedRoots is an optional PEM file that trusts ACMECAURL. It is mounted read-only
 	// into the container at the same path.
 	ACMETrustedRoots string
+	// DNS01Provider, DNS01Config and WildcardDomains turn on wildcard certificates by DNS-01 (REQ-DOM-007).
+	DNS01Provider, DNS01Config, WildcardDomains string
 }
 
 // Manager owns the Caddy container and its config.
@@ -173,9 +175,14 @@ func (m *Manager) httpClient() *http.Client {
 // If the JSON hash is the same as the last applied one, nothing is sent.
 // It returns the hash of the applied config.
 func (m *Manager) Apply(ctx context.Context, spec *agentv1.IngressSpec) (hash string, err error) {
+	dns, err := ParseDNS01(m.Config.DNS01Provider, m.Config.DNS01Config, m.Config.WildcardDomains)
+	if err != nil {
+		return "", err
+	}
 	body, err := BuildConfig(spec, Options{
 		ACMECAURL:        m.Config.ACMECAURL,
 		ACMETrustedRoots: m.Config.ACMETrustedRoots,
+		DNS01:            dns,
 	})
 	if err != nil {
 		return "", err

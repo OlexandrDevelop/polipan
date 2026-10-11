@@ -34,6 +34,55 @@ type Options struct {
 	ACMECAURL        string // when set, the only ACME issuer is this directory URL
 	ACMETrustedRoots string // PEM file (path inside the Caddy container) that trusts ACMECAURL
 	MaxBodyBytes     int64  // request body limit, 0 = 100 MiB
+	// DNS01 turns on wildcard certificates: a host with one label under a wildcard domain is served with the one
+	// certificate of the wildcard (REQ-DOM-007, REQ-PREV-005). Nil: every host gets its own certificate.
+	DNS01 *DNS01
+}
+
+// DNS01 is the DNS-01 provider for wildcard certificates.
+type DNS01 struct {
+	Provider  string         // the name of the Caddy DNS module, for example cloudflare
+	Config    map[string]any // the fields of the module (the credentials)
+	Wildcards []string       // for example *.preview.example.com
+}
+
+// ParseDNS01 reads the settings of the agent. An empty provider or an empty wildcard list gives nil.
+func ParseDNS01(provider, config, wildcards string) (*DNS01, error) {
+	var list []string
+	for _, w := range strings.Split(wildcards, ",") {
+		w = strings.ToLower(strings.TrimSpace(w))
+		if w == "" {
+			continue
+		}
+		if !strings.HasPrefix(w, "*.") || strings.Contains(w[2:], "*") || len(w) < 5 {
+			return nil, errors.New("ingress: a wildcard domain looks like *.preview.example.com: " + w)
+		}
+		list = append(list, w)
+	}
+	if strings.TrimSpace(provider) == "" || len(list) == 0 {
+		return nil, nil
+	}
+	d := &DNS01{Provider: strings.TrimSpace(provider), Wildcards: list, Config: map[string]any{}}
+	if strings.TrimSpace(config) != "" {
+		if err := json.Unmarshal([]byte(config), &d.Config); err != nil {
+			return nil, errors.New("ingress: the DNS-01 config is not a JSON object")
+		}
+	}
+	return d, nil
+}
+
+// wildcardOf gives the wildcard that covers a host: one label before the domain of the wildcard.
+func (d *DNS01) wildcardOf(host string) string {
+	if d == nil {
+		return ""
+	}
+	for _, w := range d.Wildcards {
+		suffix := w[1:] // .preview.example.com
+		if strings.HasSuffix(host, suffix) && !strings.Contains(strings.TrimSuffix(host, suffix), ".") && len(host) > len(suffix) {
+			return w
+		}
+	}
+	return ""
 }
 
 type obj = map[string]any
@@ -156,9 +205,28 @@ func BuildConfig(spec *agentv1.IngressSpec, opts Options) ([]byte, error) {
 			skip = append(skip, h)
 		}
 	}
+	// Hosts under a wildcard domain use the wildcard certificate: Caddy does not get a certificate for each of them.
+	covered := map[string][]string{} // wildcard -> hosts
+	for h := range httpsHosts {
+		if w := opts.DNS01.wildcardOf(h); w != "" {
+			covered[w] = append(covered[w], h)
+		}
+	}
+	auto := obj{}
 	if len(skip) > 0 {
 		sort.Strings(skip)
-		server["automatic_https"] = obj{"skip": skip}
+		auto["skip"] = skip
+	}
+	var skipCerts []string
+	for _, hs := range covered {
+		skipCerts = append(skipCerts, hs...)
+	}
+	if len(skipCerts) > 0 {
+		sort.Strings(skipCerts)
+		auto["skip_certificates"] = skipCerts
+	}
+	if len(auto) > 0 {
+		server["automatic_https"] = auto
 	}
 	if spec.GetMetricsEnabled() {
 		server["metrics"] = obj{}
@@ -168,13 +236,29 @@ func BuildConfig(spec *agentv1.IngressSpec, opts Options) ([]byte, error) {
 	if len(httpsHosts) > 0 {
 		subjects := make([]string, 0, len(httpsHosts))
 		for h := range httpsHosts {
-			subjects = append(subjects, h)
+			if opts.DNS01.wildcardOf(h) == "" {
+				subjects = append(subjects, h)
+			}
 		}
 		sort.Strings(subjects)
-		apps["tls"] = obj{"automation": obj{"policies": []any{obj{
-			"subjects": subjects,
-			"issuers":  issuers(spec, opts),
-		}}}}
+		var policies []any
+		var wild []string
+		for w := range covered {
+			wild = append(wild, w)
+		}
+		sort.Strings(wild)
+		if len(wild) > 0 {
+			// The wildcard names are managed by the DNS-01 issuer. The more specific policy comes first.
+			policies = append(policies, obj{"subjects": wild, "issuers": dnsIssuers(spec, opts)})
+		}
+		if len(subjects) > 0 {
+			policies = append(policies, obj{"subjects": subjects, "issuers": issuers(spec, opts)})
+		}
+		tls := obj{"automation": obj{"policies": policies}}
+		if len(wild) > 0 {
+			tls["certificates"] = obj{"automate": wild}
+		}
+		apps["tls"] = tls
 	}
 
 	cfg := obj{
@@ -340,6 +424,23 @@ func issuers(spec *agentv1.IngressSpec, opts Options) []any {
 		return []any{zero, acme(letsEncryptCA)}
 	}
 	return []any{acme(letsEncryptCA), zero}
+}
+
+// dnsIssuers is the issuer of the wildcard certificates: the ACME issuer with the DNS-01 challenge of the provider.
+func dnsIssuers(spec *agentv1.IngressSpec, opts Options) []any {
+	provider := obj{"name": opts.DNS01.Provider}
+	for k, v := range opts.DNS01.Config {
+		if k != "name" {
+			provider[k] = v
+		}
+	}
+	var out []any
+	for _, i := range issuers(spec, opts) {
+		o := i.(obj)
+		o["challenges"] = obj{"dns": obj{"provider": provider}}
+		out = append(out, o)
+	}
+	return out
 }
 
 func cleanHosts(in []string) []string {

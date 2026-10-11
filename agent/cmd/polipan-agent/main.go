@@ -103,7 +103,8 @@ func run(args []string) error {
 
 func newIngress(cfg config.Config, d docker.Client) *ingress.Manager {
 	return &ingress.Manager{Config: ingress.Config{DataDir: cfg.DataDir, Image: cfg.CaddyImage,
-		Network: cfg.Network, ACMECAURL: cfg.ACMECAURL, ACMETrustedRoots: cfg.ACMETrustedRoots}, Docker: d}
+		Network: cfg.Network, ACMECAURL: cfg.ACMECAURL, ACMETrustedRoots: cfg.ACMETrustedRoots,
+		DNS01Provider: cfg.DNS01Provider, DNS01Config: cfg.DNS01Config, WildcardDomains: cfg.WildcardDomains}, Docker: d}
 }
 
 func doJoin(ctx context.Context, cfg config.Config, log *slog.Logger) (*join.NodeFile, error) {
