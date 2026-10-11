@@ -22,6 +22,8 @@
 #   --acme-ca-url URL    ACME directory for the agent (tests use a staging CA)
 #   --dir DIR            folder for the compose file (default: /opt/polipan)
 #   --require-signature  stop if the signature of an image cannot be checked (needs cosign)
+#   --allow-userns-sysctl  only for a host where the AppArmor profile of BuildKit cannot be loaded: turn off the
+#                        system-wide Ubuntu limit on user namespaces (kernel.apparmor_restrict_unprivileged_userns)
 set -eu
 
 # The release build puts the values of the release here (deploy/release/stamp.sh).
@@ -42,6 +44,7 @@ agent_image=""
 acme_ca_url=""
 dir="/opt/polipan"
 require_signature=""
+allow_userns_sysctl=""
 
 say() { printf '==> %s\n' "$*"; }
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -58,7 +61,8 @@ while [ $# -gt 0 ]; do
     --acme-ca-url) acme_ca_url=$2; shift 2 ;;
     --dir) dir=$2; shift 2 ;;
     --require-signature) require_signature=1; shift ;;
-    -h|--help) sed -n '3,27p' "$0"; exit 0 ;;
+    --allow-userns-sysctl) allow_userns_sysctl=1; shift ;;
+    -h|--help) sed -n '3,26p' "$0"; exit 0 ;;
     *) fail "unknown option: $1" ;;
   esac
 done
@@ -231,6 +235,51 @@ systemctl enable polipan-build-firewall >/dev/null 2>&1 || true
 say "Loading the build network firewall"
 systemctl restart polipan-build-firewall || fail "could not load the build network firewall (nftables)"
 
+# ---- Rootless BuildKit on Ubuntu 24.04: user namespaces (REQ-SEC-102) ----
+# Ubuntu 24.04 limits user namespaces for processes without an AppArmor profile. Rootless BuildKit needs them.
+# We load a small profile that allows them for the BuildKit container only. The system-wide limit stays on.
+userns_sysctl=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+userns_restricted=""
+[ "$(cat "$userns_sysctl" 2>/dev/null || echo 0)" = "1" ] && userns_restricted=1
+if [ -d /sys/kernel/security/apparmor ]; then
+  if ! command -v apparmor_parser >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+    say "Installing apparmor"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y apparmor >/dev/null 2>&1 || true
+  fi
+  cat > /etc/apparmor.d/polipan-buildkit <<'PROFILE'
+# Polipan: allows user namespaces for the BuildKit container only (REQ-SEC-102).
+abi <abi/4.0>,
+include <tunables/global>
+
+profile polipan-buildkit flags=(unconfined) {
+  userns,
+}
+PROFILE
+  chmod 0644 /etc/apparmor.d/polipan-buildkit
+  if command -v apparmor_parser >/dev/null 2>&1 && apparmor_parser -r -W /etc/apparmor.d/polipan-buildkit 2>/dev/null; then
+    say "Loaded the AppArmor profile polipan-buildkit (user namespaces for BuildKit only)"
+  elif [ -n "$allow_userns_sysctl" ]; then
+    say "WARNING: the AppArmor profile could not be loaded. --allow-userns-sysctl is set."
+    say "WARNING: this turns off the Ubuntu limit on user namespaces for the whole server, for every program."
+    sed -i 's/apparmor=polipan-buildkit/apparmor=unconfined/' "$dir/docker-compose.yml"
+    printf '# Polipan: rootless BuildKit needs user namespaces (install.sh --allow-userns-sysctl)\nkernel.apparmor_restrict_unprivileged_userns = 0\n' > /etc/sysctl.d/60-polipan-userns.conf
+    sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 >/dev/null
+  else
+    rm -f /etc/apparmor.d/polipan-buildkit
+    fail "could not load the AppArmor profile for BuildKit (apparmor_parser is missing or failed). Install the package apparmor and run this script again. Only if you accept the risk, run it with --allow-userns-sysctl: it turns off the Ubuntu limit on user namespaces for the whole server (sysctl kernel.apparmor_restrict_unprivileged_userns=0)."
+  fi
+elif [ -n "$userns_restricted" ]; then
+  if [ -n "$allow_userns_sysctl" ]; then
+    say "WARNING: --allow-userns-sysctl is set. This turns off the limit on user namespaces for the whole server."
+    printf '# Polipan: rootless BuildKit needs user namespaces (install.sh --allow-userns-sysctl)\nkernel.apparmor_restrict_unprivileged_userns = 0\n' > /etc/sysctl.d/60-polipan-userns.conf
+    sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 >/dev/null
+  else
+    say "WARNING: user namespaces are limited on this host and AppArmor is not active, so builds from Git cannot run."
+    say "WARNING: images still work. To allow builds, run this script again with --allow-userns-sysctl,"
+    say "WARNING: or run: sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 && docker restart polipan-buildkitd-1"
+  fi
+fi
+
 # ---- Control plane ----
 if ! docker network inspect polipan >/dev/null 2>&1; then
   # The first node of the panel gets the subnet 10.210.1.0/24 of mesh_cidr: the network of the node is its mesh subnet.
@@ -249,6 +298,18 @@ until (cd "$dir" && docker compose exec -T server /polipan-server healthcheck >/
   fi
   sleep 2
 done
+
+# BuildKit must stay up. If it restarts all the time, say why (images still work, Git builds do not).
+sleep 5
+if [ "$(docker inspect -f '{{.State.Restarting}}' polipan-buildkitd-1 2>/dev/null || echo false)" = "true" ]; then
+  say "WARNING: BuildKit does not start, so builds from Git cannot run. Apps from an image still work."
+  if [ "$(cat "$userns_sysctl" 2>/dev/null || echo 0)" = "1" ]; then
+    say "WARNING: reason: this host limits user namespaces (kernel.apparmor_restrict_unprivileged_userns=1)."
+    say "WARNING: fix: run this script again with --allow-userns-sysctl, or run: sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 && docker restart polipan-buildkitd-1"
+  else
+    say "WARNING: look at: docker logs polipan-buildkitd-1"
+  fi
+fi
 
 # ---- Agent of this host ----
 say "Installing the agent"

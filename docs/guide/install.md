@@ -25,9 +25,24 @@ The script does these steps:
 5. Installs the agent of this server and joins it to the panel.
 6. Prints a one-time link. Open it and create the first user. This user is the owner of the organization.
 
-Options of the script: `--domain`, `--address`, `--acme-email`, `--version`, `--registry`, `--dir`, `--require-signature`.
+Options of the script: `--domain`, `--address`, `--acme-email`, `--version`, `--registry`, `--dir`, `--require-signature`,
+`--allow-userns-sysctl`.
 `--address HOST[:PORT]` sets the address of the panel when there is no domain (for example a forwarded port in a test VM).
 Run `install.sh --help` for the full list.
+
+## Builds from Git on Ubuntu 24.04
+
+Builds from Git run in a rootless BuildKit container. It needs user namespaces. Ubuntu 24.04 limits them for all
+programs that have no AppArmor profile (`kernel.apparmor_restrict_unprivileged_userns=1`).
+
+The installer does not turn this limit off. It loads a small AppArmor profile, `polipan-buildkit`
+(`/etc/apparmor.d/polipan-buildkit`). The profile allows user namespaces for the BuildKit container only. The container
+is not privileged. The limit stays on for the rest of the server.
+
+If the profile cannot be loaded (for example `apparmor_parser` is missing), the installer stops and tells you. Install the
+package `apparmor` and run the script again. If you accept the risk, run the script with `--allow-userns-sysctl`.
+It sets `kernel.apparmor_restrict_unprivileged_userns=0` for the whole server and saves it in
+`/etc/sysctl.d/60-polipan-userns.conf`. Every program may then use user namespaces.
 
 ## Add another server
 

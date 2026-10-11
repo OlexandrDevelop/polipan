@@ -99,8 +99,8 @@ test/vm/vm.sh verify-ui         # the web app in a headless browser (login, dash
 test/vm/vm.sh reset             # after the checks: remove the test data
 ```
 
-Stages of `verify`: `setup deploy bluegreen rollback stopstart restart-server restart-agent reboot upgrade https`.
-They check the first user, an image app, blue-green updates with 20 requests per second and no failed request,
+Stages of `verify`: `setup deploy gitbuild bluegreen rollback stopstart restart-server restart-agent reboot upgrade https`.
+They check the first user, an image app, a build from a public Git repository (rootless BuildKit with the AppArmor profile of the installer), blue-green updates with 20 requests per second and no failed request,
 one-click rollback, stop and start, restart of the server and of the agent, a reboot of the whole VM, an upgrade by
 running `install.sh` again, and HTTPS.
 
@@ -114,7 +114,4 @@ What the checks cannot do:
 
 ## Known limits
 
-- Building an app from Git (BuildKit) does not start on Ubuntu 24.04. The container `polipan-buildkitd-1` restarts
-  all the time, because Ubuntu blocks rootless user namespaces. Apps from an image work. To try builds in this VM only:
-  `test/vm/vm.sh ssh "sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0"`, then restart the container.
 - The first start after `create` needs the internet (Ubuntu packages and the Docker images of Polipan).

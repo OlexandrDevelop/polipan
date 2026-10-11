@@ -238,6 +238,33 @@ def stage_deploy():
     save_state(st)
 
 
+GIT_REPO = "https://github.com/docker/welcome-to-docker"
+
+
+def stage_gitbuild():
+    """A build from a public Git repository with the rootless BuildKit (Ubuntu 24.04 limits user namespaces)."""
+    st = load_state()
+    p = logged_in()
+    out = vm("sudo docker ps --filter name=polipan-buildkitd-1 --format '{{.Status}}'")
+    check("BuildKit runs and does not restart", out.startswith("Up"), out.strip())
+    out = vm("sudo docker inspect -f '{{.HostConfig.Privileged}}' polipan-buildkitd-1")
+    check("BuildKit is not privileged", out.strip() == "false", out.strip())
+    out = vm("sysctl -n kernel.apparmor_restrict_unprivileged_userns || echo 0")
+    check("the system-wide limit on user namespaces is not turned off by the installer", out.strip() == "1", "value " + out.strip())
+    _, svc = p.call("POST", f"/environments/{st['env_id']}/services", {
+        "name": "gitbuild", "type": "app",
+        "source": {"type": "git", "repo": GIT_REPO, "branch": "main", "builder": "dockerfile", "provider": "github"},
+        "config": {"port": 3000}}, expect=201)
+    t0 = time.time()
+    deploy_wait(p, svc["id"], timeout=900)
+    check("a service built from Git deployed and live", True, f"{time.time() - t0:.0f} s")
+    p.call("POST", f"/services/{svc['id']}/domains", {"host": "git.test", "container_port": 3000, "https": False}, expect=201)
+    wait("git app answers", lambda: get("git.test")[0] == 200, timeout=60)
+    check("the app built from Git answers", True)
+    st["git_id"] = svc["id"]
+    save_state(st)
+
+
 ZD_SCRIPT = r"""
 import os, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -487,10 +514,10 @@ EOS""")
         issuer = tls.getpeercert().get("issuer")
     check("HTTPS from this computer through the forwarded port 8443 (certificate checked against the Pebble root)", data.startswith(b"HTTP/1.1 200"), f"issuer {issuer}")
     # Put the VM back to the plain setup.
-    vm("sudo sh -c \"sed -i '/ACME/d' /etc/polipan/agent.env; printf 'POLIPAN_AGENT_ACME_CA_URL=\\nPOLIPAN_AGENT_ACME_TRUSTED_ROOTS=\\n' >> /etc/polipan/agent.env; sed -i '/secure.test/d' /etc/hosts; docker rm -f pebble challtest >/dev/null; docker network rm acmetest >/dev/null; rm -f /etc/polipan/pebble.minica.pem; find /var/lib/polipan-agent/caddy-config -name autosave.json -delete; docker exec polipan-caddy sh -c 'rm -rf /data/acme/pebble-14000-dir /data/caddy/certificates/pebble-14000-dir' || true; docker rm -f polipan-caddy >/dev/null; systemctl restart polipan-agent\"")
+    vm("sudo sh -c \"sed -i '/ACME/d' /etc/polipan/agent.env; printf 'POLIPAN_AGENT_ACME_CA_URL=\\nPOLIPAN_AGENT_ACME_TRUSTED_ROOTS=\\n' >> /etc/polipan/agent.env; sed -i '/secure.test/d' /etc/hosts; docker rm -f pebble challtest >/dev/null; docker network rm acmetest >/dev/null; rm -f /etc/polipan/pebble.minica.pem; docker exec polipan-caddy sh -c 'rm -rf /data/acme/pebble-14000-dir /data/caddy/certificates/pebble-14000-dir' || true; docker rm -f polipan-caddy >/dev/null; systemctl restart polipan-agent\"")
 
 
-STAGES = [("setup", stage_setup), ("deploy", stage_deploy), ("bluegreen", stage_bluegreen), ("rollback", stage_rollback),
+STAGES = [("setup", stage_setup), ("deploy", stage_deploy), ("gitbuild", stage_gitbuild), ("bluegreen", stage_bluegreen), ("rollback", stage_rollback),
           ("stopstart", stage_stopstart), ("restart-server", stage_restart_server), ("restart-agent", stage_restart_agent),
           ("reboot", stage_reboot), ("upgrade", stage_upgrade), ("https", stage_https)]
 

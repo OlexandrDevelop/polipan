@@ -9,6 +9,7 @@
 | Secrets do not decrypt after a restore | The master key file must be the one used before. |
 | `409 managed_by_git` | The value is set by `polipan.yaml`. Change the file. |
 | `403 protected_environment` | Ask an admin. |
+| Builds from Git do not start. `docker ps` shows `polipan-buildkitd-1` restarting, its log says `permission denied` and `apparmor_restrict_unprivileged_userns` | Ubuntu 24.04 limits user namespaces. Run `install.sh` again: it loads the AppArmor profile `polipan-buildkit` (see [Install](install.md)). Check it with `aa-status \| grep polipan-buildkit`. If the profile cannot be loaded, run the script with `--allow-userns-sysctl`, or run `sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 && docker restart polipan-buildkitd-1`. Both turn the limit off for the whole server. Apps from an image work without BuildKit. |
 | No metrics or logs | `victoria_metrics_url` and `victoria_logs_url` must be set, and the agent must reach the ingest address (port 9444). |
 
 Server logs: `docker compose -f /opt/polipan/docker-compose.yml logs -f server`. Every error answer has a `request_id`

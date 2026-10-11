@@ -485,3 +485,48 @@ func TestStartPullsTheCaddyImageFirst(t *testing.T) {
 		}
 	}
 }
+
+// An autosaved config that names a trusted-roots file which is gone would crash-loop Caddy: Start drops it.
+func TestStartDropsAutosaveWithMissingTrustedRoots(t *testing.T) {
+	dir := t.TempDir()
+	roots := filepath.Join(dir, "roots.pem")
+	if err := os.WriteFile(roots, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	autosave := `{"apps":{"tls":{"automation":{"policies":[{"issuers":[{"module":"acme","challenges":{},"trusted_roots_pem_files":["` + roots + `"]}]}]}}}}`
+	cases := []struct {
+		name       string
+		configured string
+		makeFile   bool
+		wantKept   bool
+	}{
+		{"setting removed", "", true, false},
+		{"file gone", roots, false, false},
+		{"file there", roots, true, true},
+	}
+	for _, c := range cases {
+		d := t.TempDir()
+		p := filepath.Join(d, "caddy-config", "caddy", "autosave.json")
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(autosave), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfgRoots := c.configured
+		if cfgRoots != "" && !c.makeFile {
+			cfgRoots = filepath.Join(d, "gone.pem")
+			if err := os.WriteFile(p, []byte(strings.ReplaceAll(autosave, roots, cfgRoots)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		m := &Manager{Config: Config{DataDir: d, ACMETrustedRoots: cfgRoots}, Docker: &stepDocker{}}
+		if err := m.Start(context.Background()); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		_, err := os.Stat(p)
+		if kept := err == nil; kept != c.wantKept {
+			t.Fatalf("%s: autosave kept = %v, want %v", c.name, kept, c.wantKept)
+		}
+	}
+}

@@ -167,8 +167,10 @@ services:
       - --tlskey=/certs/tls.key
     security_opt:
       # Needed by rootless BuildKit in a container (docs/rootless.md). It is not privileged.
+      # The profile polipan-buildkit (deploy/apparmor) is loaded by install.sh. It allows user
+      # namespaces for this container only, so Ubuntu 24.04 can keep its system-wide restriction.
       - seccomp=unconfined
-      - apparmor=unconfined
+      - apparmor=polipan-buildkit
       - systempaths=unconfined
     cpus: ${POLIPAN_BUILD_CPUS:-2}
     mem_limit: ${POLIPAN_BUILD_MEMORY:-2g}

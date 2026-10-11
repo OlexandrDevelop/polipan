@@ -119,6 +119,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	if err := os.WriteFile(initial, initialConfig(), 0o600); err != nil {
 		return fmt.Errorf("ingress: %w", err)
 	}
+	m.dropStaleAutosave()
 	// A new container: the saved hash may not match what Caddy runs, so forget it.
 	_ = os.Remove(m.hashPath())
 	m.mu.Lock()
@@ -155,6 +156,59 @@ func (m *Manager) Start(ctx context.Context) error {
 		return fmt.Errorf("ingress: create caddy: %w", err)
 	}
 	return nil
+}
+
+// autosavePath is the config that Caddy saves and --resume loads (XDG_CONFIG_HOME is /config in the image).
+func (m *Manager) autosavePath() string {
+	return filepath.Join(m.Config.DataDir, "caddy-config", "caddy", "autosave.json")
+}
+
+// dropStaleAutosave removes the autosaved config when it names a trusted-roots file that the new
+// container cannot read. Caddy would fail to start with it and restart in a loop. The agent
+// loads the full config again after the start, so nothing is lost.
+func (m *Manager) dropStaleAutosave() {
+	b, err := os.ReadFile(m.autosavePath())
+	if err != nil {
+		return
+	}
+	var found []string
+	var walk func(v any)
+	walk = func(v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			for k, e := range x {
+				if k == "trusted_roots_pem_files" {
+					if list, ok := e.([]any); ok {
+						for _, p := range list {
+							if s, ok := p.(string); ok {
+								found = append(found, s)
+							}
+						}
+					}
+				}
+				walk(e)
+			}
+		case []any:
+			for _, e := range x {
+				walk(e)
+			}
+		}
+	}
+	var doc any
+	if json.Unmarshal(b, &doc) == nil {
+		walk(doc)
+	}
+	stale := false
+	for _, p := range found {
+		if m.Config.ACMETrustedRoots == "" || p != m.Config.ACMETrustedRoots {
+			stale = true
+		} else if _, err := os.Stat(p); err != nil {
+			stale = true
+		}
+	}
+	if stale {
+		_ = os.Remove(m.autosavePath())
+	}
 }
 
 func (m *Manager) httpClient() *http.Client {
