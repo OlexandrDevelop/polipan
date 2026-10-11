@@ -137,7 +137,7 @@ func (s *Store) GetTokenByHash(ctx context.Context, hash string, now time.Time) 
 	var ta TokenAuth
 	t, u := &ta.Token, &ta.User
 	err := s.Pool.QueryRow(ctx, `SELECT `+tokenCols+`, u.name, u.password_hash, u.totp_enabled, u.disabled, u.created_at, m.role,
-			coalesce((o.settings->>'require_2fa')::boolean, false)
+			(coalesce((o.settings->>'require_2fa')::boolean, false) AND u.password_hash IS NOT NULL)
 		FROM api_tokens t JOIN users u ON u.id = t.user_id JOIN memberships m ON m.user_id = u.id AND m.org_id = t.org_id
 		JOIN orgs o ON o.id = t.org_id
 		WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > $2)

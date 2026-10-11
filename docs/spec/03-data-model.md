@@ -118,6 +118,7 @@ CREATE TABLE project_roles (
   user_id text REFERENCES users(id),
   team_id text REFERENCES teams(id),
   role text NOT NULL CHECK (role IN ('admin','developer','viewer')),
+  source text NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','sso')),  -- 'sso': made by a group mapping, replaced on each login
   CHECK ((user_id IS NULL) <> (team_id IS NULL))
 );
 

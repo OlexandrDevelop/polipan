@@ -296,7 +296,7 @@ func (s *Store) GetSession(ctx context.Context, id string, now time.Time) (*Sess
 	u := &se.User
 	err := s.Pool.QueryRow(ctx, `SELECT s.id, s.csrf_token_hash, s.expires_at, s.absolute_expires_at,
 		u.id, u.email, u.name, u.password_hash, u.totp_enabled, u.disabled, u.created_at, m.org_id, m.role,
-		coalesce((o.settings->>'require_2fa')::boolean, false)
+		(coalesce((o.settings->>'require_2fa')::boolean, false) AND u.password_hash IS NOT NULL)
 		FROM sessions s JOIN users u ON u.id = s.user_id JOIN memberships m ON m.user_id = u.id JOIN orgs o ON o.id = m.org_id
 		WHERE s.id = $1 AND s.expires_at > $2 AND s.absolute_expires_at > $2 AND u.deleted_at IS NULL AND NOT u.disabled
 		LIMIT 1`, id, now).

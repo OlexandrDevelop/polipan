@@ -163,6 +163,21 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	breakGlass := false
+	if good {
+		allowed, bg, err := h.checkSSORequired(r, user)
+		if err != nil {
+			internalError(w, r, err)
+			return
+		}
+		if !allowed {
+			h.auditLogin(r, user, email, "auth.login_failed", map[string]any{"reason": "sso_required"})
+			WriteError(w, r, http.StatusForbidden, CodeForbidden, "this organization requires single sign-on: use the identity provider",
+				map[string]any{"reason": "sso_required"})
+			return
+		}
+		breakGlass = bg
+	}
 	reason := "bad_password"
 	if good && user.TotpEnabled {
 		if body.TotpCode == nil || strings.TrimSpace(*body.TotpCode) == "" {
@@ -186,7 +201,25 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = h.Store.SetLastLogin(r.Context(), user.ID, h.Clock.Now())
 	h.auditLogin(r, user, email, "auth.login", nil)
+	if breakGlass {
+		// A password login of an owner while sso_required is on (REQ-SSO-004).
+		h.auditLogin(r, user, email, "auth.break_glass", nil)
+	}
 	WriteJSON(w, http.StatusOK, userJSON(user))
+}
+
+// checkSSORequired applies sso_required to a password login that passed the password check. Only an owner may
+// log in with a password then, when the org setting allow_owner_password is on (default) and the owner has 2FA.
+// The second result is true when this login is such a break-glass login.
+func (h *Handlers) checkSSORequired(r *http.Request, user *store.User) (allowed, breakGlass bool, err error) {
+	org, err := h.Store.GetOrg(r.Context(), user.OrgID)
+	if err != nil || !org.SSORequired {
+		return err == nil, false, err
+	}
+	var settings gen.OrgSettings
+	_ = json.Unmarshal(org.Settings, &settings)
+	ownerAllowed := settings.AllowOwnerPassword == nil || *settings.AllowOwnerPassword
+	return user.Role == auth.RoleOwner && ownerAllowed && user.TotpEnabled, true, nil
 }
 
 // checkSecondFactor checks a TOTP code (6 digits) or a recovery code of the user. A TOTP step works once.

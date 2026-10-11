@@ -536,6 +536,17 @@ func (h *Handlers) UpdateOrg(w http.ResponseWriter, r *http.Request) {
 		patch = raw
 	}
 	p := PrincipalFrom(r.Context())
+	if body.SsoRequired != nil && *body.SsoRequired {
+		// Without an enabled provider nobody could log in but the owners with a password.
+		if n, err := h.Store.CountEnabledSSOProviders(r.Context(), p.OrgID, ""); err != nil {
+			internalError(w, r, err)
+			return
+		} else if n == 0 {
+			WriteError(w, r, http.StatusConflict, CodeConflict, "add and test an SSO provider before you turn sso_required on",
+				map[string]any{"reason": "sso_required_needs_provider"})
+			return
+		}
+	}
 	o, err := h.Store.UpdateOrg(r.Context(), p.OrgID, body.Name, body.SsoRequired, patch)
 	if memberFailed(w, r, err) {
 		return

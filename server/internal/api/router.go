@@ -70,6 +70,8 @@ type Deps struct {
 	Alerts *alert.Engine
 	// Monitoring has the limits of the stores.
 	Monitoring MonitoringSettings
+	// SSO has the test hooks of the identity providers. Empty means the real providers.
+	SSO SSODeps
 }
 
 // MonitoringSettings are the storage limits of the metrics and log stores. An org retention is at most this.
@@ -138,6 +140,7 @@ func NewRouter(d Deps) (http.Handler, error) {
 		Obs:          d.Obs,
 		Alerts:       d.Alerts,
 		Monitoring:   d.Monitoring,
+		SSO:          d.SSO,
 	}
 	if d.Pool != nil {
 		h.Store = store.New(d.Pool)

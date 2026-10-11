@@ -74,6 +74,9 @@ type Handlers struct {
 	// KEK encrypts the TOTP secrets of users. Without it the 2FA operations answer 500.
 	KEK []byte
 
+	// SSO has the test hooks of the identity providers (handlers_sso.go).
+	SSO SSODeps
+
 	syncWG       sync.WaitGroup
 	cookieSecure bool
 	perms        map[Route]string
