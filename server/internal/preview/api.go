@@ -137,7 +137,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Info, error) {
 		return nil, ErrExists
 	}
 	c := candidate{ProjectID: p.ProjectID, OrgID: p.OrgID}
-	env, created, err := s.createEnv(ctx, c, cfg, baseID, tracked.Source.ConnectionID, slug, repo, number, "", branch, false, "", "",
+	env, created, err := s.createEnv(ctx, c, cfg, baseID, s.connectionFor(ctx, p.OrgID, tracked.Source), slug, repo, number, "", branch, false, "", "",
 		s.Clock.Now(), store.Actor{UserID: p.UserID, IP: p.IP, RequestID: p.Req})
 	if err != nil {
 		return nil, err

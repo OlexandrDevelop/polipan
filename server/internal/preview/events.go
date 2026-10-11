@@ -31,13 +31,20 @@ type candidate struct {
 
 // candidates finds the projects of the org that have a git service that this webhook can see.
 func (s *Service) candidates(ctx context.Context, hook *store.Webhook) ([]candidate, error) {
+	// A service that has a plain repository URL (no connection) is also linked to the connection of the same server:
+	// the URL starts with the base URL of the connection.
+	var base string
+	if hook.ConnectionID != "" {
+		_ = s.Pool.QueryRow(ctx, `SELECT COALESCE(base_url, '') FROM git_connections WHERE id = $1`, hook.ConnectionID).Scan(&base)
+	}
 	rows, err := s.Pool.Query(ctx, `SELECT DISTINCT p.id, p.org_id FROM services sv
 		JOIN environments e ON e.id = sv.environment_id AND e.deleted_at IS NULL AND e.kind <> 'preview'
 		JOIN projects p ON p.id = e.project_id AND p.deleted_at IS NULL
 		WHERE sv.deleted_at IS NULL AND sv.source_type = 'git' AND p.org_id = $1
-		  AND (($2 <> '' AND sv.config->'git'->>'connection_id' = $2) OR sv.id = $3)
+		  AND (($2 <> '' AND sv.config->'git'->>'connection_id' = $2) OR sv.id = $3
+		       OR ($4 <> '' AND COALESCE(sv.config->'git'->>'connection_id', '') = '' AND starts_with(sv.config->'git'->>'repo', $4 || '/')))
 		  AND COALESCE(p.settings->'previews'->>'enabled', 'false') = 'true'
-		ORDER BY p.id`, hook.OrgID, hook.ConnectionID, hook.ServiceID)
+		ORDER BY p.id`, hook.OrgID, hook.ConnectionID, hook.ServiceID, strings.TrimRight(base, "/"))
 	if err != nil {
 		return nil, err
 	}
@@ -78,6 +85,21 @@ func (s *Service) baseServices(ctx context.Context, envID string) ([]baseService
 		out = append(out, b)
 	}
 	return out, rows.Err()
+}
+
+// connectionFor finds the Git connection that posts the status and the comment of a service: the one of the service, or
+// the connection of the same server as the repository URL.
+func (s *Service) connectionFor(ctx context.Context, orgID string, src *git.Source) string {
+	if src == nil {
+		return ""
+	}
+	if src.ConnectionID != "" {
+		return src.ConnectionID
+	}
+	var id string
+	_ = s.Pool.QueryRow(ctx, `SELECT id FROM git_connections WHERE org_id = $1 AND COALESCE(base_url, '') <> '' AND starts_with($2, rtrim(base_url, '/') || '/')
+		ORDER BY id LIMIT 1`, orgID, src.Repo).Scan(&id)
+	return id
 }
 
 func tracks(src *git.Source, repo string) bool {
@@ -153,7 +175,7 @@ func (s *Service) handleProject(ctx context.Context, c candidate, pr *git.PullRe
 		res.Environment = env.Slug
 	}
 	fork := pr.IsFork()
-	conn := trackedSvc.Source.ConnectionID
+	conn := s.connectionFor(ctx, c.OrgID, trackedSvc.Source)
 
 	if pr.Action == git.PRClosed {
 		if env == nil || env.State == StateClosing {

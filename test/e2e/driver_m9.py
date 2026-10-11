@@ -206,7 +206,8 @@ def setup():
     def site(env, host):
         _, svc = p.call("POST", f"/environments/{env['id']}/services", {
             "name": "site", "type": "app",
-            "source": {"type": "git", "connection_id": conn["id"], "repo": "app", "branch": "main", "builder": "dockerfile", "auto_deploy": False},
+            # A plain http URL: the server does not send a token over http. The connection is found by the host of the URL.
+            "source": {"type": "git", "repo": GIT + "/app.git", "provider": "gitea", "branch": "main", "builder": "dockerfile", "auto_deploy": False},
             "config": {"port": 80}}, expect=201)
         p.call("POST", f"/services/{svc['id']}/domains", {"host": host, "container_port": 80, "https": False}, expect=201)
         return svc
