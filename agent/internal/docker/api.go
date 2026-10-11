@@ -36,6 +36,7 @@ type ContainerSpec struct {
 	MemoryBytes   int64
 	StopTimeout   int // seconds
 	CapAdd        []string
+	CapDrop       []string // capabilities removed from the container
 	DNS           []string // DNS servers for the container
 	IP            string   // fixed IPv4 address on Network (must be inside the subnet of the network). Empty = Docker picks.
 }

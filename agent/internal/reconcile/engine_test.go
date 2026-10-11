@@ -451,3 +451,11 @@ func TestCommandIdempotent(t *testing.T) {
 		t.Fatalf("ack: %+v", got)
 	}
 }
+
+func TestREQ_SEC_106_WorkloadDropsNetRaw(t *testing.T) {
+	e := &Engine{}
+	sp := e.containerSpec(&agentv1.WorkloadSpec{ContainerName: "pp-1", ImageRef: "nginx@sha256:aa"})
+	if len(sp.CapDrop) != 1 || sp.CapDrop[0] != "NET_RAW" {
+		t.Fatalf("cap drop: %v", sp.CapDrop)
+	}
+}

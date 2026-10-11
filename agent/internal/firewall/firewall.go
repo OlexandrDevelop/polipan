@@ -194,6 +194,8 @@ func BridgeRuleset(p Params) string {
 	names := writeSets(&b, p)
 	b.WriteString("  chain forward {\n")
 	b.WriteString("    type filter hook forward priority -200; policy accept;\n")
+	// The mesh is IPv4 only: IPv6 (link-local) between containers must not bypass the rules.
+	b.WriteString("    meta protocol ip6 drop\n")
 	writeIsolation(&b, p, names)
 	b.WriteString("  }\n}\n")
 	return b.String()

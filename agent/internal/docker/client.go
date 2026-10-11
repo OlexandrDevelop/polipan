@@ -332,6 +332,7 @@ func createBody(spec ContainerSpec) map[string]any {
 		"NanoCpus":     spec.NanoCPUs,
 		"Memory":       spec.MemoryBytes,
 		"CapAdd":       spec.CapAdd,
+		"CapDrop":      spec.CapDrop,
 		"Dns":          spec.DNS,
 		"DnsSearch":    dnsSearch(spec.DNS),
 		"DnsOptions":   dnsOptions(spec.DNS),

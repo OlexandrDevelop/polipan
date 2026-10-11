@@ -429,6 +429,8 @@ func (e *Engine) containerSpec(w *agentv1.WorkloadSpec) docker.ContainerSpec {
 		Name: w.ContainerName, Image: w.ImageRef, Cmd: w.Command, Entrypoint: w.Entrypoint,
 		Env: w.Env, Labels: buildLabels(w), Network: e.Network, Aliases: aliases,
 		RestartPolicy: w.RestartPolicy, StopTimeout: int(w.StopGraceSeconds), DNS: e.DNSServers,
+		// No NET_RAW: a workload must not forge source addresses or ARP on the shared bridge (REQ-SEC-106).
+		CapDrop: []string{"NET_RAW"},
 	}
 	if sp.RestartPolicy == "" {
 		sp.RestartPolicy = "always"

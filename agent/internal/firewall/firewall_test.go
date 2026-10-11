@@ -118,7 +118,7 @@ func TestREQ_SEC_106_BridgeRuleset(t *testing.T) {
 	ds := isolationState()
 	got := BridgeRuleset(Params{MeshCIDR: ds.MeshCidr, Envs: EnvsFromDesired(ds), CaddyIPs: CaddyIPs("10.210.1.0/24", ds)})
 	for _, want := range []string{"table bridge polipan_iso {", "type filter hook forward priority -200; policy accept;",
-		"ip saddr @env_0 ip daddr @env_0 accept", "ip saddr 10.210.0.0/16 ip daddr 10.210.0.0/16 drop"} {
+		"meta protocol ip6 drop", "ip saddr @env_0 ip daddr @env_0 accept", "ip saddr 10.210.0.0/16 ip daddr 10.210.0.0/16 drop"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in\n%s", want, got)
 		}

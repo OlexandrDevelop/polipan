@@ -48,7 +48,7 @@ func TestCreateBody(t *testing.T) {
 	id, err := c.CreateAndStart(context.Background(), ContainerSpec{
 		Name: "pp-1", Image: "nginx@sha256:aa", Network: "polipan", Aliases: []string{"pp-1", "web"},
 		Env: map[string]string{"A": "b"}, RestartPolicy: "always", DNS: []string{"172.30.0.1"},
-		Ports: []PortBinding{{HostPort: 8080, ContainerPort: 80, Proto: "tcp"}},
+		Ports: []PortBinding{{HostPort: 8080, ContainerPort: 80, Proto: "tcp"}}, CapDrop: []string{"NET_RAW"},
 	})
 	if err != nil || id != "abc" || !started || name != "pp-1" {
 		t.Fatalf("id=%q err=%v started=%v name=%q", id, err, started, name)
@@ -56,6 +56,9 @@ func TestCreateBody(t *testing.T) {
 	host := got["HostConfig"].(map[string]any)
 	if host["NetworkMode"] != "polipan" || host["RestartPolicy"].(map[string]any)["Name"] != "always" {
 		t.Fatalf("host config: %v", host)
+	}
+	if cd, _ := host["CapDrop"].([]any); len(cd) != 1 || cd[0] != "NET_RAW" {
+		t.Fatalf("cap drop: %v", host["CapDrop"])
 	}
 	if _, ok := host["PortBindings"].(map[string]any)["80/tcp"]; !ok {
 		t.Fatalf("port bindings: %v", host["PortBindings"])
