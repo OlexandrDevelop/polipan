@@ -4,7 +4,7 @@
 # The agent normally runs as a systemd service on the node. This image is for tests and for
 # the agent of the control-plane host.
 
-FROM golang:1.23-bookworm AS build
+FROM golang:1.23-bookworm@sha256:167053a2bb901972bf2c1611f8f52c44d5fe7e762e5cab213708d82c421614db AS build
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG TARGETOS=linux
@@ -13,15 +13,15 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -buildvcs=false \
     -ldflags "-s -w -X github.com/polipan/polipan/agent/internal/version.Version=$VERSION -X github.com/polipan/polipan/agent/internal/version.Commit=$COMMIT" \
     -o /out/polipan-agent ./agent/cmd/polipan-agent
 
 # restic (backups) and an ssh client (SFTP targets) are part of the image. On a node without the
 # image, install both packages: see docs/operations/backups.md.
-FROM restic/restic:0.17.3 AS restic
+FROM restic/restic:0.17.3@sha256:8f5a62b422a2cb1277ea0dd6e826fe1acf649e5b9f02d60e5268d5fd1976255a AS restic
 
-FROM alpine:3.20
+FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
 # WireGuard tools, iproute2, iptables (Docker forwarding rules) and nftables (environment firewall) are for the mesh (M7).
 RUN apk add --no-cache ca-certificates openssh-client-default tzdata wireguard-tools iproute2 iptables iptables-legacy nftables
 COPY --from=restic /usr/bin/restic /usr/local/bin/restic

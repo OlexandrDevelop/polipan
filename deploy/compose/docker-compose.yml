@@ -16,7 +16,7 @@ name: polipan
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     restart: unless-stopped
     environment:
       POSTGRES_USER: polipan
@@ -35,7 +35,7 @@ services:
 
   # Gives the shared volumes to the server user (uid 65532), once per start.
   volumes-init:
-    image: registry:3
+    image: registry:3@sha256:ddf754342cfc8acc51a56d5d0ab6af06826461864460636d8bd5c546dab2a7b8
     restart: "no"
     entrypoint: ["sh", "-c", "chown 65532:65532 /registry-files /buildkit-certs /build-work && chmod 0755 /registry-files /buildkit-certs"]
     volumes:
@@ -99,7 +99,7 @@ services:
 
   # VictoriaMetrics keeps the metrics (REQ-OBS-004). No host port: only the server reaches it, with basic auth.
   victoria-metrics:
-    image: ${POLIPAN_VM_IMAGE:-victoriametrics/victoria-metrics:v1.108.1}
+    image: ${POLIPAN_VM_IMAGE:-victoriametrics/victoria-metrics:v1.108.1@sha256:f6e5322b315795ae2fec494c1d1c94b2e0325b789fead60ef3a13fccdefcd81e}
     restart: unless-stopped
     command:
       - -storageDataPath=/storage
@@ -115,7 +115,7 @@ services:
 
   # VictoriaLogs keeps the logs (REQ-OBS-005).
   victoria-logs:
-    image: ${POLIPAN_VL_IMAGE:-victoriametrics/victoria-logs:v1.9.1-victorialogs}
+    image: ${POLIPAN_VL_IMAGE:-victoriametrics/victoria-logs:v1.9.1-victorialogs@sha256:718703bb876ae80c0046823f6ce9d72c92bce8362e932d82e9f683a048e685d6}
     restart: unless-stopped
     command:
       - -storageDataPath=/storage
@@ -132,7 +132,7 @@ services:
   # CNCF distribution. htpasswd auth (the server writes the file and reloads nothing: the registry
   # reads it again when it changes) and TLS with a certificate of the server CA. No host port.
   registry:
-    image: registry:3
+    image: registry:3@sha256:ddf754342cfc8acc51a56d5d0ab6af06826461864460636d8bd5c546dab2a7b8
     restart: unless-stopped
     depends_on:
       server:
@@ -155,7 +155,7 @@ services:
   # Rootless BuildKit on its own network, without the Docker socket (REQ-SEC-102). Build steps
   # share its network namespace, so they see only the build network. CPU, memory and process limits.
   buildkitd:
-    image: moby/buildkit:v0.34.0-rootless
+    image: moby/buildkit:v0.34.0-rootless@sha256:65eca3c01cd1180c8f64565c4e3c5983af5145818b0e6fa863385d099eb73855
     restart: unless-stopped
     depends_on:
       server:

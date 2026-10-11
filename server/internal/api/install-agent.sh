@@ -9,7 +9,9 @@
 #   --server HOST:PORT     the agent gateway of the panel (required)
 #   --token TOKEN          the one-use join token (required)
 #   --ca-fingerprint HEX   sha256 of the CA certificate of the panel (required): the join checks the server with it
-#   --agent-image REF      the agent image the binary is taken from (default: ghcr.io/polipan/polipan-agent:latest)
+#   --agent-image REF      the agent image the binary is taken from. Default: the image of the release of this panel,
+#                          pinned by digest (a development build of the panel uses ghcr.io/polipan/polipan-agent:latest)
+#   --require-signature    stop if the signature of the agent image cannot be checked (needs cosign)
 #   --public-ip IP         the address other servers use for WireGuard (default: the address of the default route)
 #   --wireguard-port PORT  the WireGuard UDP port (default: 51820)
 #
@@ -18,10 +20,16 @@
 # The source of this file is server/internal/api/install-agent.sh in the repository.
 set -eu
 
+# The release build puts the digest of the agent image of the release here (deploy/release/stamp.sh).
+# In a development build the two values stay as they are.
+stamped_digest="@AGENT_IMAGE_DIGEST@"
+stamped_repo="@AGENT_IMAGE_REPO@"
+
 server=""
 token=""
 fingerprint=""
-agent_image="ghcr.io/polipan/polipan-agent:latest"
+agent_image=""
+require_signature=""
 public_ip=""
 wg_port="51820"
 
@@ -34,9 +42,10 @@ while [ $# -gt 0 ]; do
     --token) token=$2; shift 2 ;;
     --ca-fingerprint) fingerprint=$2; shift 2 ;;
     --agent-image) agent_image=$2; shift 2 ;;
+    --require-signature) require_signature=1; shift ;;
     --public-ip) public_ip=$2; shift 2 ;;
     --wireguard-port) wg_port=$2; shift 2 ;;
-    -h|--help) sed -n '3,17p' "$0"; exit 0 ;;
+    -h|--help) sed -n '3,19p' "$0"; exit 0 ;;
     *) fail "unknown option: $1" ;;
   esac
 done
@@ -48,6 +57,36 @@ done
 [ "$(uname -s)" = "Linux" ] || fail "Polipan needs Linux"
 command -v systemctl >/dev/null 2>&1 || fail "systemd is required"
 command -v curl >/dev/null 2>&1 || fail "curl is required"
+
+# ---- The agent image: pinned by digest in a release, and its signature is checked when cosign is there ----
+case "$stamped_digest" in
+  sha256:????????????????????????????????????????????????????????????????) pinned=1 ;;
+  *) pinned="" ;;
+esac
+if [ -z "$agent_image" ]; then
+  if [ -n "$pinned" ]; then
+    agent_image="$stamped_repo@$stamped_digest"
+  else
+    agent_image="ghcr.io/polipan/polipan-agent:latest"
+    say "Warning: this panel is not a release build, so the agent image is not pinned by digest."
+  fi
+fi
+case "$agent_image" in
+  *@sha256:*) ;;
+  *) say "Warning: the agent image is not pinned by digest: $agent_image" ;;
+esac
+verify_image() {
+  if command -v cosign >/dev/null 2>&1; then
+    say "Checking the signature of $1"
+    cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+      --certificate-identity-regexp '^https://github\.com/polipan/polipan/\.github/workflows/release\.yml@refs/tags/v' \
+      "$1" >/dev/null 2>&1 || fail "the signature of $1 is not valid"
+  elif [ -n "$require_signature" ]; then
+    fail "--require-signature needs cosign. Install it from https://docs.sigstore.dev/cosign/installation/"
+  else
+    say "cosign is not installed: the signature is not checked, the digest pin still holds."
+  fi
+}
 
 # ---- Packages ----
 install_packages() {
@@ -82,6 +121,10 @@ systemctl enable --now docker >/dev/null 2>&1 || true
 
 # ---- The agent binary and restic ----
 say "Getting the agent from $agent_image"
+# A signature exists only for the images of a release (the images of other builds are not signed).
+if [ -n "$pinned" ] || [ -n "$require_signature" ]; then
+  verify_image "$agent_image"
+fi
 cid=$(docker create "$agent_image")
 docker cp "$cid:/polipan-agent" /usr/local/bin/polipan-agent
 if ! command -v restic >/dev/null 2>&1; then

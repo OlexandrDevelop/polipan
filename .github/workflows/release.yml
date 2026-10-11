@@ -1,0 +1,288 @@
+# SPDX-License-Identifier: Apache-2.0
+# The release. One tag push runs all of it (REQ-OSS-004, docs/operations/release.md):
+#
+#   git tag -a v1.0.0 -m v1.0.0, then send the tag to origin
+#
+# Steps: check the tag, wait for the CI of the commit, build the agent image, then the server and cli images
+# (every image is signed with cosign, keyless, and has a signed SPDX SBOM), build the binaries twice and compare
+# them (reproducible build), run the upgrade test, then collect the files, sign SHA256SUMS, verify everything
+# that was made and only then create the GitHub release. A tag with a dash (v1.0.0-rc.1) is a pre-release.
+# Every action is pinned by a commit SHA. Nothing here runs without the tag push.
+name: release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+', 'v[0-9]+.[0-9]+.[0-9]+-*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+      commit: ${{ steps.v.outputs.commit }}
+      epoch: ${{ steps.v.outputs.epoch }}
+      namespace: ${{ steps.v.outputs.namespace }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - id: v
+        env:
+          TAG: ${{ github.ref_name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          printf '%s' "$TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$' \
+            || { echo "::error::$TAG is not a version like v1.2.3 or v1.2.3-rc.1"; exit 1; }
+          # A release comes from the main branch.
+          git fetch --quiet origin main
+          git merge-base --is-ancestor HEAD origin/main || { echo "::error::the tag is not on the main branch"; exit 1; }
+          prerelease=false
+          case "$TAG" in *-*) prerelease=true ;; esac
+          {
+            echo "version=$TAG"
+            echo "prerelease=$prerelease"
+            echo "commit=$(git rev-parse --short=12 HEAD)"
+            echo "epoch=$(git log -1 --format=%ct HEAD)"
+            echo "namespace=ghcr.io/$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          } >> "$GITHUB_OUTPUT"
+
+  # The CI of the tagged commit must be green. The tag push starts the CI too: wait for it.
+  ci-green:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          for i in $(seq 1 90); do
+            runs=$(gh run list --repo "$REPO" --workflow ci.yml --commit "$SHA" --json status,conclusion,event --limit 20)
+            pending=$(printf '%s' "$runs" | jq '[.[] | select(.status != "completed")] | length')
+            failed=$(printf '%s' "$runs" | jq '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped")] | length')
+            passed=$(printf '%s' "$runs" | jq '[.[] | select(.status == "completed" and .conclusion == "success")] | length')
+            [ "$failed" -eq 0 ] || { echo "::error::the CI of $SHA failed"; exit 1; }
+            if [ "$pending" -eq 0 ] && [ "$passed" -gt 0 ]; then echo "CI is green"; exit 0; fi
+            sleep 60
+          done
+          echo "::error::the CI of $SHA did not finish in 90 minutes"; exit 1
+
+  # The agent image comes first: the install script of the panel pins its digest.
+  agent-image:
+    needs: [prepare, ci-green]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
+      - id: image
+        uses: ./.github/actions/image
+        with:
+          name: polipan-agent
+          file: deploy/docker/agent.Dockerfile
+          namespace: ${{ needs.prepare.outputs.namespace }}
+          version: ${{ needs.prepare.outputs.version }}
+          commit: ${{ needs.prepare.outputs.commit }}
+          source-date-epoch: ${{ needs.prepare.outputs.epoch }}
+          latest: ${{ needs.prepare.outputs.prerelease == 'false' }}
+
+  images:
+    needs: [prepare, agent-image]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: polipan-server
+            file: deploy/docker/server.Dockerfile
+          - name: polipan-cli
+            file: deploy/docker/cli.Dockerfile
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
+      - id: image
+        uses: ./.github/actions/image
+        with:
+          name: ${{ matrix.name }}
+          file: ${{ matrix.file }}
+          namespace: ${{ needs.prepare.outputs.namespace }}
+          version: ${{ needs.prepare.outputs.version }}
+          commit: ${{ needs.prepare.outputs.commit }}
+          source-date-epoch: ${{ needs.prepare.outputs.epoch }}
+          latest: ${{ needs.prepare.outputs.prerelease == 'false' }}
+          build-args: |
+            AGENT_IMAGE_DIGEST=${{ needs.agent-image.outputs.digest }}
+            AGENT_IMAGE_REPO=${{ needs.prepare.outputs.namespace }}/polipan-agent
+      - name: Keep the digest for the release job
+        env:
+          NAME: ${{ matrix.name }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          mkdir digests
+          printf '%s=%s\n' "$NAME" "$DIGEST" > "digests/$NAME"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: digest-${{ matrix.name }}
+          path: digests/${{ matrix.name }}
+          if-no-files-found: error
+
+  binaries:
+    needs: [prepare, agent-image]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: true
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build the web app
+        run: cd web && npm ci --no-audit --no-fund && npm run build
+      - name: Build twice and compare (reproducible build)
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          GOARCH: ${{ matrix.goarch }}
+          AGENT_IMAGE_DIGEST: ${{ needs.agent-image.outputs.digest }}
+          AGENT_IMAGE_REPO: ${{ needs.prepare.outputs.namespace }}/polipan-agent
+        run: |
+          sh deploy/release/build.sh "$VERSION" linux "$GOARCH" out
+          sh deploy/release/build.sh "$VERSION" linux "$GOARCH" out-again
+          cmp "out/polipan_${VERSION}_linux_${GOARCH}.tar.gz" "out-again/polipan_${VERSION}_linux_${GOARCH}.tar.gz"
+          sha256sum out/*.tar.gz
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: binaries-${{ matrix.goarch }}
+          path: out/*.tar.gz
+          if-no-files-found: error
+
+  # The new version must start on the data of the previous pre-release. The first release has none: it is skipped.
+  upgrade-test:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - env:
+          TO: ${{ github.sha }}
+        run: |
+          prev=$(git describe --tags --abbrev=0 --match 'v*' "$TO^" 2>/dev/null || true)
+          if [ -z "$prev" ]; then echo "No earlier release: nothing to upgrade from."; exit 0; fi
+          sh test/upgrade/run.sh --from "$prev" --to "$TO"
+
+  release:
+    needs: [prepare, agent-image, images, binaries, upgrade-test]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: parts
+      - name: Collect the files
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          NAMESPACE: ${{ needs.prepare.outputs.namespace }}
+          AGENT_DIGEST: ${{ needs.agent-image.outputs.digest }}
+        run: |
+          mkdir release
+          cp parts/binaries-*/*.tar.gz release/
+          # Digests of the three images.
+          server=$(sed -n 's/^polipan-server=//p' parts/digest-polipan-server/polipan-server)
+          cli=$(sed -n 's/^polipan-cli=//p' parts/digest-polipan-cli/polipan-cli)
+          for d in "$server" "$cli" "$AGENT_DIGEST"; do
+            printf '%s' "$d" | grep -Eq '^sha256:[0-9a-f]{64}$' || { echo "::error::bad image digest: $d"; exit 1; }
+          done
+          {
+            echo "polipan-server=$NAMESPACE/polipan-server@$server"
+            echo "polipan-agent=$NAMESPACE/polipan-agent@$AGENT_DIGEST"
+            echo "polipan-cli=$NAMESPACE/polipan-cli@$cli"
+          } > release/images.lock
+          # The files the install script downloads, and the install scripts with the values of this release.
+          cp deploy/compose/docker-compose.yml release/docker-compose.yml
+          cp deploy/nftables/polipan-build.sh release/polipan-build.sh
+          cp deploy/install.sh release/install.sh
+          cp server/internal/api/install-agent.sh release/install-agent.sh
+          sh deploy/release/stamp.sh release/install.sh VERSION="$VERSION" SERVER_IMAGE_DIGEST="$server" AGENT_IMAGE_DIGEST="$AGENT_DIGEST" \
+            COMPOSE_SHA256="$(sha256sum release/docker-compose.yml | cut -d ' ' -f 1)" \
+            FIREWALL_SHA256="$(sha256sum release/polipan-build.sh | cut -d ' ' -f 1)"
+          sh deploy/release/stamp.sh release/install-agent.sh AGENT_IMAGE_DIGEST="$AGENT_DIGEST" AGENT_IMAGE_REPO="$NAMESPACE/polipan-agent"
+          # The install script served by the panel is the same as this one: the server image was built with the same digest.
+          sh -n release/install.sh && sh -n release/install-agent.sh
+      - name: SBOM of the source (Go and npm dependencies)
+        uses: anchore/sbom-action@da167eac915b4e86f08b264dbdbc867b61be6f0c # v0.20.5
+        with:
+          path: .
+          format: spdx-json
+          output-file: release/polipan_${{ needs.prepare.outputs.version }}_source.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Checksums and signature
+        run: |
+          sh deploy/release/checksums.sh release
+          cosign sign-blob --yes --bundle release/SHA256SUMS.sigstore.json release/SHA256SUMS
+      - name: Verify what was made, before it is published
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: sh deploy/release/verify.sh --repo "$REPO" --images "$VERSION" release
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          flags=""
+          if [ "$PRERELEASE" = "true" ]; then flags="--prerelease"; fi
+          # shellcheck disable=SC2086
+          gh release create "$VERSION" release/* --verify-tag --generate-notes --title "$VERSION" $flags

@@ -2,19 +2,32 @@
 # SPDX-License-Identifier: Apache-2.0
 # Installs the Polipan control plane and the agent of this host.
 #
-#   curl -fsSL https://raw.githubusercontent.com/polipan/polipan/main/deploy/install.sh | sudo sh -s -- --domain panel.example.com
+#   curl -fsSL https://github.com/polipan/polipan/releases/latest/download/install.sh | sudo sh -s -- --domain panel.example.com
+#
+# The script of a release installs exactly the files of that release: the images are pinned by digest, the other
+# files are checked against the checksums in this script, and the signatures of the images are checked when
+# cosign is installed. A copy from the main branch is a development build and uses the tag "latest".
 #
 # Options:
 #   --domain HOST        public name of the panel (DNS must point to this server). Without it the panel
 #                        is served over plain HTTP on the server address.
 #   --acme-email EMAIL   contact address for the certificate authority (optional)
-#   --version TAG        image tag (default: latest)
+#   --version TAG        image tag (default: the release of this script, or latest in a development build)
 #   --registry NAME      image registry prefix (default: ghcr.io/polipan)
 #   --server-image REF   full server image reference (overrides --registry and --version)
 #   --agent-image REF    full agent image reference (overrides --registry and --version)
 #   --acme-ca-url URL    ACME directory for the agent (tests use a staging CA)
 #   --dir DIR            folder for the compose file (default: /opt/polipan)
+#   --require-signature  stop if the signature of an image cannot be checked (needs cosign)
 set -eu
+
+# The release build puts the values of the release here (deploy/release/stamp.sh).
+# In a development build they stay as they are.
+stamped_version="@VERSION@"
+stamped_server_digest="@SERVER_IMAGE_DIGEST@"
+stamped_agent_digest="@AGENT_IMAGE_DIGEST@"
+stamped_compose_sha256="@COMPOSE_SHA256@"
+stamped_firewall_sha256="@FIREWALL_SHA256@"
 
 domain=""
 acme_email=""
@@ -24,7 +37,7 @@ server_image=""
 agent_image=""
 acme_ca_url=""
 dir="/opt/polipan"
-base_url="${POLIPAN_BASE_URL:-https://raw.githubusercontent.com/polipan/polipan/main/deploy}"
+require_signature=""
 
 say() { printf '==> %s\n' "$*"; }
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -39,7 +52,8 @@ while [ $# -gt 0 ]; do
     --agent-image) agent_image=$2; shift 2 ;;
     --acme-ca-url) acme_ca_url=$2; shift 2 ;;
     --dir) dir=$2; shift 2 ;;
-    -h|--help) sed -n '3,17p' "$0"; exit 0 ;;
+    --require-signature) require_signature=1; shift ;;
+    -h|--help) sed -n '3,25p' "$0"; exit 0 ;;
     *) fail "unknown option: $1" ;;
   esac
 done
@@ -49,8 +63,62 @@ done
 command -v systemctl >/dev/null 2>&1 || fail "systemd is required"
 command -v curl >/dev/null 2>&1 || fail "curl is required"
 
+# A release script installs the images of its release by digest. A development build, or another --version, uses tags.
+is_digest() { case "$1" in sha256:????????????????????????????????????????????????????????????????) return 0 ;; *) return 1 ;; esac; }
+pinned=""
+is_version() { case "$1" in v[0-9]*) return 0 ;; *) return 1 ;; esac; }
+if is_digest "$stamped_server_digest" && is_digest "$stamped_agent_digest" && is_version "$stamped_version"; then
+  pinned=1
+  if [ "$version" = "latest" ]; then
+    # The default registry is the one of the release. Another registry is a mirror: the digest is the same.
+    [ -n "$server_image" ] || server_image="$registry/polipan-server@$stamped_server_digest"
+    [ -n "$agent_image" ] || agent_image="$registry/polipan-agent@$stamped_agent_digest"
+    version="$stamped_version"
+  fi
+fi
 [ -n "$server_image" ] || server_image="$registry/polipan-server:$version"
 [ -n "$agent_image" ] || agent_image="$registry/polipan-agent:$version"
+for ref in "$server_image" "$agent_image"; do
+  case "$ref" in
+    *@sha256:*) ;;
+    *) say "Warning: the image is not pinned by digest: $ref" ;;
+  esac
+done
+
+# Files of a release come from the release page and must match the checksums in this script.
+if [ -n "$pinned" ]; then
+  base_url="${POLIPAN_BASE_URL:-https://github.com/polipan/polipan/releases/download/$stamped_version}"
+  compose_url="$base_url/docker-compose.yml"
+  firewall_url="$base_url/polipan-build.sh"
+else
+  base_url="${POLIPAN_BASE_URL:-https://raw.githubusercontent.com/polipan/polipan/main/deploy}"
+  compose_url="$base_url/compose/docker-compose.yml"
+  firewall_url="$base_url/nftables/polipan-build.sh"
+fi
+
+# check_sha256 FILE WANT: stop when the file is not the one of the release.
+check_sha256() {
+  [ -n "$pinned" ] || return 0
+  got=$(sha256sum "$1" | cut -d ' ' -f 1)
+  [ "$got" = "$2" ] || fail "the checksum of $(basename "$1") is wrong: the download is not the file of release $stamped_version"
+}
+
+verify_image() {
+  if command -v cosign >/dev/null 2>&1; then
+    say "Checking the signature of $1"
+    cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+      --certificate-identity-regexp '^https://github\.com/polipan/polipan/\.github/workflows/release\.yml@refs/tags/v' \
+      "$1" >/dev/null 2>&1 || fail "the signature of $1 is not valid"
+  elif [ -n "$require_signature" ]; then
+    fail "--require-signature needs cosign. Install it from https://docs.sigstore.dev/cosign/installation/"
+  else
+    say "cosign is not installed: the signatures are not checked, the digest pin still holds."
+  fi
+}
+if [ -n "$pinned" ] || [ -n "$require_signature" ]; then
+  verify_image "$server_image"
+  verify_image "$agent_image"
+fi
 
 # The address users open in the browser.
 if [ -n "$domain" ]; then
@@ -126,8 +194,10 @@ if [ -n "$script_dir" ] && [ -f "$script_dir/compose/docker-compose.yml" ]; then
   cp "$script_dir/nftables/polipan-build.sh" /usr/local/sbin/polipan-build-firewall
 else
   say "Downloading the compose file"
-  curl -fsSL "$base_url/compose/docker-compose.yml" -o "$dir/docker-compose.yml"
-  curl -fsSL "$base_url/nftables/polipan-build.sh" -o /usr/local/sbin/polipan-build-firewall
+  curl -fsSL "$compose_url" -o "$dir/docker-compose.yml"
+  curl -fsSL "$firewall_url" -o /usr/local/sbin/polipan-build-firewall
+  check_sha256 "$dir/docker-compose.yml" "$stamped_compose_sha256"
+  check_sha256 /usr/local/sbin/polipan-build-firewall "$stamped_firewall_sha256"
 fi
 chmod 0755 /usr/local/sbin/polipan-build-firewall
 
