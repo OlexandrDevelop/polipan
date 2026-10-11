@@ -210,6 +210,16 @@ func (c *Control) DeployWith(ctx context.Context, p orchestrator.DeployParams) (
 	for _, o := range old {
 		c.settleDependents(ctx, o, "superseded")
 	}
+	// The deployment before it in a batch may have ended before this row existed: nobody would cancel it then.
+	if p.AfterDeploymentID != "" {
+		var before string
+		if err := c.DB.QueryRow(ctx, `SELECT state FROM deployments WHERE id = $1`, p.AfterDeploymentID).Scan(&before); err == nil && terminalStates[before] && before != "live" {
+			if c.cancelWaiting(ctx, id, p.AfterDeploymentID, before) {
+				c.settleDependents(ctx, id, "cancelled")
+			}
+			return id, plan.Warnings, nil
+		}
+	}
 	c.pump(s.id)
 	return id, plan.Warnings, nil
 }

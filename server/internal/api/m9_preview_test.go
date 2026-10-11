@@ -471,3 +471,32 @@ func TestREQ_PREV_014_ManualCreateAndDelete(t *testing.T) {
 		t.Fatal("the services of the preview are left")
 	}
 }
+
+// A fork push when the label could not be removed: the label stays on the PR, so an event of another label must not
+// approve the new commit. Only after the label was off and is added again, the commit is built.
+func TestAC_PREV_05_ForkLabelRemovalFails(t *testing.T) {
+	m := newM9(t)
+	f := m.previewSetup(nil)
+	f.c.ok(200, "PATCH", "/api/v1/projects/"+f.project, map[string]any{"settings": map[string]any{"previews": map[string]any{"enabled": true, "base_environment_id": f.staging, "from_forks": true}}})
+	lbl := []any{map[string]any{"name": "polipan-preview"}}
+	m.prEvent(f, "label_updated", 8, commitA, "evil", map[string]any{"fork": true, "labels": lbl})
+	m.settle("pr-8", "active")
+	env := m.previewEnv("pr-8")
+	releases := m.q(`SELECT count(*) FROM releases r JOIN services s ON s.id = r.service_id WHERE s.environment_id = $1`, env)
+
+	m.fake.RemoveErr = fmt.Errorf("provider is down")
+	m.prEvent(f, "synchronized", 8, commitB, "evil", map[string]any{"fork": true, "labels": lbl})
+	// Another label changes: the polipan-preview label is still on the PR.
+	m.prEvent(f, "label_updated", 8, commitB, "evil", map[string]any{"fork": true, "labels": lbl})
+	m.pv.Tick(context.Background())
+	if m.q(`SELECT count(*) FROM releases r JOIN services s ON s.id = r.service_id WHERE s.environment_id = $1`, env) != releases {
+		t.Fatal("unapproved fork code was built after a failed label removal")
+	}
+	// A maintainer takes the label off (an event without it) and adds it again.
+	m.prEvent(f, "label_updated", 8, commitB, "evil", map[string]any{"fork": true})
+	m.prEvent(f, "label_updated", 8, commitB, "evil", map[string]any{"fork": true, "labels": lbl})
+	m.settle("pr-8", "active")
+	if m.q(`SELECT source->>'commit_sha' FROM releases r JOIN services s ON s.id = r.service_id WHERE s.environment_id = $1 AND s.name = 'web' ORDER BY r.number DESC LIMIT 1`, env) != commitB {
+		t.Fatal("the commit was not built after the label was added again")
+	}
+}

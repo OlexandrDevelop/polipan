@@ -195,16 +195,27 @@ func (s *Service) handleProject(ctx context.Context, c candidate, pr *git.PullRe
 	if fork {
 		if pr.Action == git.PRSynchronize {
 			// A new push to a fork: the label is taken away, the new code is not built until a maintainer adds it again.
-			s.removeLabel(ctx, c.OrgID, conn, pr)
+			removed := s.removeLabel(ctx, c.OrgID, conn, pr)
 			if env != nil {
-				_ = s.setSettings(ctx, env.ID, map[string]any{"waiting_for_label": true, "head_sha": pr.HeadSHA})
+				// label_absent: the label is known to be off. When the removal failed, the label may still be there, and
+				// a later event with the label does not approve the new commit: a maintainer must take it off and add it again.
+				_ = s.setSettings(ctx, env.ID, map[string]any{"waiting_for_label": true, "label_absent": removed, "head_sha": pr.HeadSHA})
+				env.Settings["waiting_for_label"] = true
 				s.report(ctx, env, "pending", "A maintainer must add the label "+LabelName+" to build the new commit", nil)
 			}
 			res.Action = "waiting_for_label"
 			return res
 		}
 		if !pr.HasLabel(LabelName) {
+			if env != nil && env.boolean("waiting_for_label") {
+				_ = s.setSettings(ctx, env.ID, map[string]any{"label_absent": true})
+			}
 			res.Action, res.Reason = "waiting_for_label", "the label "+LabelName+" is missing"
+			return res
+		}
+		// The label is on the PR, but the new commit was not approved yet: the label must have been off since the push.
+		if env != nil && env.boolean("waiting_for_label") && !env.boolean("label_absent") {
+			res.Action, res.Reason = "waiting_for_label", "the label was not removed since the last push: remove it and add it again"
 			return res
 		}
 	}
@@ -387,7 +398,7 @@ func sourceOfMap(cfg map[string]any) *git.Source {
 // push builds the new commit of a PR in the existing preview (REQ-PREV-004). It extends the TTL.
 func (s *Service) push(ctx context.Context, env *envState, cfg Config, pr *git.PullRequest, branch string) error {
 	now := s.Clock.Now()
-	kv := map[string]any{"head_sha": pr.HeadSHA, "head_ref": branch, "waiting_for_label": false, "preview_failure": "", "close_at": ""}
+	kv := map[string]any{"head_sha": pr.HeadSHA, "head_ref": branch, "waiting_for_label": false, "label_absent": false, "preview_failure": "", "close_at": ""}
 	if env.State == StateFailed || env.State == StateClosing {
 		kv["preview_state"] = StateCreating
 	}
@@ -516,20 +527,25 @@ func (s *Service) markClosing(ctx context.Context, env *envState, cfg Config) er
 	return s.setSettings(ctx, env.ID, map[string]any{"preview_state": StateClosing, "close_at": closeAt})
 }
 
-func (s *Service) removeLabel(ctx context.Context, orgID, conn string, pr *git.PullRequest) {
+// removeLabel takes the label off a fork PR. It returns true only when the provider confirmed it.
+func (s *Service) removeLabel(ctx context.Context, orgID, conn string, pr *git.PullRequest) bool {
 	if s.Provider == nil || conn == "" {
-		return
+		return false
 	}
 	prov, err := s.Provider(ctx, orgID, conn)
 	if err != nil {
 		s.Log.Warn("preview: provider", "error", err)
-		return
+		return false
 	}
-	if c, ok := prov.(git.Commenter); ok {
-		if err := c.RemoveLabel(ctx, pr.Repo, pr.Number, LabelName); err != nil {
-			s.Log.Warn("preview: label not removed", "repo", pr.Repo, "number", pr.Number, "error", err)
-		}
+	c, ok := prov.(git.Commenter)
+	if !ok {
+		return false
 	}
+	if err := c.RemoveLabel(ctx, pr.Repo, pr.Number, LabelName); err != nil {
+		s.Log.Warn("preview: label not removed", "repo", pr.Repo, "number", pr.Number, "error", err)
+		return false
+	}
+	return true
 }
 
 func (s *Service) postStatus(ctx context.Context, orgID, conn, repo, sha string, st git.Status) {

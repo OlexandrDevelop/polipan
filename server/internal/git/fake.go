@@ -22,6 +22,8 @@ type FakeProvider struct {
 	Statuses []FakeStatus
 	Comments []FakeComment
 	Removed  []string // "repo#number:label"
+	// RemoveErr makes RemoveLabel fail.
+	RemoveErr error
 }
 
 // FakeStatus is a commit status that the fake provider got.
@@ -67,6 +69,9 @@ func (f *FakeProvider) UpsertComment(_ context.Context, repo string, number int,
 func (f *FakeProvider) RemoveLabel(_ context.Context, repo string, number int, label string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.RemoveErr != nil {
+		return f.RemoveErr
+	}
 	f.Removed = append(f.Removed, repo+"#"+strconv.Itoa(number)+":"+label)
 	return nil
 }

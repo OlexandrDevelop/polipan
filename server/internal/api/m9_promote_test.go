@@ -22,6 +22,7 @@ import (
 	"github.com/polipan/polipan/server/internal/control"
 	"github.com/polipan/polipan/server/internal/gateway/gatewaytest"
 	"github.com/polipan/polipan/server/internal/git"
+	"github.com/polipan/polipan/server/internal/orchestrator"
 	"github.com/polipan/polipan/server/internal/preview"
 	"github.com/polipan/polipan/server/internal/registry"
 	"github.com/polipan/polipan/server/internal/secrets"
@@ -487,5 +488,31 @@ func TestAC_PROMO_07_BatchStopsAtTheFirstFailure(t *testing.T) {
 		if strings.Contains(p, "c-img") {
 			t.Errorf("c was pulled: %s", p)
 		}
+	}
+}
+
+// AC-PROMO-07: a deployment of a batch that is queued after its predecessor has ended is cancelled with batch_stopped.
+func TestAC_PROMO_07_PredecessorEndedBeforeTheNextIsQueued(t *testing.T) {
+	m := newM9(t)
+	c := m.owner()
+	_, envs := c.project("Late")
+	a := m.svc(c, envs["staging"], "a", "a-img:1", "")
+	b := m.svc(c, envs["staging"], "b", "b-img:1", "")
+	m.mu.Lock()
+	m.failPull = "a-img"
+	m.mu.Unlock()
+	first, _, err := m.ctl.DeployWith(context.Background(), orchestrator.DeployParams{ServiceID: a})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st := m.wait(c, first); st != "failed" {
+		t.Fatalf("first: %s", st)
+	}
+	second, _, err := m.ctl.DeployWith(context.Background(), orchestrator.DeployParams{ServiceID: b, AfterDeploymentID: first, BatchID: "pbt_x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st := m.q(`SELECT state || ':' || COALESCE(failure_reason, '') FROM deployments WHERE id = $1`, second); st != "cancelled:batch_stopped" {
+		t.Fatalf("second: %s", st)
 	}
 }
