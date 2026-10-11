@@ -25,6 +25,30 @@ The script does these steps:
 5. Installs the agent of this server and joins it to the panel.
 6. Prints a one-time link. Open it and create the first user. This user is the owner of the organization.
 
+### Short address
+
+`https://get.polipan.dev` sends you to the `install.sh` of the latest release. These two commands do the same:
+
+```sh
+curl -fsSL https://get.polipan.dev | sudo sh -s -- --domain panel.example.com
+curl -fsSL https://github.com/polipan/polipan/releases/latest/download/install.sh | sudo sh -s -- --domain panel.example.com
+```
+
+To pin a version, download the `install.sh` of that release from GitHub and check its signature (see
+[Release](../operations/release.md)).
+
+### Install when the server is created (cloud-init)
+
+Most hosting providers have a field named "user data" or "cloud-init" when you create a server. Paste the file
+[`deploy/cloud-init/polipan.yaml`](https://github.com/polipan/polipan/blob/main/deploy/cloud-init/polipan.yaml)
+there. First change `PANEL_DOMAIN` and `ACME_EMAIL` in the file.
+
+When the server starts for the first time, it installs Polipan with the same script. After a few minutes:
+
+- The log is in `/var/log/polipan-install.log`.
+- The one-time link for the first user is in `/root/polipan-setup-link.txt`. Only root can read it. Open the link,
+  make the first user and delete the file.
+
 Options of the script: `--domain`, `--address`, `--acme-email`, `--version`, `--registry`, `--dir`, `--require-signature`,
 `--allow-userns-sysctl`.
 `--address HOST[:PORT]` sets the address of the panel when there is no domain (for example a forwarded port in a test VM).

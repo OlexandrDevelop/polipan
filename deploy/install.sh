@@ -3,6 +3,7 @@
 # Installs the Polipan control plane and the agent of this host.
 #
 #   curl -fsSL https://github.com/polipan/polipan/releases/latest/download/install.sh | sudo sh -s -- --domain panel.example.com
+#   curl -fsSL https://get.polipan.dev | sudo sh -s -- --domain panel.example.com   (same script, short address)
 #
 # The script of a release installs exactly the files of that release: the images are pinned by digest, the other
 # files are checked against the checksums in this script, and the signatures of the images are checked when

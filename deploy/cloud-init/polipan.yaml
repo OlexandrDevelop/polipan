@@ -1,0 +1,38 @@
+#cloud-config
+# SPDX-License-Identifier: Apache-2.0
+#
+# Installs Polipan when a new server starts for the first time.
+# Paste this text in the "user data" (cloud-init) field when you create the server.
+#
+# Before you paste it, change these two values:
+#   PANEL_DOMAIN   the public name of the panel, for example panel.example.com.
+#                  Its DNS A record must point to the new server.
+#   ACME_EMAIL     your email for the certificate authority (it can be empty).
+#
+# The log is in /var/log/polipan-install.log.
+# The one-time link to create the first user is saved in /root/polipan-setup-link.txt
+# (only root can read it). Open the link, make the first user, then delete the file.
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+write_files:
+  - path: /usr/local/sbin/polipan-first-boot
+    permissions: "0700"
+    owner: root:root
+    content: |
+      #!/bin/sh
+      set -eu
+      PANEL_DOMAIN="panel.example.com"
+      ACME_EMAIL=""
+      log=/var/log/polipan-install.log
+      link=/root/polipan-setup-link.txt
+      [ -e "$link" ] && exit 0
+      umask 077
+      args="--domain $PANEL_DOMAIN"
+      [ -n "$ACME_EMAIL" ] && args="$args --acme-email $ACME_EMAIL"
+      # shellcheck disable=SC2086
+      curl -fsSL https://get.polipan.dev | sh -s -- $args >"$log" 2>&1
+      grep -Eo 'https?://[^ ]+/setup\?token=[A-Za-z0-9._~-]+' "$log" | tail -n 1 >"$link"
+runcmd:
+  - [/usr/local/sbin/polipan-first-boot]
