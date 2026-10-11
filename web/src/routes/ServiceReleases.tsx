@@ -39,6 +39,7 @@ const releaseTone: Record<string, Tone> = {
 export function useReleases(serviceId: string) {
   return useQuery({
     queryKey: ['releases', serviceId],
+    enabled: Boolean(serviceId),
     queryFn: () =>
       unwrap(
         api.GET('/services/{service_id}/releases', {

@@ -6,6 +6,7 @@ With no stage name, all stages run. The panel is reached on the forwarded port o
 generator runs inside the VM (load.py), so the numbers are not changed by the user-mode network of QEMU.
 Every check prints PASS or FAIL with a short text. The exit code is 1 when a check failed.
 """
+import calendar
 import http.client
 import json
 import os
@@ -47,6 +48,11 @@ def vm(cmd, check_rc=True, timeout=600, stdin=None):
     if check_rc and r.returncode != 0:
         raise RuntimeError(f"vm command failed ({r.returncode}): {cmd}\n{r.stdout}\n{r.stderr}")
     return (r.stdout + r.stderr).strip() if not check_rc else r.stdout.strip()
+
+
+def compose(args):
+    """Runs docker compose in /opt/polipan (only root can enter it)."""
+    return vm("sudo sh -c 'cd /opt/polipan && docker compose %s'" % args)
 
 
 def wait(what, fn, timeout=120, every=2):
@@ -161,7 +167,7 @@ def heartbeat_after(p, since):
     _, nodes = p.call("GET", "/nodes", expect=200)
     if not nodes or nodes[0]["state"] != "ready":
         return False
-    beat = time.mktime(time.strptime(nodes[0]["last_heartbeat_at"][:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
+    beat = calendar.timegm(time.strptime(nodes[0]["last_heartbeat_at"][:19], "%Y-%m-%dT%H:%M:%S"))
     return beat >= since
 
 
@@ -197,7 +203,7 @@ def logged_in():
 
 def stage_setup():
     panel_ready()
-    url = vm("cd /opt/polipan && sudo docker compose exec -T server /polipan-server setup-url").strip()
+    url = compose("exec -T server /polipan-server setup-url").strip()
     check("setup link uses the forwarded address", url.startswith(f"http://127.0.0.1:{HTTP}/setup?token="), url)
     token = re.search(r"token=([0-9a-f]+)", url).group(1)
     p = Panel()
@@ -323,7 +329,7 @@ def stage_restart_server():
     p = logged_in()
     start_load(APP, "rs")
     t0 = time.time()
-    vm("cd /opt/polipan && sudo docker compose kill server && sudo docker compose start server")
+    compose("kill server && docker compose start server")
     wait("server healthy", lambda: get(f"127.0.0.1:{HTTP}", "/healthz")[0] == 200, timeout=120, every=2)
     back = time.time() - t0
     p2 = Panel()
@@ -385,7 +391,7 @@ def stage_upgrade():
     agent_v0 = vm("/usr/local/bin/polipan-agent version")
     pid0 = vm("systemctl show -p MainPID --value polipan-agent")
     sum0 = vm("sha256sum /usr/local/bin/polipan-agent | cut -d ' ' -f 1")
-    server_id0 = vm("cd /opt/polipan && sudo docker compose ps -q server")
+    server_id0 = compose("ps -q server")
     ver = "vm-upgrade-" + str(int(time.time()))
     commit = subprocess.run(["git", "-C", ROOT, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
     for name in ("server", "agent"):
@@ -402,7 +408,7 @@ def stage_upgrade():
     sum1 = vm("sha256sum /usr/local/bin/polipan-agent | cut -d ' ' -f 1")
     check("upgrade: the agent binary was replaced", sum0 != sum1 and ver in agent_v1, f"{agent_v0!r} -> {agent_v1!r}")
     check("upgrade: the running agent was restarted (new process)", pid0 != pid1 and pid1 != "0", f"pid {pid0} -> {pid1}")
-    server_id1 = vm("cd /opt/polipan && sudo docker compose ps -q server")
+    server_id1 = compose("ps -q server")
     check("upgrade: the server container uses the new image", server_id0 != server_id1)
     panel_ready()
     p = Panel()
@@ -423,21 +429,32 @@ def stage_https():
     vm("""sudo sh -s <<'EOS'
 set -e
 docker rm -f pebble challtest >/dev/null 2>&1 || true
-docker run -d --name challtest --network polipan --network-alias challtest -p 127.0.0.1:8055:8055 \
+docker network inspect acmetest >/dev/null 2>&1 || docker network create acmetest >/dev/null
+# The firewall of the agent stops containers of the app network from talking to each other. So the test DNS is on its
+# own network, and Pebble is on both networks (the app network, where Caddy is, and this one).
+docker run -d --name challtest --network acmetest --network-alias challtest -p 127.0.0.1:8055:8055 \
   ghcr.io/letsencrypt/pebble-challtestsrv:latest -http01 "" -https01 "" -tlsalpn01 "" -defaultIPv6 "" >/dev/null
 docker run -d --name pebble --network polipan --network-alias pebble -p 127.0.0.1:15000:15000 \
   -e PEBBLE_VA_NOSLEEP=1 -v /tmp/pebble/pebble.json:/test/config/pebble-config.json \
   ghcr.io/letsencrypt/pebble:latest -config /test/config/pebble-config.json -dnsserver challtest:8053 >/dev/null
+docker network connect acmetest pebble
 docker cp pebble:/test/certs/pebble.minica.pem /etc/polipan/pebble.minica.pem
 sed -i '/ACME/d' /etc/polipan/agent.env
 printf 'POLIPAN_AGENT_ACME_CA_URL=https://pebble:14000/dir\\nPOLIPAN_AGENT_ACME_TRUSTED_ROOTS=/etc/polipan/pebble.minica.pem\\n' >> /etc/polipan/agent.env
 grep -q ' secure.test' /etc/hosts || echo '127.0.0.1 secure.test' >> /etc/hosts
+# Every Pebble start is a new CA: Caddy must forget the account and certificates of the old one.
+docker exec polipan-caddy sh -c 'rm -rf /data/acme/pebble-14000-dir /data/caddy/certificates/pebble-14000-dir' || true
+docker rm -f polipan-caddy >/dev/null
 systemctl restart polipan-agent
 EOS""")
     # The test name resolves to the host address on the Docker network of the node (where Caddy listens).
     wait("challtestsrv up", lambda: vm("curl -fsS -X POST -d '{\"host\":\"secure.test\",\"addresses\":[\"10.210.1.1\"]}' http://127.0.0.1:8055/add-a; echo ok", check_rc=False).endswith("ok"), timeout=60, every=2)
     check("Pebble (local test ACME server) and its test DNS are running in the VM", True)
     wait("node ready", lambda: node_ready(p), timeout=120, every=3)
+    _, old = p.call("GET", f"/services/{st['web_id']}/domains", expect=200)
+    for d in old:
+        if d["host"] == SECURE:
+            p.call("DELETE", f"/domains/{d['id']}", expect=204)
     _, dom = p.call("POST", f"/services/{st['web_id']}/domains", {"host": SECURE, "container_port": 80}, expect=201)
 
     def issued():
@@ -470,7 +487,7 @@ EOS""")
         issuer = tls.getpeercert().get("issuer")
     check("HTTPS from this computer through the forwarded port 8443 (certificate checked against the Pebble root)", data.startswith(b"HTTP/1.1 200"), f"issuer {issuer}")
     # Put the VM back to the plain setup.
-    vm("sudo sh -c \"sed -i '/ACME/d' /etc/polipan/agent.env; printf 'POLIPAN_AGENT_ACME_CA_URL=\\nPOLIPAN_AGENT_ACME_TRUSTED_ROOTS=\\n' >> /etc/polipan/agent.env; sed -i '/secure.test/d' /etc/hosts; docker rm -f pebble challtest >/dev/null; rm -f /etc/polipan/pebble.minica.pem; systemctl restart polipan-agent\"")
+    vm("sudo sh -c \"sed -i '/ACME/d' /etc/polipan/agent.env; printf 'POLIPAN_AGENT_ACME_CA_URL=\\nPOLIPAN_AGENT_ACME_TRUSTED_ROOTS=\\n' >> /etc/polipan/agent.env; sed -i '/secure.test/d' /etc/hosts; docker rm -f pebble challtest >/dev/null; docker network rm acmetest >/dev/null; rm -f /etc/polipan/pebble.minica.pem; find /var/lib/polipan-agent/caddy-config -name autosave.json -delete; docker exec polipan-caddy sh -c 'rm -rf /data/acme/pebble-14000-dir /data/caddy/certificates/pebble-14000-dir' || true; docker rm -f polipan-caddy >/dev/null; systemctl restart polipan-agent\"")
 
 
 STAGES = [("setup", stage_setup), ("deploy", stage_deploy), ("bluegreen", stage_bluegreen), ("rollback", stage_rollback),

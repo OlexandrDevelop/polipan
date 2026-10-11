@@ -32,11 +32,14 @@ const context = await browser.newContext({ viewport: { width: 1280, height: 800 
 const page = await context.newPage()
 const problems = []
 page.on('pageerror', (e) => problems.push('page error: ' + e.message))
+// The login page asks /me before the user signs in: its 401 is normal.
 page.on('console', (m) => {
-  if (m.type() === 'error') problems.push('console: ' + m.text())
+  if (m.type() === 'error' && !/status of 401/.test(m.text())) problems.push('console: ' + m.text())
 })
 page.on('response', (r) => {
-  if (r.status() >= 500) problems.push(`HTTP ${r.status()} ${r.url()}`)
+  const bad = r.status() >= 500 || (r.status() === 401 && !/\/api\/v1\/(me|auth\/)/.test(r.url()))
+  if (r.status() >= 400) console.log('  (info) HTTP', r.status(), r.request().method(), r.url())
+  if (bad) problems.push(`HTTP ${r.status()} ${r.url()}`)
 })
 
 // ---- login ----
@@ -66,8 +69,9 @@ const services = await api(`/environments/${env.id}/services`)
 const svc = services.find((s) => s.name === 'zd') || services[0]
 const deps = await api(`/services/${svc.id}/deployments`)
 const dep = deps.items[0]
-const slug = (o) => o.slug || o.id
-const servicePath = `/p/${slug(project)}/e/${slug(env)}/s/${slug(svc)}`
+const slug = (o) => o.slug || o.name || o.id
+const org = new URL(page.url()).pathname.match(/^\/o\/([^/]+)/)?.[1] || 'default'
+const servicePath = `/o/${org}/p/${slug(project)}/e/${slug(env)}/s/${slug(svc)}`
 await page.goto(base + servicePath)
 await page.waitForLoadState('networkidle')
 const svcText = await page.locator('body').innerText()
@@ -94,7 +98,7 @@ check('themes: light and dark look different', colors.light !== colors.dark)
 
 // ---- phone width ----
 await page.setViewportSize({ width: 390, height: 844 })
-for (const [name, path] of [['dashboard', '/'], ['deploy', `${servicePath}/deployments/${dep.id}`]]) {
+for (const [name, path] of [['dashboard', `/o/${org}`], ['deploy', `${servicePath}/deployments/${dep.id}`]]) {
   await page.goto(base + path)
   await page.waitForLoadState('networkidle')
   const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)

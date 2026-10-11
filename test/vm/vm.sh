@@ -267,7 +267,7 @@ cmd_install() {
 
 print_setup_url() {
   local url
-  url=$(vm_ssh 'cd /opt/polipan && sudo docker compose exec -T server /polipan-server setup-url' | tr -d '\r')
+  url=$(vm_ssh "sudo sh -c 'cd /opt/polipan && docker compose exec -T server /polipan-server setup-url'" | tr -d '\r')
   echo
   echo "Open this one-time link in the browser on this computer to create the first user:"
   echo "  $url"
