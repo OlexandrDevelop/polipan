@@ -449,3 +449,39 @@ func TestBuildAccessLog(t *testing.T) {
 		t.Fatal("the default log must not repeat access lines")
 	}
 }
+
+// stepDocker records the calls of Start in order.
+type stepDocker struct {
+	docker.Client
+	steps   []string
+	pullErr error
+}
+
+func (f *stepDocker) Inspect(context.Context, string) (*docker.Container, error) {
+	return nil, docker.ErrNotFound
+}
+
+func (f *stepDocker) PullImage(_ context.Context, ref, _ string) (string, error) {
+	f.steps = append(f.steps, "pull "+ref)
+	return ref, f.pullErr
+}
+
+func (f *stepDocker) CreateAndStart(_ context.Context, spec docker.ContainerSpec) (string, error) {
+	f.steps = append(f.steps, "create "+spec.Image)
+	return "id", nil
+}
+
+// A new host has no Caddy image: Start pulls it before it creates the container, and a failed pull is not fatal.
+func TestStartPullsTheCaddyImageFirst(t *testing.T) {
+	for _, pullErr := range []error{nil, errors.New("offline")} {
+		f := &stepDocker{pullErr: pullErr}
+		m := &Manager{Config: Config{DataDir: t.TempDir()}, Docker: f}
+		if err := m.Start(context.Background()); err != nil {
+			t.Fatalf("start with pull error %v: %v", pullErr, err)
+		}
+		want := []string{"pull " + DefaultImage, "create " + DefaultImage}
+		if len(f.steps) != 2 || f.steps[0] != want[0] || f.steps[1] != want[1] {
+			t.Fatalf("steps %v, want %v", f.steps, want)
+		}
+	}
+}

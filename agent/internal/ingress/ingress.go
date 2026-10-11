@@ -133,6 +133,8 @@ func (m *Manager) Start(ctx context.Context) error {
 	if m.Config.ACMETrustedRoots != "" {
 		binds = append(binds, m.Config.ACMETrustedRoots+":"+m.Config.ACMETrustedRoots+":ro")
 	}
+	// A new host has no Caddy image. If the pull fails, an image that is there already may still work.
+	_, _ = m.Docker.PullImage(ctx, m.image(), "")
 	_, err = m.Docker.CreateAndStart(ctx, docker.ContainerSpec{
 		Name:  ContainerName,
 		Image: m.image(),
