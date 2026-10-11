@@ -45,6 +45,8 @@ export type Permission =
   | 'config:apply'
   | 'config:source'
   | 'alert:manage'
+  | 'service:promote'
+  | 'preview:manage'
 
 const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'project:create': 'dev',
@@ -81,6 +83,9 @@ const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'config:apply': 'p',
   'config:source': 'admin',
   'alert:manage': 'admin',
+  // Judged on the target environment of the promotion.
+  'service:promote': 'p',
+  'preview:manage': 'dev',
 }
 
 // hidden: the role can never do it. blocked: shown but disabled. allow: enabled.

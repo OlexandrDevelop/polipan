@@ -9,6 +9,7 @@ import { useMe } from '@/auth'
 import { DataList } from '@/components/DataList'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Modal } from '@/components/Modal'
+import { PromoteDialog } from '@/components/PromoteDialog'
 import { RollbackDialog } from '@/components/RollbackDialog'
 import { Time } from '@/components/Time'
 import {
@@ -21,6 +22,7 @@ import {
 } from '@/components/ui'
 import { t, tState } from '@/i18n'
 import { accessFor } from '@/permissions'
+import { useScope } from '@/scope'
 import type { Environment, Service } from '@/scope'
 import type { Tone } from '@/status'
 import type { components } from '@api/schema'
@@ -107,9 +109,12 @@ export function ServiceReleases({
   const releases = useReleases(service.id ?? '')
   const [rollbackId, setRollbackId] = useState<string | null>(null)
   const [noting, setNoting] = useState<Release | null>(null)
+  const [promoting, setPromoting] = useState<Release | null>(null)
+  const scope = useScope(base.project, base.env)
   const [picked, setPicked] = useState<string[]>([])
   const role = me.data?.org_role
   const rollbackAccess = accessFor(role, 'service:rollback', environment.protected)
+  const promoteAccess = accessFor(role, 'service:promote')
   const noteAccess = accessFor(role, 'service:update', environment.protected)
 
   if (releases.isPending) return <Skeleton />
@@ -205,6 +210,9 @@ export function ServiceReleases({
             {r.status === 'pruned' && rollbackAccess !== 'hidden' && (
               <Button onClick={onDeploy}>{t('rollback.deploy_instead')}</Button>
             )}
+            {promoteAccess !== 'hidden' && r.status !== 'pruned' && scope.project && (
+              <Button onClick={() => setPromoting(r)}>{t('releases.promote')}</Button>
+            )}
             {noteAccess !== 'hidden' && (
               <Button
                 reason={noteAccess === 'blocked' ? t('common.needs_admin') : undefined}
@@ -231,6 +239,21 @@ export function ServiceReleases({
             setRollbackId(null)
             onDeploy()
           }}
+        />
+      )}
+      {promoting && scope.project && (
+        <PromoteDialog
+          org={base.org}
+          project={scope.project}
+          source={{
+            kind: 'release',
+            releaseId: promoting.id ?? '',
+            serviceName: service.name ?? '',
+            releaseNumber: promoting.number,
+          }}
+          sourceEnvironment={environment}
+          environments={scope.environments}
+          onClose={() => setPromoting(null)}
         />
       )}
       {noting && <NoteDialog release={noting} onClose={() => setNoting(null)} />}

@@ -139,6 +139,63 @@ function RetentionForm({ settings }: { settings: Settings }) {
   )
 }
 
+// The domain under which previews get their URL (F03).
+function PreviewDomainForm({ settings }: { settings: Settings }) {
+  const queryClient = useQueryClient()
+  const allowed = useAccess('org:update') === 'allow'
+  const current = settings.preview_domain ?? ''
+  const [value, setValue] = useState(current)
+  const [saved, setSaved] = useState(false)
+  const valid =
+    value.trim() === '' ||
+    /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(value.trim())
+  const save = useMutation({
+    mutationFn: () =>
+      unwrap(
+        api.PATCH('/org', {
+          body: { settings: { ...settings, preview_domain: value.trim() } },
+        }),
+      ),
+    onSuccess: async () => {
+      setSaved(true)
+      await queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+  return (
+    <Card>
+      <form
+        className="space-y-4"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault()
+          setSaved(false)
+          if (valid && value.trim() !== current) save.mutate()
+        }}
+      >
+        <h2 className="font-semibold">{t('org.preview_domain')}</h2>
+        <TextField
+          label={t('org.preview_domain_label')}
+          hint={t('org.preview_domain_hint')}
+          value={value}
+          disabled={!allowed}
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          error={valid ? null : t('domains.host_invalid')}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        {saved && <Banner variant="info">{t('org.saved')}</Banner>}
+        {save.error && <ErrorBanner error={save.error} title={t('org.save_failed')} />}
+        {allowed && (
+          <Button type="submit" variant="primary" loading={save.isPending}>
+            {t('common.save')}
+          </Button>
+        )}
+      </form>
+    </Card>
+  )
+}
+
 // Organization settings: how long metrics and logs are kept (REQ-OBS-005, F09).
 export function OrgSettingsPage() {
   const org = useQuery({ queryKey: ['org'], queryFn: () => unwrap(api.GET('/org')) })
@@ -149,6 +206,7 @@ export function OrgSettingsPage() {
         {org.isPending && <Skeleton />}
         {org.isError && <ErrorBanner error={org.error} onRetry={() => void org.refetch()} />}
         {org.data && <RetentionForm settings={org.data.settings ?? ({} as Settings)} />}
+        {org.data && <PreviewDomainForm settings={org.data.settings ?? ({} as Settings)} />}
       </div>
     </section>
   )

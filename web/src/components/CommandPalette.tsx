@@ -63,6 +63,12 @@ export function CommandPalette({ org, projectSlug, envSlug, onClose, onSignOut }
         run: () => void navigate({ to: '/o/$org/deployments', params: { org } }),
       },
       {
+        id: 'page:previews',
+        group: t('palette.pages'),
+        label: t('nav.previews'),
+        run: () => void navigate({ to: '/o/$org/previews', params: { org }, search: {} }),
+      },
+      {
         id: 'page:nodes',
         group: t('palette.pages'),
         label: t('nav.nodes'),

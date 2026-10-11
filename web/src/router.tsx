@@ -31,6 +31,8 @@ import { CatalogPage } from '@/routes/Catalog'
 import { NodesPage } from '@/routes/Nodes'
 import { NodeDetailPage } from '@/routes/NodeDetail'
 import { NodeHistoryPage } from '@/routes/NodeHistory'
+import { PreviewDetailPage } from '@/routes/PreviewDetail'
+import { PreviewsPage } from '@/routes/Previews'
 import { ProfilePage } from '@/routes/Profile'
 import { ProjectPage } from '@/routes/ProjectPage'
 import { DashboardPage, ProjectsPage } from '@/routes/Projects'
@@ -116,6 +118,19 @@ const deploymentsRoute = createRoute({
     ...(typeof search.state === 'string' && search.state ? { state: search.state } : {}),
     ...(typeof search.service === 'string' && search.service ? { service: search.service } : {}),
   }),
+})
+const previewsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'previews',
+  component: PreviewsPage,
+  // The project filter stays in the URL (UI-18).
+  validateSearch: (search: Record<string, unknown>): { project?: string } =>
+    typeof search.project === 'string' && search.project ? { project: search.project } : {},
+})
+const previewDetailRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: 'p/$project/previews/$env',
+  component: PreviewDetailPage,
 })
 const catalogRoute = createRoute({
   getParentRoute: () => orgRoute,
@@ -248,6 +263,8 @@ const routeTree = rootRoute.addChildren([
     nodesRoute,
     nodeHistoryRoute,
     nodeRoute,
+    previewsRoute,
+    previewDetailRoute,
     catalogRoute,
     backupsRoute,
     backupTargetsRoute,

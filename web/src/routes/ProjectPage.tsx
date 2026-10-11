@@ -8,6 +8,7 @@ import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Modal } from '@/components/Modal'
+import { PromoteDialog } from '@/components/PromoteDialog'
 import { PageHeader } from '@/components/PageHeader'
 import {
   Button,
@@ -206,13 +207,17 @@ export function ProjectPage() {
   const navigate = useNavigate()
   const scope = useScope(projectSlug ?? '', envSlug)
   const [creating, setCreating] = useState(false)
+  const [promoting, setPromoting] = useState(false)
   const canCreateEnv = useAccess('env:create', false, scope.project?.id)
   const canManageRoles = useAccess('member:manage')
+  const promoteAccess = useAccess('service:promote', false, scope.project?.id)
 
   if (scope.state === 'pending') return <Skeleton />
   if (scope.state === 'error') return <ErrorBanner error={scope.error} onRetry={scope.retry} />
   if (scope.state === 'notfound' || !scope.project) return <NotFoundPage />
-  const { project, environment, environments } = scope
+  const { project, environment } = scope
+  // Previews have their own screens (UI-18, UI-36).
+  const environments = scope.environments.filter((e) => e.kind !== 'preview')
   const orgSlug = org ?? ''
 
   return (
@@ -236,6 +241,14 @@ export function ProjectPage() {
               className="inline-flex min-h-8 items-center rounded-sm border border-border-strong px-3 py-1 text-sm coarse:min-h-11"
             >
               {t('config.link')}
+            </Link>
+            <Link
+              to="/o/$org/previews"
+              params={{ org: orgSlug }}
+              search={{ project: project.slug ?? '' }}
+              className="inline-flex min-h-8 items-center rounded-sm border border-border-strong px-3 py-1 text-sm coarse:min-h-11"
+            >
+              {t('nav.previews')}
             </Link>
             {canCreateEnv === 'allow' && (
               <Button onClick={() => setCreating(true)}>{t('env.create')}</Button>
@@ -301,10 +314,23 @@ export function ProjectPage() {
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-semibold">{environment.name}</h2>
               <EnvironmentBadges kind={environment.kind} isProtected={environment.protected} />
+              {promoteAccess !== 'hidden' && environments.length > 1 && (
+                <Button onClick={() => setPromoting(true)}>{t('promote.all')}</Button>
+              )}
             </div>
             <ServiceCards environment={environment} project={project.slug ?? ''} />
           </div>
         </>
+      )}
+      {promoting && environment && (
+        <PromoteDialog
+          org={orgSlug}
+          project={project}
+          source={{ kind: 'environment' }}
+          sourceEnvironment={environment}
+          environments={environments}
+          onClose={() => setPromoting(false)}
+        />
       )}
       {creating && (
         <CreateEnvironmentDialog
