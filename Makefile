@@ -44,6 +44,14 @@ images: ## Build the server, agent and cli images (tag polipan-*:dev)
 smoke: ## Start the images and check /healthz (gate 11, needs make images)
 	sh test/ci/smoke.sh polipan-server:dev polipan-agent:dev polipan-cli:dev
 
+.PHONY: release-test
+release-test: ## Tests of the release scripts and the reproducible build (needs Go and git, no network)
+	sh test/release/test.sh --build
+
+.PHONY: upgrade-test
+upgrade-test: ## Upgrade test: the new version on the data of the previous pre-release (needs Docker). make upgrade-test FROM=<tag or commit>
+	sh test/upgrade/run.sh $(if $(FROM),--from $(FROM),)
+
 # ---- Generated code ----
 
 .PHONY: api-sync

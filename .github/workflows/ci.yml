@@ -160,3 +160,32 @@ jobs:
           fetch-depth: 0
       - run: make images
       - run: make smoke
+
+  # Release scripts, pinned images and actions, and the reproducible build (REQ-OSS-004, docs/operations/release.md).
+  release-scripts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - run: make release-test
+
+  # Upgrade test of M10: the new version starts on the database of the previous pre-release (tag, or the
+  # commit in the repository variable UPGRADE_FROM). It is skipped while there is no earlier release.
+  upgrade:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - env:
+          UPGRADE_FROM: ${{ vars.UPGRADE_FROM }}
+        run: |
+          prev=$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_SHA^" 2>/dev/null || true)
+          [ -n "$prev" ] || prev=$UPGRADE_FROM
+          if [ -z "$prev" ]; then echo "No earlier release and no UPGRADE_FROM: skipped."; exit 0; fi
+          sh test/upgrade/run.sh --from "$prev" --to "$GITHUB_SHA"

@@ -7,6 +7,8 @@ Polipan is a self-hosted, open source server panel. It runs apps from Git or fro
 - [Backups and restore checks](operations/backups.md)
 - [Databases and templates](operations/databases-and-templates.md)
 - [Registry garbage collection](operations/registry-gc.md)
+- [Single sign-on (SSO)](operations/sso.md)
+- [Release: tag, sign, verify](operations/release.md)
 - [Contributing](https://github.com/polipan/polipan/blob/main/CONTRIBUTING.md)
 
 User docs are added with the features. They live in this folder and are versioned with the code.
