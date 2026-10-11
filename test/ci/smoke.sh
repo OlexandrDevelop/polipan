@@ -30,8 +30,11 @@ until docker exec "$pg" pg_isready -U postgres >/dev/null 2>&1; do
   sleep 1
 done
 
+# The server runs as a normal user and cannot write /etc/polipan, so it gets the master key in the environment.
+master_key=$(head -c 32 /dev/urandom | base64)
 docker run -d --name "$srv" --network "$net" \
   -e "POLIPAN_DATABASE_URL=postgres://postgres:pw@$pg:5432/postgres?sslmode=disable" \
+  -e "POLIPAN_MASTER_KEY=$master_key" \
   "$server_image" >/dev/null
 i=0
 until docker exec "$srv" /polipan-server healthcheck >/dev/null 2>&1; do
