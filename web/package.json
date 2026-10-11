@@ -15,6 +15,7 @@
     "test:e2e": "playwright test --project=laptop && npm run test:built",
     "build:check": "POLIPAN_WEB_OUT=dist-check vite build --emptyOutDir",
     "check:parity": "node scripts/check-parity.mjs",
+    "check:locales": "node scripts/check-locales.mjs",
     "check:budget": "node scripts/check-budget.mjs dist-check",
     "test:built": "playwright test --project=built --workers=1",
     "test:visual": "playwright test visual.spec.ts"

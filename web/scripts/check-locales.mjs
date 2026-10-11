@@ -7,7 +7,11 @@ import { fileURLToPath } from 'node:url'
 const dir = fileURLToPath(new URL('../src/locales/', import.meta.url))
 const load = (code) => JSON.parse(readFileSync(`${dir}${code}/translation.json`, 'utf8'))
 const en = load('en')
-const holes = (text) => [...String(text).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',')
+const holes = (text) =>
+  [...String(text).matchAll(/\{(\w+)\}/g)]
+    .map((m) => m[1])
+    .sort()
+    .join(',')
 
 const problems = []
 for (const code of readdirSync(dir).filter((c) => c !== 'en')) {
