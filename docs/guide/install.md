@@ -25,7 +25,8 @@ The script does these steps:
 5. Installs the agent of this server and joins it to the panel.
 6. Prints a one-time link. Open it and create the first user. This user is the owner of the organization.
 
-Options of the script: `--domain`, `--acme-email`, `--version`, `--registry`, `--dir`, `--require-signature`.
+Options of the script: `--domain`, `--address`, `--acme-email`, `--version`, `--registry`, `--dir`, `--require-signature`.
+`--address HOST[:PORT]` sets the address of the panel when there is no domain (for example a forwarded port in a test VM).
 Run `install.sh --help` for the full list.
 
 ## Add another server

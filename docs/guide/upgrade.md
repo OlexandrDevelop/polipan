@@ -17,6 +17,7 @@ curl -fsSL https://github.com/polipan/polipan/releases/download/v1.1.0/install.s
 
 Use the same `--domain` and `--dir` as the first time. The script keeps the master key, the `.env` file and the data,
 checks the checksums, pulls the new images by digest and restarts the server.
+The script also replaces the agent binary of this host and restarts the agent service, so the host runs the new version.
 Database migrations run when the server starts. A migration only moves forward: to go back, restore the backup.
 
 Your apps keep running during the restart. Domains keep working, because every node has its own ingress and its own
