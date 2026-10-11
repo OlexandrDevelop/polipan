@@ -139,6 +139,18 @@ func (s *Service) findEnv(ctx context.Context, projectID, repo string, number in
 	return e, nil
 }
 
+// findDeletedEnv reads the newest deleted preview of a PR. A fork PR keeps its approval there: the sha that was
+// approved and whether the label is known to be off.
+func (s *Service) findDeletedEnv(ctx context.Context, projectID, repo string, number int) *envState {
+	e, err := scanEnv(s.Pool.QueryRow(ctx, `SELECT `+envCols+` FROM environments e JOIN projects p ON p.id = e.project_id
+		WHERE e.project_id = $1 AND e.kind = 'preview' AND e.preview_repo = $2 AND e.preview_pr_number = $3 AND e.deleted_at IS NOT NULL
+		ORDER BY e.created_at DESC LIMIT 1`, projectID, repo, number))
+	if err != nil {
+		return nil
+	}
+	return e
+}
+
 func (s *Service) handleProject(ctx context.Context, c candidate, pr *git.PullRequest) Result {
 	res := Result{ProjectID: c.ProjectID, Action: "ignored"}
 	cfg, err := s.projectConfig(ctx, c.ProjectID)
@@ -181,7 +193,10 @@ func (s *Service) handleProject(ctx context.Context, c candidate, pr *git.PullRe
 		if fork && cfg.FromForks {
 			// The label does not stay on a closed PR: a push to a closed PR sends no event, so the label could not be
 			// told from an approval of the new commit when the PR is reopened.
-			s.removeLabel(ctx, c.OrgID, conn, pr)
+			removed := s.removeLabel(ctx, c.OrgID, conn, pr)
+			if env != nil {
+				_ = s.setSettings(ctx, env.ID, map[string]any{"label_absent": removed})
+			}
 		}
 		if env == nil || env.State == StateClosing {
 			return res
@@ -200,14 +215,21 @@ func (s *Service) handleProject(ctx context.Context, c candidate, pr *git.PullRe
 	if fork {
 		// A fork commit is built only after a maintainer approved that commit with the label. The labels stay on a PR
 		// when it is closed or pushed to, so only the commit that was built (approved_sha) is known to be approved.
-		approved := env != nil && pr.HeadSHA == env.str("approved_sha")
+		// Without an environment, the approval is read from the deleted environment of the PR (if there was one).
+		ref := env
+		if ref == nil {
+			ref = s.findDeletedEnv(ctx, c.ProjectID, pr.Repo, pr.Number)
+		}
+		approved := ref != nil && pr.HeadSHA == ref.str("approved_sha")
 		if pr.Action != git.PRLabels && !approved {
 			// A new push, or a reopened PR with a commit that nobody approved: the label is taken away and nothing is built.
 			removed := s.removeLabel(ctx, c.OrgID, conn, pr)
-			if env != nil {
+			if ref != nil {
 				// label_absent: the label is known to be off. When the removal failed, the label may still be there, and
 				// a later event with the label does not approve the new commit: a maintainer must take it off and add it again.
-				_ = s.setSettings(ctx, env.ID, map[string]any{"waiting_for_label": true, "label_absent": removed, "head_sha": pr.HeadSHA})
+				_ = s.setSettings(ctx, ref.ID, map[string]any{"waiting_for_label": true, "label_absent": removed, "head_sha": pr.HeadSHA})
+			}
+			if env != nil {
 				env.Settings["waiting_for_label"] = true
 				s.report(ctx, env, "pending", "A maintainer must add the label "+LabelName+" to build the new commit", nil)
 			}
@@ -216,13 +238,14 @@ func (s *Service) handleProject(ctx context.Context, c candidate, pr *git.PullRe
 		}
 		if pr.Action == git.PRLabels {
 			if !pr.HasLabel(LabelName) {
-				if env != nil {
-					_ = s.setSettings(ctx, env.ID, map[string]any{"label_absent": true})
+				if ref != nil {
+					_ = s.setSettings(ctx, ref.ID, map[string]any{"label_absent": true})
 				}
 				res.Action, res.Reason = "waiting_for_label", "the label "+LabelName+" is missing"
 				return res
 			}
-			if env != nil && !approved && !env.boolean("label_absent") {
+			// A label on a commit that was not approved: it counts only when the label was known to be off before.
+			if !approved && ref != nil && !ref.boolean("label_absent") {
 				res.Action, res.Reason = "waiting_for_label", "the label was not removed since the last push: remove it and add it again"
 				return res
 			}

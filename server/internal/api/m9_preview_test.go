@@ -531,3 +531,31 @@ func TestAC_PREV_05_ForkCloseAndReopenWithNewCommit(t *testing.T) {
 		t.Fatal("the commit was not built after a new approval")
 	}
 }
+
+// SEC-1, no environment: the preview was deleted after the grace time, the label could not be removed, a new commit
+// was pushed. A label event must not build it.
+func TestAC_PREV_05_ForkAfterTheEnvironmentWasDeleted(t *testing.T) {
+	m := newM9(t)
+	f := m.previewSetup(map[string]any{"cleanup_grace_minutes": 0})
+	f.c.ok(200, "PATCH", "/api/v1/projects/"+f.project, map[string]any{"settings": map[string]any{"previews": map[string]any{
+		"enabled": true, "base_environment_id": f.staging, "from_forks": true, "cleanup_grace_minutes": 0}}})
+	lbl := []any{map[string]any{"name": "polipan-preview"}}
+	m.prEvent(f, "label_updated", 8, commitA, "evil", map[string]any{"fork": true, "labels": lbl})
+	m.settle("pr-8", "active")
+	m.fake.RemoveErr = fmt.Errorf("provider is down")
+	m.prEvent(f, "closed", 8, commitA, "evil", map[string]any{"fork": true, "labels": lbl})
+	m.pv.Tick(context.Background())
+	if m.q(`SELECT count(*) FROM environments WHERE kind = 'preview' AND deleted_at IS NULL`) != "0" {
+		t.Fatal("the preview was not deleted")
+	}
+	m.prEvent(f, "reopened", 8, commitB, "evil", map[string]any{"fork": true, "labels": lbl})
+	m.prEvent(f, "label_updated", 8, commitB, "evil", map[string]any{"fork": true, "labels": lbl})
+	if m.q(`SELECT count(*) FROM environments WHERE kind = 'preview' AND deleted_at IS NULL`) != "0" {
+		t.Fatal("unapproved fork code got a preview after the environment was deleted")
+	}
+	// The label off and on again approves the commit.
+	m.fake.RemoveErr = nil
+	m.prEvent(f, "label_updated", 8, commitB, "evil", map[string]any{"fork": true})
+	m.prEvent(f, "label_updated", 8, commitB, "evil", map[string]any{"fork": true, "labels": lbl})
+	m.settle("pr-8", "active")
+}
