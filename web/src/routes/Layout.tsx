@@ -301,7 +301,10 @@ export function AppShell() {
                 activeOptions={l.exact ? { exact: true } : undefined}
                 className={navLink}
               >
-                <span aria-hidden="true" className="text-muted max-sm:hidden">
+                <span
+                  aria-hidden="true"
+                  className="text-muted max-sm:hidden [.active>&]:text-primary"
+                >
                   {i + 1}:
                 </span>
                 {l.short ? (

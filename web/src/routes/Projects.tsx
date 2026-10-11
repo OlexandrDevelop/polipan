@@ -326,16 +326,14 @@ export function DashboardPage() {
           <NodesTable org={org} nodes={nodes.data ?? []} />
         </Panel>
       )}
-      <Panel
-        title={t('dashboard.projects')}
-        hint={
-          canCreate === 'allow' && (projects.data?.length ?? 0) > 0 ? (
+      <Panel title={t('dashboard.projects')} className="space-y-3">
+        {canCreate === 'allow' && (projects.data?.length ?? 0) > 0 && (
+          <div className="flex justify-end">
             <Button variant="primary" onClick={() => setCreating(true)}>
               {t('projects.create')}
             </Button>
-          ) : undefined
-        }
-      >
+          </div>
+        )}
         <ProjectCards onCreate={() => setCreating(true)} />
       </Panel>
       {creating && <CreateProjectDialog onClose={() => setCreating(false)} />}

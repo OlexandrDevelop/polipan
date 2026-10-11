@@ -1984,5 +1984,8 @@
   "shortcuts.colon_action": "Open the command line",
   "list.keys_hint": "move and open a row",
   "dashboard.overview": "overview",
-  "dashboard.refresh_hint": "refresh: 10 s"
+  "dashboard.refresh_hint": "refresh: 10 s",
+  "profile.calm_text": "Turns off all motion and all effects. No information is lost.",
+  "profile.fx": "Effects",
+  "profile.fx_calm": "Effects are off in Calm mode."
 }

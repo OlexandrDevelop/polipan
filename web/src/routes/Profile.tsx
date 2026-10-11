@@ -21,7 +21,9 @@ import {
   StatusBadge,
   TextField,
 } from '@/components/ui'
+import { FX_STEPS, useCalm, useFx } from '@/display'
 import { t } from '@/i18n'
+import type { MessageKey } from '@/i18n'
 import { setSingleKeys, useSingleKeys } from '@/shortcuts'
 
 const MIN_PASSWORD = 12
@@ -36,6 +38,33 @@ function KeysSetting() {
       checked={on}
       onChange={(e) => setSingleKeys(e.target.checked)}
     />
+  )
+}
+
+// UI-43, Appearance: Calm mode (REQ-UI-039) and the effects switch (REQ-UI-040).
+function DisplaySettings() {
+  const { calm, byOs, toggle } = useCalm()
+  const { fx, cycle } = useFx()
+  return (
+    <div className="space-y-2">
+      <CheckboxField
+        label={t('statusbar.calm_label')}
+        hint={byOs ? t('statusbar.calm_os') : t('profile.calm_text')}
+        checked={calm}
+        disabled={byOs}
+        onChange={toggle}
+      />
+      <Button
+        aria-label={t('statusbar.fx_label', {
+          value: t(`fx.${fx}` as MessageKey),
+          next: t(`fx.${FX_STEPS[(FX_STEPS.indexOf(fx) + 1) % FX_STEPS.length]}` as MessageKey),
+        })}
+        reason={calm ? t('profile.fx_calm') : undefined}
+        onClick={cycle}
+      >
+        {t('profile.fx')}: {t(`fx.${fx}` as MessageKey)}
+      </Button>
+    </div>
   )
 }
 
@@ -331,8 +360,9 @@ export function ProfilePage() {
           <TwoFactor enabled={Boolean(me.data.user?.totp_enabled)} />
           <Sessions />
           <div className="space-y-2">
-            <h2 className="text-lg font-semibold">{t('profile.appearance')}</h2>
+            <h2 className="text-lg font-bold">{t('profile.appearance')}</h2>
             <ThemeRadios />
+            <DisplaySettings />
             <KeysSetting />
             <p className="text-sm text-muted">{t('profile.language')}</p>
           </div>

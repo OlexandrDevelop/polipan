@@ -375,7 +375,7 @@ export function Skeleton({ lines = 3 }: { lines?: number }) {
         <div
           key={i}
           aria-hidden="true"
-          className="h-6 overflow-hidden whitespace-nowrap text-border-strong"
+          className="h-6 animate-pulse overflow-hidden whitespace-nowrap text-border-strong"
         >
           {'░'.repeat(48 - ((i * 11) % 24))}
         </div>

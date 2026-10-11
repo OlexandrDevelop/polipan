@@ -110,31 +110,52 @@
   --windowbar-h: 32px;
 }
 
-html {
-  font-size: 13px;
-  line-height: 20px;
+/* The type scale of tokens-terminal.json: 13/20 on a laptop, 14/22 on a large screen and a phone.
+   Spacing stays in rem (16 px), so a 44 px target is 2.75rem everywhere. */
+:root {
+  --fs-xs: 12px;
+  --lh-xs: 16px;
+  --fs-sm: 13px;
+  --lh-sm: 20px;
+  --fs-base: 14px;
+  --lh-base: 22px;
+  --fs-lg: 16px;
+  --lh-lg: 24px;
+  --fs-xl: 20px;
+  --lh-xl: 28px;
+  --fs-2xl: 28px;
+  --lh-2xl: 36px;
 }
 @media (min-width: 1536px) {
-  html {
-    font-size: 14px;
-    line-height: 22px;
+  :root {
+    --fs-sm: 14px;
+    --lh-sm: 22px;
+    --fs-base: 15px;
   }
 }
 @media (max-width: 639.98px) {
-  html {
-    font-size: 14px;
-    line-height: 22px;
-  }
   :root {
+    --fs-sm: 14px;
+    --lh-sm: 22px;
+    --fs-base: 15px;
+    --fs-xl: 18px;
+    --lh-xl: 26px;
     --statusbar-h: 40px;
     --promptline-h: 56px;
     --windowbar-h: 48px;
+  }
+  /* 16 px in a field stops the zoom on focus. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
   }
 }
 
 body {
   @apply bg-bg font-mono text-text antialiased;
-  font-size: 1rem;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
   font-variant-numeric: tabular-nums;
   font-variant-ligatures: none;
 }
@@ -199,6 +220,41 @@ kbd.key {
   font-size: 0.85em;
 }
 
+/* Checkbox and radio in text form: [x] [ ] (•) ( ). They are real inputs, drawn with CSS. */
+input[type='checkbox'],
+input[type='radio'] {
+  appearance: none;
+  display: inline-block;
+  flex-shrink: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+  cursor: pointer;
+  color: var(--color-muted);
+  font: inherit;
+  line-height: inherit;
+}
+input[type='checkbox']::before {
+  content: '[ ]';
+}
+input[type='checkbox']:checked::before {
+  content: '[x]';
+  color: var(--color-primary);
+  font-weight: 700;
+}
+input[type='radio']::before {
+  content: '( )';
+}
+input[type='radio']:checked::before {
+  content: '(•)';
+  color: var(--color-primary);
+  font-weight: 700;
+}
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 /* Table: dense rows, caps headers, a cursor row with ">" (section 2.4). */
 table.dense th {
   text-transform: uppercase;
@@ -216,6 +272,12 @@ table.dense th {
   table.dense th {
     padding-block: 8px;
   }
+}
+table.dense td a,
+table.dense td button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
 }
 tr[data-cursor] {
   background: var(--color-selection);
@@ -516,5 +578,6 @@ dialog {
     display: inline-flex;
     align-items: center;
     min-height: 44px;
+    min-width: 44px;
   }
 }

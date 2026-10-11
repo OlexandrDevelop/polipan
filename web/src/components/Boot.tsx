@@ -10,9 +10,7 @@ const TOTAL_MS = 600
 
 function shouldBoot(): boolean {
   try {
-    if (calmNow() || sessionStorage.getItem(KEY)) return false
-    sessionStorage.setItem(KEY, '1')
-    return true
+    return !calmNow() && !sessionStorage.getItem(KEY)
   } catch {
     return false
   }
@@ -25,6 +23,12 @@ export function Boot() {
   const [show, setShow] = useState(shouldBoot)
   useEffect(() => {
     if (!show) return
+    // Marked when it starts, so a reload in the same session does not show it again.
+    try {
+      sessionStorage.setItem(KEY, '1')
+    } catch {
+      // Storage can be blocked. The lines then show again after a reload.
+    }
     const done = () => setShow(false)
     const timer = window.setTimeout(done, TOTAL_MS)
     window.addEventListener('keydown', done, { once: true })

@@ -24,7 +24,7 @@ function Clock() {
 }
 
 const bracket =
-  'inline-flex min-h-6 items-center whitespace-nowrap px-1 text-muted hover:bg-selection hover:text-text coarse:min-h-11 coarse:px-2'
+  'inline-flex min-h-6 items-center justify-center whitespace-nowrap px-1 text-muted hover:bg-selection hover:text-text max-sm:min-h-11 max-sm:min-w-11 coarse:min-h-11 coarse:px-2'
 
 interface StatusBarProps {
   org: string
