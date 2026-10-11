@@ -30,6 +30,9 @@ var (
 	// M8 errors.
 	ErrNotCanary = errors.New("orchestrator: the deployment is not a running canary") // 409 deployment_not_canary
 
+	// M9 errors.
+	ErrSourceMismatch = errors.New("orchestrator: an image service cannot run an image of the built-in registry") // 422 source_type_mismatch
+
 	// M7 errors.
 	ErrNodeState    = errors.New("orchestrator: the node state does not allow this") // 409 conflict
 	ErrNodeNotEmpty = errors.New("orchestrator: the node has workloads")             // 409 node_not_empty
@@ -109,6 +112,36 @@ type DeployParams struct {
 	CanaryStepIntervalSeconds *int
 	CanaryMax5xxRate          *float64
 	CanaryMaxP95Ratio         *float64
+
+	// M9. Prepared is a Release that was made without a build: the promotion of a Release (REQ-PROMO-001) and the
+	// service of a preview that runs the live Release of the base environment (REQ-PREV-003). The Release is stored
+	// in the same transaction as the deployment. No build runs and the image digest is the one of the source.
+	Prepared *PreparedRelease
+	// BatchID marks the deployments of one project-wide promotion. AfterDeploymentID makes the deployment wait
+	// until that deployment is live. If it ends in another state, this one is cancelled (REQ-PROMO-008).
+	BatchID           string
+	AfterDeploymentID string
+}
+
+// PreparedRelease is the content of a Release that is made outside of a build.
+type PreparedRelease struct {
+	ImageRef string
+	Digest   string
+	// Config is the config_snapshot. Variables and SecretVersions are resolved in the scope of the target service.
+	Config         []byte
+	Variables      map[string]string
+	SecretVersions map[string]int
+	// SecretUses lists the secrets of the Release for the audit event secret.use (ids and versions, never values).
+	SecretUses []SecretUse
+	// Source is the source of the Release: type, commit_sha, branch, promoted_from_release_id, pr_number.
+	Source map[string]any
+}
+
+// SecretUse is one secret of a Release.
+type SecretUse struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Version int    `json:"version"`
 }
 
 // Plan is what a deployment would do (REQ-DEPLOY-007).

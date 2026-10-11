@@ -198,7 +198,7 @@ func (c *Control) placementList(ctx context.Context, sql string, args ...any) ([
 // prepare builds (git), schedules the replicas, checks the capacity, makes the Release and pulls the image.
 func (r *run) prepare(ctx context.Context) *deployErr {
 	c, d := r.c, r.d
-	if d.trigger == "rollback" && d.releaseID != nil {
+	if usesStoredRelease(d.trigger, d.releaseID != nil) {
 		return r.prepareRollback(ctx)
 	}
 	if d.trigger == "move" || d.trigger == "failover" {

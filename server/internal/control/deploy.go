@@ -109,6 +109,11 @@ func (c *Control) Plan(ctx context.Context, p orchestrator.DeployParams) (orches
 		}
 		cfg = rel.cfg
 	}
+	if p.Prepared != nil {
+		if cfg, err = c.checkPrepared(s, p.Prepared); err != nil {
+			return orchestrator.Plan{}, err
+		}
+	}
 	return c.plan(ctx, s, cfg, p, resolveOptions(cfg, p))
 }
 
@@ -138,6 +143,11 @@ func (c *Control) DeployWith(ctx context.Context, p orchestrator.DeployParams) (
 			return "", nil, err
 		}
 		cfg, rollbackTo = rel.cfg, &rel.id
+	}
+	if p.Prepared != nil {
+		if cfg, err = c.checkPrepared(s, p.Prepared); err != nil {
+			return "", nil, err
+		}
 	}
 	opts := resolveOptions(cfg, p)
 	p.Trigger = trigger
@@ -175,10 +185,17 @@ func (c *Control) DeployWith(ctx context.Context, p orchestrator.DeployParams) (
 	if p.ActorID != "" {
 		actor = &p.ActorID
 	}
+	if p.Prepared != nil {
+		relID, err := c.storePrepared(ctx, tx, s, p.Prepared, p.ActorID)
+		if err != nil {
+			return "", nil, err
+		}
+		rollbackTo = &relID
+	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO deployments (id, service_id, environment_id, trigger, strategy, strategy_options, state, actor_id, release_id, warnings, target_node_id)
-		 VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,NULLIF($10,''))`,
-		id, s.id, s.envID, trigger, plan.Strategy, optsJSON, actor, rollbackTo, warnings, p.TargetNodeID); err != nil {
+		`INSERT INTO deployments (id, service_id, environment_id, trigger, strategy, strategy_options, state, actor_id, release_id, warnings, target_node_id, batch_id, after_deployment_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,NULLIF($10,''),NULLIF($11,''),NULLIF($12,''))`,
+		id, s.id, s.envID, trigger, plan.Strategy, optsJSON, actor, rollbackTo, warnings, p.TargetNodeID, p.BatchID, p.AfterDeploymentID); err != nil {
 		return "", nil, err
 	}
 	if err := saveBuildRequest(ctx, tx, id); err != nil { // commit and no_cache of a git deploy (build.go)
@@ -189,6 +206,9 @@ func (c *Control) DeployWith(ctx context.Context, p orchestrator.DeployParams) (
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", nil, err
+	}
+	for _, o := range old {
+		c.settleDependents(ctx, o, "superseded")
 	}
 	c.pump(s.id)
 	return id, plan.Warnings, nil
@@ -213,8 +233,12 @@ func (c *Control) pump(serviceID string) {
 		return
 	}
 	var id, trigger, sourceType string
-	err = tx.QueryRow(ctx, `SELECT d.id, d.trigger, s.source_type FROM deployments d JOIN services s ON s.id = d.service_id
-		WHERE d.service_id = $1 AND d.state = 'queued' ORDER BY d.created_at DESC, d.id DESC LIMIT 1`, serviceID).Scan(&id, &trigger, &sourceType)
+	var releaseID *string
+	// A deployment of a batch waits until the one before it is live (REQ-PROMO-008).
+	err = tx.QueryRow(ctx, `SELECT d.id, d.trigger, s.source_type, d.release_id FROM deployments d JOIN services s ON s.id = d.service_id
+		WHERE d.service_id = $1 AND d.state = 'queued'
+		  AND (d.after_deployment_id IS NULL OR EXISTS (SELECT 1 FROM deployments a WHERE a.id = d.after_deployment_id AND a.state = 'live'))
+		ORDER BY d.created_at DESC, d.id DESC LIMIT 1`, serviceID).Scan(&id, &trigger, &sourceType, &releaseID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return
 	}
@@ -223,7 +247,7 @@ func (c *Control) pump(serviceID string) {
 		return
 	}
 	state, msg := "image_ready", "resolving the image"
-	if sourceType == "git" && trigger != "rollback" {
+	if sourceType == "git" && !usesStoredRelease(trigger, releaseID != nil) {
 		state, msg = "building", "building the image"
 	}
 	if err := c.setStateTx(ctx, tx, id, state, msg, nil); err != nil {
@@ -315,7 +339,11 @@ func (c *Control) Cancel(ctx context.Context, deploymentID, actorID string) erro
 		if err := c.addStep(ctx, tx, deploymentID, "cancelled", "cancelled by the user", nil); err != nil {
 			return err
 		}
-		return tx.Commit(ctx)
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+		c.settleDependents(ctx, deploymentID, "cancelled")
+		return nil
 	case "building", "image_ready", "starting", "health_checking":
 		c.mu.Lock()
 		ad := c.active[deploymentID]
@@ -491,6 +519,7 @@ func (c *Control) endDeployment(ctx context.Context, depID string, e *deployErr)
 		return
 	}
 	c.Log.Warn("deployment ended", "deployment", depID, "state", state, "reason", e.reason, "detail", e.detail)
+	c.settleDependents(ctx, depID, state)
 }
 
 // ---- commands ----

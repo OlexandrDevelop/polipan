@@ -35,6 +35,10 @@ const (
 
 	// M7 code.
 	CodeNodeNotEmpty = "node_not_empty" // 409
+
+	// M9 codes.
+	CodeMissingVariables     = "missing_variables"      // 422
+	CodeReleaseNotPromotable = "release_not_promotable" // 409
 )
 
 // WriteError writes the error object {code, message, details, request_id}.
