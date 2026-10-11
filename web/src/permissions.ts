@@ -75,7 +75,6 @@ const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p'> = {
   'template:manage': 'dev',
   'org:update': 'admin',
   'sso:manage': 'admin',
-  'sso:manage': 'admin',
   'member:read': 'all',
   'member:manage': 'admin',
   'team:manage': 'admin',
