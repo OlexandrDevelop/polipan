@@ -43,7 +43,7 @@ export function LanguageSelect({ className = '' }: { className?: string }) {
   return (
     <select
       aria-label={t('language.label')}
-      className={`border border-border-strong bg-raised px-1 ${className}`}
+      className={`min-h-6 border border-border-strong bg-raised px-1 coarse:min-h-11 ${className}`}
       value={language}
       onChange={(e: ChangeEvent<HTMLSelectElement>) =>
         void setLanguage(e.target.value as LanguageCode)

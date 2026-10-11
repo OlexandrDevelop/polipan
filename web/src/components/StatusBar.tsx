@@ -128,7 +128,7 @@ export function StatusBar({
         >
           [{t('statusbar.theme', { value: theme.choice })}]
         </button>
-        <LanguageSelect className="max-sm:hidden" />
+        <LanguageSelect className="hidden lg:inline-block" />
         <button
           type="button"
           className={bracket}
