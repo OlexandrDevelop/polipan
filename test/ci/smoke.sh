@@ -13,7 +13,7 @@ pg="pp-smoke-pg-$suffix"
 srv="pp-smoke-server-$suffix"
 
 cleanup() {
-  docker rm -f "$srv" "$pg" >/dev/null 2>&1 || true
+  docker rm -fv "$srv" "$pg" >/dev/null 2>&1 || true
   docker network rm "$net" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT

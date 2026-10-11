@@ -56,7 +56,7 @@ free_kb() { df -Pk "$root" | awk 'NR==2{print $4}'; }
 free_before=$(free_kb)
 
 cleanup() {
-  docker rm -f "$old" "$new" "$pg" >/dev/null 2>&1 || true
+  docker rm -fv "$old" "$new" "$pg" >/dev/null 2>&1 || true
   docker network rm "$net" >/dev/null 2>&1 || true
   docker volume rm "$cache_volume" >/dev/null 2>&1 || true
   rm -rf "$work"

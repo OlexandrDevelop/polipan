@@ -15,10 +15,10 @@ set -eu
 root=$(cd "$(dirname "$0")/../.." && pwd)
 host=${SEC06_HOST:-pp-sec06-dind}
 dx() { docker exec "$host" "$@"; }
-cleanup() { [ -n "${KEEP:-}" ] || docker rm -f "$host" >/dev/null 2>&1 || true; }
+cleanup() { [ -n "${KEEP:-}" ] || docker rm -fv "$host" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-docker rm -f "$host" >/dev/null 2>&1 || true
+docker rm -fv "$host" >/dev/null 2>&1 || true
 docker run -d --privileged --name "$host" -e DOCKER_TLS_CERTDIR= docker:27-dind >/dev/null
 i=0
 until dx docker version >/dev/null 2>&1; do

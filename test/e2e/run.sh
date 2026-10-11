@@ -19,7 +19,7 @@ dx() { docker exec "$host" "$@"; }
 step() { printf '\n== %s\n' "$*"; }
 
 cleanup() {
-  [ -n "${KEEP:-}" ] || docker rm -f "$host" >/dev/null 2>&1 || true
+  [ -n "${KEEP:-}" ] || docker rm -fv "$host" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -27,7 +27,7 @@ step "Build the images"
 make images >/dev/null
 
 step "Start the test Docker host"
-docker rm -f "$host" >/dev/null 2>&1 || true
+docker rm -fv "$host" >/dev/null 2>&1 || true
 docker run -d --privileged --name "$host" -e DOCKER_TLS_CERTDIR= docker:27-dind >/dev/null
 i=0
 until dx docker version >/dev/null 2>&1; do
