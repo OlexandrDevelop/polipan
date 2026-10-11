@@ -38,8 +38,11 @@ def setup():
 
 
 def commit(version, branch="main"):
+    def has(b):
+        return subprocess.run(["git", "rev-parse", "--verify", "-q", "refs/heads/" + b], cwd=WORK, env=ENV, capture_output=True).returncode == 0
     if branch == "main":
-        git("checkout", "-q", "main", cwd=WORK)
+        if has("main"):
+            git("checkout", "-q", "main", cwd=WORK)
     else:
         known = subprocess.run(["git", "rev-parse", "--verify", "-q", "refs/heads/" + branch], cwd=WORK, env=ENV, capture_output=True).returncode == 0
         git("checkout", "-q", branch, cwd=WORK) if known else git("checkout", "-q", "-B", branch, "main", cwd=WORK)
@@ -51,7 +54,8 @@ def commit(version, branch="main"):
     git("commit", "-q", "-m", f"version {version}", cwd=WORK)
     git("push", "-q", "origin", "HEAD:refs/heads/" + branch, cwd=WORK)
     sha = git("rev-parse", "HEAD", cwd=WORK)
-    git("checkout", "-q", "main", cwd=WORK)
+    if has("main"):
+        git("checkout", "-q", "main", cwd=WORK)
     return sha
 
 
