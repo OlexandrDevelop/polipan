@@ -6,19 +6,28 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, setCsrfToken, TWO_FACTOR_KEY } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { sessionWasActive, useMe } from '@/auth'
+import { Boot } from '@/components/Boot'
 import { CommandPalette } from '@/components/CommandPalette'
 import { ContextSwitcher } from '@/components/ContextSwitcher'
 import { Modal } from '@/components/Modal'
-import { NotificationsBell } from '@/components/NotificationsBell'
-import { ThemeCycle } from '@/components/ThemeToggle'
-import { Banner, Button, Skeleton } from '@/components/ui'
-import { saveContext } from '@/context'
+import { StatusBar } from '@/components/StatusBar'
+import { Banner, KeyHint, Skeleton } from '@/components/ui'
+import { readContext, saveContext } from '@/context'
 import { t } from '@/i18n'
 import { useAccess } from '@/permissions'
 import { useLiveEvents } from '@/live'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { queryClient } from '@/queryClient'
-import { focusSearch, ShortcutHelp, useGoKeys, useHelpKey, useSingleKey } from '@/shortcuts'
+import { useCalm, useFx } from '@/display'
+import {
+  focusSearch,
+  moveCursor,
+  openCursorRow,
+  ShortcutHelp,
+  useGoKeys,
+  useHelpKey,
+  useSingleKey,
+} from '@/shortcuts'
 import { useTheme } from '@/theme'
 
 // A polite live region says "Loaded: <title>" when the page title changes (quality, section 1).
@@ -73,7 +82,7 @@ type NavTo =
   | '/o/$org/settings/profile'
 
 const navLink =
-  'flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-sm px-1 py-1 text-xs sm:px-2 hover:bg-bg lg:flex-row lg:justify-start lg:gap-2 lg:px-3 lg:text-sm [&.active]:bg-primary [&.active]:text-on-primary'
+  'flex min-h-8 items-center justify-center gap-0.5 whitespace-nowrap px-2 py-0.5 lowercase hover:bg-raised max-sm:min-h-12 max-sm:flex-col max-sm:px-1 max-sm:text-xs coarse:min-h-11 [&.active]:bg-selection [&.active]:font-bold [&.active]:text-primary [&.active]:underline [&.active]:underline-offset-4'
 
 // The frame of every signed-in page: navigation, top bar and the sign-in check.
 export function AppShell() {
@@ -87,6 +96,8 @@ export function AppShell() {
   const [more, setMore] = useState(false)
   const openHelp = useCallback(() => setHelp(true), [])
   const theme = useTheme()
+  const calm = useCalm()
+  const fx = useFx()
   const navigate = useNavigate()
 
   // Single-key shortcuts (REQ-UI-021). They are off while a field has the focus.
@@ -98,9 +109,38 @@ export function AppShell() {
       theme.setChoice(order[(order.indexOf(theme.choice) + 1) % order.length])
       return true
     }
+    // REQ-UI-036: vim keys and the extra switches. None of them runs a destructive action.
+    switch (event.key) {
+      case ':':
+        setPalette(true)
+        return true
+      case 'c':
+        calm.toggle()
+        return true
+      case 'x':
+        if (!calm.calm) fx.cycle()
+        return true
+      case 'j':
+        return moveCursor('next')
+      case 'k':
+        return moveCursor('prev')
+      case 'G':
+        return moveCursor('last')
+      case 'Enter':
+        // Enter on a focused link or button keeps its own meaning.
+        return event.target === document.body && openCursorRow()
+    }
     return false
   })
   useGoKeys((letter) => {
+    if (letter === 'g') return moveCursor('first')
+    if (letter === 's' || letter === 'e') {
+      // The service list of the last environment, or the deployments of the organization.
+      const last = readContext(userId)
+      const to = letter === 'e' || !last ? '/o/$org/deployments' : '/o/$org/p/$project/e/$env'
+      void navigate({ to, params: { org, project: last?.project, env: last?.env } } as never)
+      return true
+    }
     const pages: Record<string, string> = {
       d: '/o/$org',
       p: '/o/$org/projects',
@@ -213,35 +253,68 @@ export function AppShell() {
   const orgName = orgQuery.data?.name ?? 'Polipan'
   const wrongOrg = orgQuery.data?.slug !== undefined && orgQuery.data.slug !== org
 
+  const bar = links.filter((l) => l.show)
   return (
-    <div className="min-h-screen sm:flex">
+    <div className="flex min-h-screen flex-col">
+      <Boot />
+      <div className="fx-scanlines" aria-hidden="true" />
+      <header className="sticky top-0 z-20 flex min-h-9 items-center gap-2 border-b border-border-strong bg-surface px-3 max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:order-4 max-sm:min-h-14 max-sm:border-b-0 max-sm:border-t max-sm:pb-[env(safe-area-inset-bottom)] sm:order-1">
+        <span aria-hidden="true" className="font-bold text-primary">
+          $
+        </span>
+        <span className="hidden min-w-0 items-center gap-1 text-muted lg:flex">
+          <span>polipan</span>
+          <span aria-hidden="true">/</span>
+          <span className="truncate">{org}</span>
+          <span aria-hidden="true">/</span>
+        </span>
+        <div className="flex min-w-0 items-center">
+          <ContextSwitcher org={org} projectSlug={project} envSlug={env} />
+        </div>
+        <button
+          type="button"
+          aria-keyshortcuts="Control+K Meta+K :"
+          aria-label={t('palette.label')}
+          onClick={() => setPalette(true)}
+          className="prompt-line group flex min-h-8 min-w-0 flex-1 items-center gap-2 border border-border-strong bg-bg px-2 text-left text-muted hover:bg-raised max-sm:min-h-11"
+        >
+          <span aria-hidden="true">:</span>
+          <span aria-hidden="true" className="truncate">
+            {t('promptline.placeholder')}
+          </span>
+          <span aria-hidden="true" className="cursor-block" />
+          <span className="ml-auto hidden sm:inline">
+            <KeyHint k={t('palette.shortcut')} />
+          </span>
+        </button>
+      </header>
       <nav
         aria-label={t('nav.main')}
-        className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] sm:sticky sm:top-0 sm:h-screen sm:overflow-y-auto sm:w-24 sm:shrink-0 sm:border-r sm:border-t-0 lg:w-56"
+        className="sticky top-9 z-10 border-b border-border bg-bg pb-[env(safe-area-inset-bottom)] max-sm:fixed max-sm:inset-x-0 max-sm:bottom-14 max-sm:top-auto max-sm:z-20 max-sm:order-3 max-sm:border-b-0 max-sm:border-t max-sm:bg-surface max-sm:pb-0 sm:order-2"
       >
-        <div className="hidden p-4 text-base font-semibold sm:block lg:text-lg">Polipan</div>
-        <ul className="flex justify-around gap-1 p-1 sm:flex-col sm:justify-start sm:p-2">
-          {links
-            .filter((l) => l.show)
-            .map((l) => (
-              <li key={l.to} className={`flex-1 sm:flex-none ${l.bar ? '' : 'max-sm:hidden'}`}>
-                <Link
-                  to={l.to}
-                  params={{ org }}
-                  activeOptions={l.exact ? { exact: true } : undefined}
-                  className={navLink}
-                >
-                  {l.short ? (
-                    <>
-                      <span className="sm:hidden">{l.short}</span>
-                      <span className="max-sm:hidden">{l.label}</span>
-                    </>
-                  ) : (
-                    l.label
-                  )}
-                </Link>
-              </li>
-            ))}
+        <ul className="flex gap-0 overflow-x-auto sm:px-2 max-sm:justify-around">
+          {bar.map((l, i) => (
+            <li key={l.to} className={`shrink-0 max-sm:flex-1 ${l.bar ? '' : 'max-sm:hidden'}`}>
+              <Link
+                to={l.to}
+                params={{ org }}
+                activeOptions={l.exact ? { exact: true } : undefined}
+                className={navLink}
+              >
+                <span aria-hidden="true" className="text-muted max-sm:hidden">
+                  {i + 1}:
+                </span>
+                {l.short ? (
+                  <>
+                    <span className="sm:hidden">{l.short}</span>
+                    <span className="max-sm:hidden">{l.label}</span>
+                  </>
+                ) : (
+                  l.label
+                )}
+              </Link>
+            </li>
+          ))}
           <li className="flex-1 sm:hidden">
             <button
               type="button"
@@ -254,89 +327,65 @@ export function AppShell() {
           </li>
         </ul>
       </nav>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2 sm:px-6">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="hidden truncate font-medium sm:inline">{orgName}</span>
-            <ContextSwitcher org={org} projectSlug={project} envSlug={env} />
+      <main
+        id="main"
+        tabIndex={-1}
+        className="mx-auto w-full max-w-[1600px] flex-1 p-4 outline-none max-sm:order-2 max-sm:pb-32 sm:order-3 sm:p-6 lg:p-8"
+      >
+        {/* The deployment page shows its own banner for its own stream. */}
+        {live.disconnected && !deployment && (
+          <div className="mb-4">
+            <Banner variant="warning" title={t('live.paused')}>
+              {t('live.paused_text')}
+            </Banner>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              aria-keyshortcuts="Control+K Meta+K"
-              onClick={() => setPalette(true)}
-            >
-              {t('palette.open')}
-              <kbd className="hidden rounded-sm border border-border px-1 text-xs text-muted lg:inline">
-                {t('palette.shortcut')}
-              </kbd>
-            </Button>
-            <Button
-              variant="ghost"
-              aria-label={t('shortcuts.open')}
-              aria-keyshortcuts="?"
-              className="max-sm:hidden"
-              onClick={openHelp}
-            >
-              ?
-            </Button>
-            <NotificationsBell org={org} notices={live.notices} onClear={live.clearNotices} />
-            <span className="hidden sm:inline-flex">
-              <ThemeCycle />
-            </span>
-            <Button variant="ghost" loading={logout.isPending} onClick={() => logout.mutate()}>
-              {t('nav.sign_out')}
-            </Button>
-          </div>
+        )}
+        <div data-stale={live.disconnected || undefined}>
+          {wrongOrg ? <NotFoundPage /> : <Outlet />}
         </div>
-        <main
-          id="main"
-          tabIndex={-1}
-          className="mx-auto w-full max-w-[1600px] p-4 pb-24 outline-none sm:p-6 sm:pb-6 lg:p-8"
-        >
-          {/* The deployment page shows its own banner for its own stream. */}
-          {live.disconnected && !deployment && (
-            <div className="mb-4">
-              <Banner variant="warning" title={t('live.paused')}>
-                {t('live.paused_text')}
-              </Banner>
-            </div>
-          )}
-          <div data-stale={live.disconnected || undefined}>
-            {wrongOrg ? <NotFoundPage /> : <Outlet />}
-          </div>
-        </main>
-        {more && (
-          <Modal title={t('nav.more')} onClose={() => setMore(false)}>
-            <ul className="grid gap-1">
-              {links
-                .filter((l) => l.show && !l.bar)
-                .map((l) => (
-                  <li key={l.to}>
-                    <Link
-                      to={l.to}
-                      params={{ org }}
-                      className={`${navLink} !flex-row !justify-start !gap-2 !text-base`}
-                      onClick={() => setMore(false)}
-                    >
-                      {l.label}
-                    </Link>
-                  </li>
-                ))}
-            </ul>
-          </Modal>
-        )}
-        {help && <ShortcutHelp onClose={() => setHelp(false)} />}
-        {palette && (
-          <CommandPalette
-            org={org}
-            projectSlug={project}
-            envSlug={env}
-            onClose={() => setPalette(false)}
-            onSignOut={() => logout.mutate()}
-          />
-        )}
-      </div>
+      </main>
+      <StatusBar
+        org={org}
+        orgName={orgName}
+        projectSlug={project}
+        envSlug={env}
+        disconnected={live.disconnected}
+        notices={live.notices}
+        onClear={live.clearNotices}
+        onHelp={openHelp}
+        onSignOut={() => logout.mutate()}
+        signingOut={logout.isPending}
+      />
+      {more && (
+        <Modal title={t('nav.more')} onClose={() => setMore(false)}>
+          <ul className="grid gap-1">
+            {links
+              .filter((l) => l.show && !l.bar)
+              .map((l) => (
+                <li key={l.to}>
+                  <Link
+                    to={l.to}
+                    params={{ org }}
+                    className={`${navLink} !justify-start !text-base`}
+                    onClick={() => setMore(false)}
+                  >
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+          </ul>
+        </Modal>
+      )}
+      {help && <ShortcutHelp onClose={() => setHelp(false)} />}
+      {palette && (
+        <CommandPalette
+          org={org}
+          projectSlug={project}
+          envSlug={env}
+          onClose={() => setPalette(false)}
+          onSignOut={() => logout.mutate()}
+        />
+      )}
     </div>
   )
 }

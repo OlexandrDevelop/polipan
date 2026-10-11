@@ -96,7 +96,7 @@ export function CanaryBar({
               <li
                 key={p}
                 aria-current={now ? 'step' : undefined}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm ${
+                className={`inline-flex items-center gap-1.5 border px-3 py-1 text-sm ${
                   now ? 'border-primary font-semibold' : 'border-border-strong'
                 }`}
               >

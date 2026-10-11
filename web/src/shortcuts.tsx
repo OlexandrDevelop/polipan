@@ -74,12 +74,12 @@ export function useHelpKey(open: () => void) {
   }, [open])
 }
 
-// "g" then a letter goes to a page. The second key must come within 1.5 seconds.
+// "g" then a letter goes to a page. The second key must come within 900 ms.
 export function useGoKeys(go: (letter: string) => boolean) {
   const [armed, setArmed] = useState(false)
   useEffect(() => {
     if (!armed) return
-    const timer = window.setTimeout(() => setArmed(false), 1500)
+    const timer = window.setTimeout(() => setArmed(false), 900)
     return () => window.clearTimeout(timer)
   }, [armed])
   useSingleKey((event) => {
@@ -93,6 +93,43 @@ export function useGoKeys(go: (letter: string) => boolean) {
     }
     return false
   })
+}
+
+const CURSOR_ROWS = 'main tbody tr, main [data-cursor-row]'
+
+function cursorRows(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>(CURSOR_ROWS)].filter(
+    (row) => row.getClientRects().length > 0 && !row.closest('[hidden]'),
+  )
+}
+
+// REQ-UI-036: the cursor row. It is a visual mark on top of real links, so Tab, the mouse and
+// screen readers work as in a normal table. It never runs an action by itself: Enter follows
+// the first link of the row, the same as a click would.
+export function moveCursor(to: 'next' | 'prev' | 'first' | 'last'): boolean {
+  const rows = cursorRows()
+  if (rows.length === 0) return false
+  const current = rows.findIndex((row) => row.hasAttribute('data-cursor'))
+  const index =
+    to === 'first'
+      ? 0
+      : to === 'last'
+        ? rows.length - 1
+        : to === 'next'
+          ? Math.min(current + 1, rows.length - 1)
+          : Math.max(current === -1 ? 0 : current - 1, 0)
+  document.querySelectorAll('[data-cursor]').forEach((row) => row.removeAttribute('data-cursor'))
+  rows[index].setAttribute('data-cursor', '')
+  rows[index].scrollIntoView({ block: 'nearest' })
+  return true
+}
+
+export function openCursorRow(): boolean {
+  const row = document.querySelector<HTMLElement>('main [data-cursor]')
+  const target = row?.querySelector<HTMLElement>('a[href]')
+  if (!target) return false
+  target.click()
+  return true
 }
 
 // Moves the focus to the search or filter box of the page.
@@ -109,8 +146,12 @@ const ROWS: { group: 'global' | 'service'; keys: string; action: string }[] = [
   { group: 'global', keys: 'Ctrl K', action: 'shortcuts.palette' },
   { group: 'global', keys: '?', action: 'shortcuts.help' },
   { group: 'global', keys: '/', action: 'shortcuts.focus_search' },
-  { group: 'global', keys: 'g d, g p, g n, g a, g l', action: 'shortcuts.go' },
+  { group: 'global', keys: 'g d, g p, g n, g a, g l, g s, g e', action: 'shortcuts.go' },
   { group: 'global', keys: 't', action: 'shortcuts.theme' },
+  { group: 'global', keys: ':', action: 'shortcuts.colon_action' },
+  { group: 'global', keys: 'c', action: 'shortcuts.calm_action' },
+  { group: 'global', keys: 'x', action: 'shortcuts.fx_action' },
+  { group: 'global', keys: 'j, k, Enter, g g, G', action: 'shortcuts.vim_action' },
   { group: 'global', keys: 'Esc', action: 'shortcuts.close' },
   { group: 'service', keys: 'd', action: 'shortcuts.deploy' },
   { group: 'service', keys: 'r', action: 'shortcuts.releases' },
@@ -138,9 +179,7 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
             {ROWS.filter((r) => r.group === group).map((r) => (
               <tr key={r.keys} className="border-b border-border">
                 <td className="py-2 pr-3 align-top">
-                  <kbd className="rounded-sm border border-border px-1 font-mono text-xs">
-                    {r.keys}
-                  </kbd>
+                  <kbd className="key">{r.keys}</kbd>
                 </td>
                 <td className="py-2">{t(r.action as 'shortcuts.palette')}</td>
               </tr>

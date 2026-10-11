@@ -10,6 +10,8 @@ export interface SearchItem {
   label: string
   detail?: string
   badges?: ReactNode
+  // The key of the same action on the page, for example "g d". Only a hint.
+  keys?: string
   // Shown but not runnable, with the reason (REQ-UI-004).
   reason?: string
   run: () => void
@@ -68,9 +70,12 @@ export function SearchDialog({ label, placeholder, items, empty, onClose }: Sear
       ref={ref}
       aria-label={label}
       onClose={onClose}
-      className="m-0 h-full max-h-none w-full max-w-none bg-bg p-0 text-text backdrop:bg-black/50 sm:mx-auto sm:mt-[10vh] sm:h-auto sm:max-h-[75vh] sm:max-w-[640px] sm:rounded-lg sm:border sm:border-border-strong"
+      className="m-0 h-full max-h-none w-full max-w-none bg-bg p-0 text-text backdrop:bg-black/50 sm:mx-auto sm:mt-[10vh] sm:h-auto sm:max-h-[75vh] sm:max-w-[640px] sm:border sm:border-primary"
     >
       <div className="flex items-center gap-2 border-b border-border p-2">
+        <span aria-hidden="true" className="font-bold text-primary">
+          $
+        </span>
         <input
           role="combobox"
           aria-label={label}
@@ -93,7 +98,7 @@ export function SearchDialog({ label, placeholder, items, empty, onClose }: Sear
         <button
           type="button"
           onClick={onClose}
-          className="min-h-11 rounded-sm px-3 text-sm text-muted hover:bg-surface"
+          className="min-h-11 px-3 text-muted hover:bg-surface"
         >
           {t('common.close')}
         </button>
@@ -120,7 +125,7 @@ export function SearchDialog({ label, placeholder, items, empty, onClose }: Sear
               {heading && (
                 <div
                   role="presentation"
-                  className="px-2 pb-1 pt-3 text-xs font-semibold uppercase text-muted"
+                  className="px-2 pb-1 pt-3 text-xs font-bold uppercase tracking-[0.06em] text-muted"
                 >
                   {heading}
                 </div>
@@ -133,15 +138,22 @@ export function SearchDialog({ label, placeholder, items, empty, onClose }: Sear
                 title={item.reason}
                 onMouseMove={() => setActive(i)}
                 onClick={() => run(item)}
-                className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 rounded-sm px-3 py-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-selected:bg-surface aria-selected:outline aria-selected:outline-2 aria-selected:outline-primary"
+                className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 rounded-sm px-3 py-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-selected:bg-selection aria-selected:outline aria-selected:outline-2 aria-selected:outline-primary"
               >
                 <span className="flex min-w-0 flex-wrap items-center gap-2">
                   <span className="break-all">{item.label}</span>
                   {item.badges}
                 </span>
-                {(item.detail || item.reason) && (
-                  <span className="text-sm text-muted">{item.reason ?? item.detail}</span>
-                )}
+                <span className="flex items-center gap-2">
+                  {(item.detail || item.reason) && (
+                    <span className="text-muted">{item.reason ?? item.detail}</span>
+                  )}
+                  {item.keys && (
+                    <kbd aria-hidden="true" className="key max-sm:hidden">
+                      {item.keys}
+                    </kbd>
+                  )}
+                </span>
               </div>
             </li>
           )

@@ -13,6 +13,7 @@ import type { Permission } from '@/permissions'
 import { useEnvironments, useProjects, useServices } from '@/scope'
 import type { Environment, Service } from '@/scope'
 import { serviceTone } from '@/status'
+import { useCalm, useFx } from '@/display'
 import { useTheme } from '@/theme'
 
 interface PaletteProps {
@@ -32,6 +33,8 @@ export function CommandPalette({ org, projectSlug, envSlug, onClose, onSignOut }
   const me = useMe()
   const role = me.data?.org_role
   const theme = useTheme()
+  const calm = useCalm()
+  const fx = useFx()
   const projects = useProjects()
   const last = readContext(me.data?.user?.id)
   const contextProject = projectSlug ?? last?.project
@@ -51,16 +54,17 @@ export function CommandPalette({ org, projectSlug, envSlug, onClose, onSignOut }
       to: string
       need?: Permission
       search?: boolean
+      keys?: string
     }[] = [
-      { id: 'dashboard', label: t('nav.dashboard'), to: '/o/$org' },
-      { id: 'projects', label: t('nav.projects'), to: '/o/$org/projects' },
-      { id: 'deployments', label: t('nav.deployments'), to: '/o/$org/deployments' },
+      { id: 'dashboard', label: t('nav.dashboard'), to: '/o/$org', keys: 'g d' },
+      { id: 'projects', label: t('nav.projects'), to: '/o/$org/projects', keys: 'g p' },
+      { id: 'deployments', label: t('nav.deployments'), to: '/o/$org/deployments', keys: 'g e' },
       { id: 'previews', label: t('nav.previews'), to: '/o/$org/previews', search: true },
-      { id: 'nodes', label: t('nav.nodes'), to: '/o/$org/nodes' },
+      { id: 'nodes', label: t('nav.nodes'), to: '/o/$org/nodes', keys: 'g n' },
       { id: 'catalog', label: t('nav.catalog'), to: '/o/$org/catalog' },
       { id: 'backups', label: t('nav.backups'), to: '/o/$org/backups' },
-      { id: 'alerts', label: t('nav.alerts'), to: '/o/$org/alerts' },
-      { id: 'logs', label: t('nav.logs'), to: '/o/$org/logs', search: true },
+      { id: 'alerts', label: t('nav.alerts'), to: '/o/$org/alerts', keys: 'g a' },
+      { id: 'logs', label: t('nav.logs'), to: '/o/$org/logs', search: true, keys: 'g l' },
       { id: 'profile', label: t('nav.profile'), to: '/o/$org/settings/profile' },
       { id: 'tokens', label: t('nav.tokens'), to: '/o/$org/settings/tokens', need: 'token:own' },
       {
@@ -98,6 +102,7 @@ export function CommandPalette({ org, projectSlug, envSlug, onClose, onSignOut }
         id: `page:${p.id}`,
         group: t('palette.pages'),
         label: p.label,
+        keys: p.keys,
         run: () =>
           void navigate({
             to: p.to,
@@ -141,6 +146,7 @@ export function CommandPalette({ org, projectSlug, envSlug, onClose, onSignOut }
           id: `cmd:deploy:${svc.id}`,
           group: t('palette.commands'),
           label: t('palette.deploy', { name: svc.name }),
+          keys: 'd',
           detail: `${project.name} › ${env.name}`,
           reason: deployAccess === 'blocked' ? t('common.needs_admin') : undefined,
           run: () =>
@@ -157,6 +163,7 @@ export function CommandPalette({ org, projectSlug, envSlug, onClose, onSignOut }
           id: `cmd:rollback:${svc.id}`,
           group: t('palette.commands'),
           label: t('palette.rollback', { name: svc.name }),
+          keys: 'r',
           detail: `${project.name} › ${env.name}`,
           reason: rollbackAccess === 'blocked' ? t('common.needs_admin') : undefined,
           run: () =>
@@ -184,10 +191,26 @@ export function CommandPalette({ org, projectSlug, envSlug, onClose, onSignOut }
         id: 'cmd:theme',
         group: t('palette.commands'),
         label: t('palette.switch_theme'),
+        keys: 't',
         run: () => {
           const order = ['system', 'light', 'dark'] as const
           theme.setChoice(order[(order.indexOf(theme.choice) + 1) % order.length])
         },
+      },
+      {
+        id: 'cmd:calm',
+        group: t('palette.commands'),
+        label: t('palette.toggle_calm'),
+        keys: 'c',
+        reason: calm.byOs ? t('statusbar.calm_os') : undefined,
+        run: calm.toggle,
+      },
+      {
+        id: 'cmd:fx',
+        group: t('palette.commands'),
+        label: t('palette.cycle_fx'),
+        keys: 'x',
+        run: fx.cycle,
       },
       {
         id: 'cmd:sign-out',

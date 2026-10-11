@@ -269,6 +269,8 @@ export async function openScreen(
   await page.addInitScript(() => {
     try {
       localStorage.setItem('polipan.theme', 'system')
+      // The boot lines are a once-per-session effect. The tests skip them to stay stable.
+      sessionStorage.setItem('polipan.boot', '1')
     } catch {
       // Storage may be blocked.
     }

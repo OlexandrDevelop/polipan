@@ -3,6 +3,7 @@
 import { useId } from 'react'
 import type {
   ButtonHTMLAttributes,
+  HTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
@@ -14,10 +15,10 @@ import type { Tone } from '@/status'
 const touch = 'coarse:min-h-11 coarse:min-w-11'
 
 const variants = {
-  primary: 'border-primary bg-primary font-semibold text-on-primary',
-  secondary: 'border-border-strong bg-bg text-text hover:bg-surface',
-  ghost: 'border-transparent bg-transparent text-text hover:bg-surface',
-  destructive: 'border-danger bg-bg text-danger hover:bg-surface',
+  primary: 'border-primary bg-primary font-bold text-on-primary hover:brightness-110',
+  secondary: 'border-border-strong bg-bg text-text hover:bg-raised',
+  ghost: 'border-transparent bg-transparent text-text hover:bg-raised',
+  destructive: 'border-danger bg-bg text-danger hover:bg-raised',
 }
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -54,7 +55,7 @@ export function Button({
           }
           onClick?.(event)
         }}
-        className={`inline-flex min-h-8 items-center justify-center gap-2 rounded-sm border px-3 py-1 text-sm ${touch} ${variants[variant]} aria-pressed:border-primary aria-pressed:bg-surface aria-pressed:font-semibold disabled:cursor-not-allowed disabled:opacity-60 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 ${className}`}
+        className={`inline-flex min-h-8 items-center justify-center gap-2 border px-3 py-1 transition-colors duration-[120ms] ${touch} ${variants[variant]} aria-pressed:border-primary aria-pressed:bg-selection aria-pressed:font-bold disabled:cursor-not-allowed disabled:opacity-60 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 ${className}`}
       >
         {children}
       </button>
@@ -68,7 +69,7 @@ export function Button({
 }
 
 const inputClass =
-  'block min-h-10 w-full rounded-sm border border-border-strong bg-bg px-3 py-1 text-base text-text coarse:min-h-11 aria-[invalid=true]:border-danger'
+  'block min-h-10 w-full border border-border-strong bg-bg px-3 py-1 text-text max-sm:text-base coarse:min-h-11 aria-[invalid=true]:border-danger'
 
 interface FieldShellProps {
   id: string
@@ -82,13 +83,13 @@ interface FieldShellProps {
 function FieldShell({ id, label, required, hint, error, children }: FieldShellProps) {
   return (
     <div className="space-y-1">
-      <label htmlFor={id} className="block text-sm font-medium">
+      <label htmlFor={id} className="block font-medium">
         {label}
         {required && <span className="font-normal text-muted"> ({t('common.required')})</span>}
       </label>
       {children}
       {hint && (
-        <p id={`${id}-hint`} className="text-sm text-muted">
+        <p id={`${id}-hint`} className="text-muted">
           {hint}
         </p>
       )}
@@ -150,7 +151,7 @@ export function TextAreaField({
         id={fieldId}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(fieldId, hint, error)}
-        className={`${inputClass} min-h-24 font-mono text-sm ${className}`}
+        className={`${inputClass} min-h-24 ${className}`}
         {...rest}
       />
     </FieldShell>
@@ -238,10 +239,10 @@ export function CheckboxField({
           className="mt-0.5 size-4 shrink-0 accent-primary coarse:size-6"
           {...rest}
         />
-        <span className="text-sm font-medium">{label}</span>
+        <span className="font-medium">{label}</span>
       </label>
       {hint && (
-        <p id={`${id}-hint`} className="ml-7 text-sm text-muted coarse:ml-9">
+        <p id={`${id}-hint`} className="ml-7 text-muted coarse:ml-9">
           {hint}
         </p>
       )}
@@ -267,10 +268,10 @@ export function Banner({ variant = 'info', title, children, action }: BannerProp
   return (
     <div
       role={variant === 'danger' ? 'alert' : 'status'}
-      className={`flex flex-wrap items-center justify-between gap-3 rounded-sm border border-l-[6px] bg-surface p-3 ${bannerStyles[variant]}`}
+      className={`flex flex-wrap items-center justify-between gap-3 border border-l-[6px] bg-surface p-3 ${bannerStyles[variant]}`}
     >
-      <div className="min-w-0 space-y-1 text-sm">
-        {title && <p className="font-semibold">{title}</p>}
+      <div className="min-w-0 space-y-1">
+        {title && <p className="font-bold">{title}</p>}
         {children && <div className="break-words">{children}</div>}
       </div>
       {action}
@@ -286,49 +287,22 @@ const toneClass: Record<Tone, string> = {
   info: 'text-info',
 }
 
-// Each tone has its own shape, so the state is clear without color (REQ-UI-013).
-function ToneIcon({ tone }: { tone: Tone }) {
-  const common = { width: 12, height: 12, viewBox: '0 0 12 12', 'aria-hidden': true } as const
-  switch (tone) {
-    case 'success':
-      return (
-        <svg {...common} fill="currentColor">
-          <circle cx="6" cy="6" r="5" />
-        </svg>
-      )
-    case 'warning':
-      return (
-        <svg {...common} fill="currentColor">
-          <path d="M6 1 11.5 11H0.5z" />
-        </svg>
-      )
-    case 'danger':
-      return (
-        <svg {...common} fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M2 2 10 10M10 2 2 10" />
-        </svg>
-      )
-    case 'info':
-      return (
-        <svg {...common} fill="currentColor">
-          <path d="M7 0 2 7h3l-1 5 6-7H7z" />
-        </svg>
-      )
-    default:
-      return (
-        <svg {...common} fill="currentColor">
-          <rect x="1" y="1" width="10" height="10" />
-        </svg>
-      )
-  }
+// Each tone has its own glyph, so the state is clear without color (REQ-UI-013, T6).
+const toneGlyph: Record<Tone, string> = {
+  success: '●',
+  warning: '▲',
+  danger: '✕',
+  info: '⚡',
+  muted: '■',
 }
 
+// Glyph and word in the state color. No pill and no fill.
 export function StatusBadge({ tone, label }: { tone: Tone; label: string }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border border-current px-2.5 py-0.5 text-xs font-semibold ${toneClass[tone]}`}
-    >
-      <ToneIcon tone={tone} />
+    <span className="inline-flex items-center gap-1.5 font-bold whitespace-nowrap">
+      <span aria-hidden="true" className={toneClass[tone]}>
+        {toneGlyph[tone]}
+      </span>
       <span className="text-text">{label}</span>
     </span>
   )
@@ -350,8 +324,7 @@ export function LockIcon() {
 
 // The kind and the protected flag of an environment (design-system, section 4).
 export function EnvironmentBadges({ kind, isProtected }: { kind?: string; isProtected?: boolean }) {
-  const chip =
-    'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold'
+  const chip = 'inline-flex items-center gap-1 border px-2 py-0 text-xs font-bold'
   return (
     <>
       {kind === 'production' ? (
@@ -381,9 +354,7 @@ function kindKey(kind: string) {
 }
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={`rounded-md border border-border bg-surface p-4 ${className}`}>{children}</div>
-  )
+  return <div className={`border border-border-strong bg-surface p-4 ${className}`}>{children}</div>
 }
 
 export function Skeleton({ lines = 3 }: { lines?: number }) {
@@ -391,7 +362,13 @@ export function Skeleton({ lines = 3 }: { lines?: number }) {
     <div aria-busy="true" className="space-y-3">
       <span className="sr-only">{t('common.loading')}</span>
       {Array.from({ length: lines }, (_, i) => (
-        <div key={i} aria-hidden="true" className="h-6 animate-pulse rounded-sm bg-surface" />
+        <div
+          key={i}
+          aria-hidden="true"
+          className="h-6 overflow-hidden whitespace-nowrap text-border-strong"
+        >
+          {'░'.repeat(48 - ((i * 11) % 24))}
+        </div>
       ))}
     </div>
   )
@@ -406,10 +383,61 @@ interface EmptyStateProps {
 // Says what the screen is for and gives one action (REQ-UI-010).
 export function EmptyState({ title, text, action }: EmptyStateProps) {
   return (
-    <div className="rounded-md border border-dashed border-border-strong p-6 text-center">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <p className="mx-auto mt-1 max-w-prose text-muted">{text}</p>
+    <div className="border border-dashed border-border-strong p-6 text-center">
+      <h2 className="text-lg font-bold">{title}</h2>
+      <p className="prose-text mx-auto mt-1 max-w-prose text-muted">{text}</p>
       {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>
+  )
+}
+
+// A bordered box with a title notch on the top line (T3). The title is an h2.
+export function Panel({
+  title,
+  hint,
+  children,
+  className = '',
+  ...rest
+}: {
+  title: string
+  hint?: ReactNode
+  children: ReactNode
+  className?: string
+} & Omit<HTMLAttributes<HTMLElement>, 'title'>) {
+  return (
+    <section className={`panel ${className}`} {...rest}>
+      <h2 className="panel-title">{title}</h2>
+      {hint && <span className="panel-hint">{hint}</span>}
+      {children}
+    </section>
+  )
+}
+
+const METER_CELLS = 12
+
+// A text meter like htop: [|||||     ] 41%. The value is also text in the label (T7).
+export function Meter({ value, label }: { value: number; label: string }) {
+  const pct = Math.max(0, Math.min(100, Math.round(value)))
+  const filled = Math.round((pct / 100) * METER_CELLS)
+  const tone = pct >= 90 ? 'meter-bad' : pct >= 70 ? 'meter-warn' : 'meter-ok'
+  return (
+    <span role="img" aria-label={`${label} ${pct}%`} className="meter">
+      <span aria-hidden="true">
+        [<span className={tone}>{'|'.repeat(filled)}</span>
+        {' '.repeat(METER_CELLS - filled)}] {String(pct).padStart(3, ' ')}%
+      </span>
+    </span>
+  )
+}
+
+// A key chip. It is hidden from screen readers: the button carries aria-keyshortcuts.
+export function KeyHint({ k, children }: { k: string; children?: ReactNode }) {
+  return (
+    <span className="hidden whitespace-nowrap text-muted sm:inline">
+      <kbd aria-hidden="true" className="key">
+        {k}
+      </kbd>
+      {children && <span aria-hidden="true"> {children}</span>}
+    </span>
   )
 }

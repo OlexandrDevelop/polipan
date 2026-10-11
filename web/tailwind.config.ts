@@ -3,7 +3,7 @@
 import type { Config } from 'tailwindcss'
 import plugin from 'tailwindcss/plugin'
 
-// Colors come from the CSS variables in src/index.css (docs/spec/ui/design-tokens.json).
+// Colors come from the CSS variables in src/index.css (docs/design/tokens-terminal.json).
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   darkMode: ['selector', '[data-theme="dark"]'],
@@ -18,6 +18,11 @@ export default {
       colors: {
         bg: 'var(--color-bg)',
         surface: 'var(--color-surface)',
+        raised: 'var(--color-raised)',
+        amber: 'var(--color-amber)',
+        cyan: 'var(--color-cyan)',
+        selection: 'var(--color-selection)',
+        'log-time': 'var(--color-log-time)',
         text: 'var(--color-text)',
         muted: 'var(--color-muted)',
         border: 'var(--color-border)',
@@ -29,10 +34,10 @@ export default {
         danger: 'var(--color-danger)',
         info: 'var(--color-info)',
       },
-      borderRadius: { sm: '6px', md: '10px', lg: '14px' },
+      borderRadius: { none: '0', sm: '0', md: '0', lg: '2px', full: '0' },
       fontFamily: {
         sans: ['Inter Variable', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono Variable', 'ui-monospace', 'monospace'],
+        mono: ['JetBrains Mono Variable', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
       },
     },
   },

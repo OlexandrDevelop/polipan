@@ -27,10 +27,10 @@ export function Modal({ title, onClose, children }: ModalProps) {
       ref={ref}
       aria-labelledby={titleId}
       onClose={onClose}
-      className="m-auto max-h-[90vh] w-full max-w-[560px] overflow-auto rounded-lg border border-border-strong bg-bg p-5 text-text backdrop:bg-black/50 max-sm:mb-0 max-sm:max-w-none max-sm:rounded-b-none lg:max-w-[640px]"
+      className="m-auto max-h-[90vh] w-full max-w-[560px] overflow-auto border border-primary bg-bg p-5 text-text backdrop:bg-black/50 max-sm:mb-0 max-sm:max-w-none lg:max-w-[640px]"
     >
       <div className="mb-4 flex items-start justify-between gap-4">
-        <h2 id={titleId} className="text-lg font-semibold">
+        <h2 id={titleId} className="text-lg font-bold text-primary">
           {title}
         </h2>
         <Button variant="ghost" onClick={onClose}>
