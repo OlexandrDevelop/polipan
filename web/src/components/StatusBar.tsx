@@ -7,6 +7,7 @@ import { EnvironmentBadges } from '@/components/ui'
 import { readContext } from '@/context'
 import { useCalm, useFx } from '@/display'
 import { t } from '@/i18n'
+import { LanguageSelect } from '@/language'
 import type { MessageKey } from '@/i18n'
 import type { Notice } from '@/live'
 import { useEnvironments, useNodes, useProjects } from '@/scope'
@@ -127,6 +128,7 @@ export function StatusBar({
         >
           [{t('statusbar.theme', { value: theme.choice })}]
         </button>
+        <LanguageSelect className="max-sm:hidden" />
         <button
           type="button"
           className={bracket}

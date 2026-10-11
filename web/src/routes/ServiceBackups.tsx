@@ -25,7 +25,7 @@ import {
   TextField,
 } from '@/components/ui'
 import { formatBytes } from '@/envText'
-import { t, tState } from '@/i18n'
+import { currentLocale, t, tState } from '@/i18n'
 import { accessFor } from '@/permissions'
 import type { Service } from '@/scope'
 import type { Tone } from '@/status'
@@ -51,7 +51,7 @@ const VERIFIED_DAYS = 30
 function daysAgo(days: number): string {
   return days <= 0
     ? t('backup.badge.today')
-    : new Intl.RelativeTimeFormat(undefined, { numeric: 'always' }).format(-days, 'day')
+    : new Intl.RelativeTimeFormat(currentLocale(), { numeric: 'always' }).format(-days, 'day')
 }
 
 function ageInDays(iso: string): number {

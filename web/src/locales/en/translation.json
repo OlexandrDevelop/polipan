@@ -272,7 +272,7 @@
   "profile.revoke": "Sign out",
   "profile.revoke_failed": "The session was not ended.",
   "profile.appearance": "Appearance",
-  "profile.language": "Language: English.",
+  "profile.language": "Language",
   "setup.no_token_title": "The setup link is missing.",
   "setup.no_token": "Open the setup URL from the install output. It looks like /setup?token=...",
   "common.delete": "Delete",
@@ -1987,5 +1987,6 @@
   "dashboard.refresh_hint": "refresh: 10 s",
   "profile.calm_text": "Turns off all motion and all effects. No information is lost.",
   "profile.fx": "Effects",
-  "profile.fx_calm": "Effects are off in Calm mode."
+  "profile.fx_calm": "Effects are off in Calm mode.",
+  "language.label": "Language"
 }

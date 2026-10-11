@@ -13,6 +13,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Banner, Button, Card, Skeleton, TextField } from '@/components/ui'
 import { hasKey, t } from '@/i18n'
 import type { MessageKey } from '@/i18n'
+import { LanguageSelect } from '@/language'
 import { queryClient } from '@/queryClient'
 
 // The centered card of the login and setup pages (responsive, section 3).
@@ -25,6 +26,9 @@ function AuthCard({ title, children }: { title: string; children: ReactNode }) {
         <p className="text-center text-muted">
           <span aria-hidden="true">$ </span>polipan
         </p>
+        <div className="flex justify-center">
+          <LanguageSelect />
+        </div>
       </div>
     </main>
   )

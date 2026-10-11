@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { components } from '@api/schema'
+import { currentLocale } from '@/i18n'
 
 export type MetricResult = components['schemas']['MetricResult']
 export type MetricName =
@@ -39,7 +40,7 @@ export const metricUnit: Record<MetricName, Unit> = {
 const SIZES = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
 
 function number(value: number, digits = 1): string {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: digits }).format(value)
+  return new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: digits }).format(value)
 }
 
 function size(value: number): string {

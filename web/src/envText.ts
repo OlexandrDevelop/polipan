@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Helpers for variables (REQ-ENV-002, REQ-ENV-006, REQ-ENV-010) and commands.
+import { currentLocale } from '@/i18n'
 
 export interface EnvItem {
   name: string
@@ -107,7 +108,7 @@ export function formatBytes(bytes: number | undefined): string {
     value /= 1024
     unit++
   }
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat(currentLocale(), {
     style: 'unit',
     unit: byteUnits[unit],
     unitDisplay: 'short',

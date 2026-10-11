@@ -5,7 +5,7 @@ import type { KeyboardEvent, PointerEvent } from 'react'
 import { Button } from '@/components/ui'
 import { formatValue } from '@/metrics'
 import type { ChartSeries, Unit } from '@/metrics'
-import { t } from '@/i18n'
+import { currentLocale, t } from '@/i18n'
 
 const W = 640
 const H = 220
@@ -66,16 +66,15 @@ function Marker({ shape, x, y, color }: { shape: Shape; x: number; y: number; co
   }
 }
 
-const dayFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-const hourFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
-const dateHourFormat = new Intl.DateTimeFormat(undefined, {
-  month: 'short',
-  day: 'numeric',
-  hour: '2-digit',
-})
+const dayFormat = () =>
+  new Intl.DateTimeFormat(currentLocale(), { dateStyle: 'medium', timeStyle: 'short' })
+const hourFormat = () =>
+  new Intl.DateTimeFormat(currentLocale(), { hour: '2-digit', minute: '2-digit' })
+const dateHourFormat = () =>
+  new Intl.DateTimeFormat(currentLocale(), { month: 'short', day: 'numeric', hour: '2-digit' })
 
 function fullTime(seconds: number): string {
-  return dayFormat.format(new Date(seconds * 1000))
+  return dayFormat().format(new Date(seconds * 1000))
 }
 
 // A chart as a small SVG, without a library. It has a legend with toggle buttons, a shared
@@ -266,7 +265,7 @@ export function MetricChart({
                     fontSize="11"
                     fill="var(--color-muted)"
                   >
-                    {tickFormat.format(new Date(v * 1000))}
+                    {tickFormat().format(new Date(v * 1000))}
                   </text>
                 ))}
                 {markers

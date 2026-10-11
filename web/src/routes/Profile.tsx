@@ -23,6 +23,7 @@ import {
 } from '@/components/ui'
 import { FX_STEPS, useCalm, useFx } from '@/display'
 import { t } from '@/i18n'
+import { LanguageSelect } from '@/language'
 import type { MessageKey } from '@/i18n'
 import { setSingleKeys, useSingleKeys } from '@/shortcuts'
 
@@ -364,7 +365,10 @@ export function ProfilePage() {
             <ThemeRadios />
             <DisplaySettings />
             <KeysSetting />
-            <p className="text-sm text-muted">{t('profile.language')}</p>
+            <label className="flex items-center gap-3">
+              {t('profile.language')}
+              <LanguageSelect />
+            </label>
           </div>
         </>
       )}
