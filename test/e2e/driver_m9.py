@@ -396,10 +396,11 @@ def preview():
     sha_b = git_commit(12, "feature")
     pr_hook(st, "synchronized", 9, sha_b, "feature", "d-push")
     wait("the preview URL serves the new commit", serves(12), timeout=600, every=4)
-    state = git_state()
-    comments = [c for c in state["comments"] if c["number"] == 9]
-    if len(comments) != 1 or comments[0]["writes"] < 2 or sha_b[:7] not in comments[0]["body"]:
-        fail(f"the comment after the push: {comments}")
+    def updated():
+        cs = [c for c in git_state()["comments"] if c["number"] == 9]
+        return cs if len(cs) == 1 and cs[0]["writes"] >= 2 and sha_b[:7] in cs[0]["body"] else None
+    # The preview service reports a few seconds after the deployment is live.
+    wait("the same comment is updated", updated, timeout=60, every=2)
     ok("AC-PREV-02: the URL serves the new commit and the same comment was updated")
 
     # AC-PREV-03: PR closed (grace 0): the environment, containers and volumes are gone.
