@@ -456,6 +456,8 @@ def search():
         run("docker", "exec", N1, "docker", "run", "--rm", "--network", "cp", "-v", "/e2e:/e2e", "python:3.12-slim", "python", "/e2e/seed.py",
             st["org"], st["project"], st["prod"], st["shop"], st["stg"], stg_svc["id"], st["node"], timeout=600)
         wait("the seeded lines can be searched", lambda: p.call("GET", "/logs/search?q=%22calling%20upstream%203%22&limit=1")[1]["items"], timeout=60, every=2)
+    # The default retention of logs is 30 days. For the first checks the org keeps 60 days (longer: no confirm).
+    p.call("PATCH", "/org", {"settings": {"logs_retention_days": 60}}, expect=200)
     # AC-OBS-06: "timeout" with the production filter: only production lines, newest first.
     _, page = p.call("GET", f"/logs/search?q=timeout&environment_id={st['prod']}&limit=50", expect=200)
     items = page["items"]
@@ -488,6 +490,16 @@ def search():
     if pts[0][0] > now - 59 * 86400:
         fail(f"the range starts too late: {pts[0][0]}")
     ok(f"AC-OBS-05: 60 days of data give {len(pts)} points with a step of {res['step_seconds']} s (at most 1500)")
+    # AC-OBS-03: the last 20 minutes of a real service have points about 15 s apart (the agent scrapes every 15 s).
+    frm = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 1200))
+    _, res = p.call("GET", f"/services/{st['shop']}/metrics?metrics=cpu&metrics=memory&from={frm}&to={to}", expect=200)
+    cpu = next((x for x in res["series"] if x["metric"] == "cpu"), None)
+    if res["step_seconds"] != 15 or not cpu or len(cpu["points"]) < 40:
+        fail(f"AC-OBS-03: step {res['step_seconds']}, {len(cpu['points']) if cpu else 0} points")
+    gaps = sorted(b[0] - a[0] for a, b in zip(cpu["points"], cpu["points"][1:]))
+    if gaps[len(gaps) // 2] != 15:
+        fail(f"AC-OBS-03: the median gap is {gaps[len(gaps) // 2]} s")
+    ok(f"AC-OBS-03: the last 20 minutes have {len(cpu['points'])} points, 15 s apart")
     # The labels of the seeded series belong to the org and the project (the tenant labels of REQ-OBS-100).
     labels = run("docker", "exec", N1, "docker", "run", "--rm", "--network", "cp", "python:3.12-slim", "python", "-c",
                  "import base64,urllib.request as u;r=u.Request('http://vm:8428/api/v1/series?match[]=polipan_container_cpu_usage_millis',headers={'Authorization':'Basic '+base64.b64encode(b'polipan:vpw').decode()});print(u.urlopen(r).read().decode())")
@@ -516,7 +528,6 @@ def search():
     if code != 422:
         fail(f"a retention above the store limit: {code}")
     ok("AC-OBS-07: with a retention of 30 days the line of 45 days ago is not returned, also not with an old from")
-    p.call("PATCH", "/org", {"settings": {"logs_retention_days": 90, "confirm_retention_shrink": True}}, expect=200)
 
 
 def alerts():

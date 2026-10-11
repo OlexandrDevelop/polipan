@@ -370,10 +370,10 @@ def scenario(n1, n2, n3, ip1, ip2, ip3):
         if took > FAILOVER_BUDGET:
             fail(f"AC-NODE-04: the service needed {took:.0f} s, the target is {FAILOVER_BUDGET} s (node_down_after {NODE_DOWN_AFTER} s + 60 s)")
         ok(f"AC-NODE-04: node n2 stopped, web answers from {body.removeprefix('hello-')} after {took:.0f} s (target {FAILOVER_BUDGET} s)")
-        _, ev = p.call("GET", "/audit-events?action=service.failover&limit=20", expect=200)
-        items = [e for e in ev["items"] if e["action"] == "service.failover" and e["target_id"] == web["id"]]
+        _, ev = p.call("GET", "/audit-events?action=service.failover_start&limit=20", expect=200)
+        items = [e for e in ev["items"] if e["action"] == "service.failover_start" and e["target_id"] == web["id"]]
         if not items or items[0]["actor_type"] != "system":
-            fail(f"AC-NODE-04: no system audit event service.failover: {ev}")
+            fail(f"AC-NODE-04: no system audit event service.failover_start: {ev}")
         alerts = int(sql("SELECT count(*) FROM events WHERE topic = 'alert' AND payload->>'rule' IN ('node_down','service_failover')"))
         if alerts < 2:
             fail(f"AC-NODE-04: alerts: {alerts}")

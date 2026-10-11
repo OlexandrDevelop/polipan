@@ -155,10 +155,10 @@ func TestM8_LogSearchIsScopedToTheOrg(t *testing.T) {
 	c.ok(404, "GET", "/api/v1/logs/search?service_id="+otherSvc, nil)
 	c.ok(404, "GET", "/api/v1/logs/search?environment_id=env_other", nil)
 	c.ok(404, "GET", "/api/v1/services/"+otherSvc+"/logs", nil)
-	// AC-OBS-07: the start of the range is cut to the retention of the org (90 days by default).
+	// AC-OBS-07: the start of the range is cut to the retention of the org (30 days by default).
 	c.ok(200, "GET", "/api/v1/logs/search?from="+url.QueryEscape("2020-01-01T00:00:00Z"), nil)
 	start, err := time.Parse(time.RFC3339Nano, st.lastLog().Get("start"))
-	if err != nil || time.Since(start) > 91*24*time.Hour || time.Since(start) < 89*24*time.Hour {
+	if err != nil || time.Since(start) > 31*24*time.Hour || time.Since(start) < 29*24*time.Hour {
 		t.Fatalf("start %q %v", st.lastLog().Get("start"), err)
 	}
 	// The log lines of a service are read from the store, newest last.
@@ -175,13 +175,14 @@ func TestM8_RetentionRules(t *testing.T) {
 	if rec := c.do("PATCH", "/api/v1/org", map[string]any{"settings": map[string]any{"logs_retention_days": 400}}); rec.Code != 422 {
 		t.Fatalf("above the limit: %d %s", rec.Code, rec.Body)
 	}
-	rec := c.do("PATCH", "/api/v1/org", map[string]any{"settings": map[string]any{"logs_retention_days": 30}})
+	c.ok(200, "PATCH", "/api/v1/org", map[string]any{"settings": map[string]any{"logs_retention_days": 60}}) // longer than 30: no confirm
+	rec := c.do("PATCH", "/api/v1/org", map[string]any{"settings": map[string]any{"logs_retention_days": 20}})
 	if rec.Code != 409 || !strings.Contains(rec.Body.String(), "retention_shrink_needs_confirm") {
 		t.Fatalf("shrink: %d %s", rec.Code, rec.Body)
 	}
-	out := c.ok(200, "PATCH", "/api/v1/org", map[string]any{"settings": map[string]any{"logs_retention_days": 30, "confirm_retention_shrink": true}})
+	out := c.ok(200, "PATCH", "/api/v1/org", map[string]any{"settings": map[string]any{"logs_retention_days": 20, "confirm_retention_shrink": true}})
 	settings, _ := out["settings"].(map[string]any)
-	if settings["logs_retention_days"] != float64(30) {
+	if settings["logs_retention_days"] != float64(20) {
 		t.Fatalf("settings %v", settings)
 	}
 	var raw string
@@ -189,7 +190,7 @@ func TestM8_RetentionRules(t *testing.T) {
 	if strings.Contains(raw, "confirm_retention_shrink") {
 		t.Fatalf("the confirm flag was stored: %s", raw)
 	}
-	c.ok(200, "PATCH", "/api/v1/org", map[string]any{"settings": map[string]any{"logs_retention_days": 60}}) // longer: no confirm
+	c.ok(200, "PATCH", "/api/v1/org", map[string]any{"settings": map[string]any{"logs_retention_days": 40}}) // longer: no confirm
 }
 
 // REQ-OBS-100: a metrics query has the org label. A node of another org is not found.

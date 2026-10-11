@@ -17,10 +17,24 @@ import (
 
 const day = 24 * time.Hour
 
-// retentionOf gives the retention of the org for metrics and logs. An org setting wins, else the storage limit.
+// The default retention of an org (glossary: metrics_retention 90 days, logs_retention 30 days).
+const (
+	defaultMetricsRetentionDays = 90
+	defaultLogsRetentionDays    = 30
+)
+
+func capDays(days, limit int) int {
+	if limit > 0 && days > limit {
+		return limit
+	}
+	return days
+}
+
+// retentionOf gives the retention of the org for metrics and logs. An org setting wins, else the default. The store
+// limit is the most it can be.
 func (h *Handlers) retentionOf(r *http.Request) (metrics, logs time.Duration) {
-	metrics = time.Duration(h.Monitoring.MetricsRetentionDays) * day
-	logs = time.Duration(h.Monitoring.LogsRetentionDays) * day
+	metrics = time.Duration(capDays(defaultMetricsRetentionDays, h.Monitoring.MetricsRetentionDays)) * day
+	logs = time.Duration(capDays(defaultLogsRetentionDays, h.Monitoring.LogsRetentionDays)) * day
 	o, err := h.Store.GetOrg(r.Context(), h.orgID(r))
 	if err != nil {
 		return metrics, logs
@@ -30,10 +44,10 @@ func (h *Handlers) retentionOf(r *http.Request) (metrics, logs time.Duration) {
 		return metrics, logs
 	}
 	if s.MetricsRetentionDays != nil && *s.MetricsRetentionDays > 0 {
-		metrics = time.Duration(*s.MetricsRetentionDays) * day
+		metrics = time.Duration(capDays(*s.MetricsRetentionDays, h.Monitoring.MetricsRetentionDays)) * day
 	}
 	if s.LogsRetentionDays != nil && *s.LogsRetentionDays > 0 {
-		logs = time.Duration(*s.LogsRetentionDays) * day
+		logs = time.Duration(capDays(*s.LogsRetentionDays, h.Monitoring.LogsRetentionDays)) * day
 	}
 	return metrics, logs
 }
