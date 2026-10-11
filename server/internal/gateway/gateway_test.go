@@ -4,14 +4,20 @@ package gateway_test
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
 	"testing"
 	"time"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
 	pb "github.com/polipan/polipan/proto/agentv1"
 	"github.com/polipan/polipan/server/internal/gateway/gatewaytest"
+	"github.com/polipan/polipan/server/internal/pki"
 )
 
 // AC-NODE-02: a token works once. A used or expired token is refused.
@@ -102,5 +108,44 @@ func TestConnectMTLS(t *testing.T) {
 	}
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("connect without cert: %v", err)
+	}
+}
+
+// Threat model row 2: an agent certificate is valid for 30 days at most, and a revoked one cannot connect.
+func TestM10b_RevokedCertCannotConnect(t *testing.T) {
+	env := gatewaytest.Start(t)
+	a, err := env.Join(t, env.AddToken(t, "node-a", time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, _ := pem.Decode(a.CertPEM)
+	leaf, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if life := leaf.NotAfter.Sub(leaf.NotBefore); life > 30*24*time.Hour+time.Hour {
+		t.Fatalf("the agent certificate is valid for %s", life)
+	}
+	if err := pki.Revoke(context.Background(), env.Pool, a.NodeID, pki.SerialHex(leaf)); err != nil {
+		t.Fatal(err)
+	}
+	keyDER, _ := x509.MarshalECPrivateKey(a.Key)
+	pair, err := tls.X509KeyPair(a.CertPEM, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := grpc.NewClient(env.Addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+		RootCAs: env.CA.Pool(), Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS13, ServerName: "127.0.0.1"})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	st, err := pb.NewAgentGatewayClient(conn).Connect(context.Background())
+	if err == nil {
+		_ = st.Send(&pb.AgentMessage{Body: &pb.AgentMessage_Hello{Hello: &pb.Hello{NodeId: a.NodeID}}})
+		_, err = st.Recv()
+	}
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("revoked certificate: %v", err)
 	}
 }
