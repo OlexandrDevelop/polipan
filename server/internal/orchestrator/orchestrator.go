@@ -228,3 +228,9 @@ func IsPanelHost(externalURL, host string) bool {
 type DataRemover interface {
 	RemoveServiceData(ctx context.Context, serviceID string) error
 }
+
+// ImageRemover is an optional part of the Orchestrator: it removes the images of the services of a deleted preview
+// environment (REQ-PREV-007). The Control implements it.
+type ImageRemover interface {
+	RemoveServiceImages(ctx context.Context, serviceIDs []string) error
+}

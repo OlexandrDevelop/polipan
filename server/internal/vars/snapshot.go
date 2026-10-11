@@ -30,6 +30,7 @@ type Scope struct {
 	ServiceName   string
 	EnvSlug       string
 	Preview       bool // the environment is a preview environment
+	Fork          bool // the preview is of a PR from a fork: it gets no secret of the project or of the environment (REQ-PREV-009)
 	Config        json.RawMessage
 }
 
@@ -37,15 +38,32 @@ type Scope struct {
 func LoadScope(ctx context.Context, q Querier, serviceID string) (*Scope, error) {
 	var s Scope
 	var kind string
-	err := q.QueryRow(ctx, `SELECT p.org_id, e.project_id, s.environment_id, s.name, e.slug, e.kind, s.config
+	err := q.QueryRow(ctx, `SELECT p.org_id, e.project_id, s.environment_id, s.name, e.slug, e.kind, s.config, COALESCE(e.settings->>'preview_fork', '') = 'true'
 		FROM services s JOIN environments e ON e.id = s.environment_id JOIN projects p ON p.id = e.project_id
-		WHERE s.id = $1`, serviceID).Scan(&s.OrgID, &s.ProjectID, &s.EnvironmentID, &s.ServiceName, &s.EnvSlug, &kind, &s.Config)
+		WHERE s.id = $1`, serviceID).Scan(&s.OrgID, &s.ProjectID, &s.EnvironmentID, &s.ServiceName, &s.EnvSlug, &kind, &s.Config, &s.Fork)
 	if err != nil {
 		return nil, err
 	}
 	s.ServiceID = serviceID
 	s.Preview = kind == "preview"
+	s.Fork = s.Fork && s.Preview
 	return &s, nil
+}
+
+// Visible gives the entries that the scope may use. A fork preview gets no secret of the project or of
+// the environment: only the secrets of its own services (the password of its own database, REQ-PREV-009).
+func (s *Scope) Visible(entries []Entry) []Entry {
+	if !s.Fork {
+		return entries
+	}
+	out := make([]Entry, 0, len(entries))
+	for _, e := range entries {
+		if e.Secret && e.ServiceID == "" {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // LoadEntries reads all variables and all secrets (not deleted) of a project. Secret values are not read.
@@ -146,7 +164,7 @@ func Build(ctx context.Context, q Querier, serviceID string) (*Snapshot, error) 
 	if err != nil {
 		return nil, err
 	}
-	view := Effective(entries, scope.EnvironmentID, serviceID, scope.Preview)
+	view := Effective(scope.Visible(entries), scope.EnvironmentID, serviceID, scope.Preview)
 	for _, e := range dbEntries {
 		view[e.Name] = e
 	}

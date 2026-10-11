@@ -68,6 +68,10 @@ func (h *Handlers) ReceiveGitWebhook(w http.ResponseWriter, r *http.Request, web
 		WriteError(w, r, http.StatusConflict, CodeConflict, "this delivery was received before", map[string]any{"reason": "replay"})
 		return
 	}
+	if d.PR != nil && h.Git.Previews != nil { // a pull request event: previews (F03)
+		WriteJSON(w, http.StatusAccepted, map[string]any{"event": d.Event, "previews": h.Git.Previews.HandlePR(ctx, hook, d.PR)})
+		return
+	}
 	queued := []string{}
 	if d.Push == nil || d.Push.Deleted || d.Push.Branch == "" {
 		WriteJSON(w, http.StatusAccepted, map[string]any{"event": d.Event, "deployments": queued})

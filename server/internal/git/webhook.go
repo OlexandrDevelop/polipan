@@ -114,6 +114,8 @@ type Delivery struct {
 	Event string
 	// Push is set for push events.
 	Push *PushEvent
+	// PR is set for pull request events that previews act on (opened, reopened, a new push, closed, labels).
+	PR *PullRequest
 }
 
 // PushEvent is the part of a push event Polipan uses.
@@ -152,6 +154,14 @@ func Parse(provider string, h http.Header, body []byte) (*Delivery, error) {
 	}
 	if len(d.ID) > 200 {
 		return nil, errors.New("git: delivery id is too long")
+	}
+	if d.Event == "pull_request" {
+		pr, err := parsePullRequest(provider, body)
+		if err != nil {
+			return nil, err
+		}
+		d.PR = pr
+		return d, nil
 	}
 	if d.Event != "push" {
 		return d, nil

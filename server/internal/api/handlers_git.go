@@ -15,6 +15,7 @@ import (
 	"github.com/polipan/polipan/server/internal/git"
 	"github.com/polipan/polipan/server/internal/logging"
 	"github.com/polipan/polipan/server/internal/orchestrator"
+	"github.com/polipan/polipan/server/internal/preview"
 	"github.com/polipan/polipan/server/internal/ssrf"
 	"github.com/polipan/polipan/server/internal/store"
 )
@@ -29,6 +30,37 @@ type GitDeps struct {
 	NewProvider func(c git.Connection, p ssrf.Policy) (git.Provider, error)
 	// Cloner reads the config file of a project (M6). Nil means git.CLI.
 	Cloner git.Cloner
+	// Previews is the preview service (M9). Nil: pull request events are ignored and the preview operations answer 500.
+	Previews *preview.Service
+}
+
+// ProviderOf makes the provider of a stored connection (SSRF-checked client).
+func (g *GitDeps) ProviderOf(ctx context.Context, c *store.GitConnection) (git.Provider, error) {
+	conn := git.Connection{Provider: c.Provider, AppID: c.Auth.AppID, InstallationID: c.Auth.InstallationID}
+	if c.BaseURL != nil {
+		conn.BaseURL = *c.BaseURL
+	}
+	if c.Auth.SecretRef != "" {
+		v, err := g.Keys.Get(ctx, c.Auth.SecretRef)
+		if err != nil {
+			return nil, err
+		}
+		if c.Provider == git.GitHub {
+			conn.PrivateKey = v
+		} else {
+			conn.Token = v
+		}
+	}
+	var p ssrf.Policy
+	if g.Policy != nil {
+		p = g.Policy(ctx, c.OrgID)
+	} else {
+		p, _ = ssrf.New(false, "", ssrf.DefaultDockerNetworks)
+	}
+	if g.NewProvider != nil {
+		return g.NewProvider(conn, p)
+	}
+	return git.NewProvider(conn, p.Client(30*time.Second))
 }
 
 func (h *Handlers) gitReady(w http.ResponseWriter, r *http.Request) bool {
@@ -176,26 +208,7 @@ func (h *Handlers) DeleteGitConnection(w http.ResponseWriter, r *http.Request, c
 
 // providerOf makes the provider of a stored connection.
 func (h *Handlers) providerOf(ctx context.Context, c *store.GitConnection) (git.Provider, error) {
-	conn := git.Connection{Provider: c.Provider, AppID: c.Auth.AppID, InstallationID: c.Auth.InstallationID}
-	if c.BaseURL != nil {
-		conn.BaseURL = *c.BaseURL
-	}
-	if c.Auth.SecretRef != "" {
-		v, err := h.Git.Keys.Get(ctx, c.Auth.SecretRef)
-		if err != nil {
-			return nil, err
-		}
-		if c.Provider == git.GitHub {
-			conn.PrivateKey = v
-		} else {
-			conn.Token = v
-		}
-	}
-	p := h.policy(ctx, c.OrgID)
-	if h.Git.NewProvider != nil {
-		return h.Git.NewProvider(conn, p)
-	}
-	return git.NewProvider(conn, p.Client(30*time.Second))
+	return h.Git.ProviderOf(ctx, c)
 }
 
 // ListGitRepos lists the repositories the connection reaches.

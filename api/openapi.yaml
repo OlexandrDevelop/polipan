@@ -1789,13 +1789,13 @@ components:
         previews: {$ref: '#/components/schemas/PreviewSettings'}
     PreviewSettings:
       type: object
-      properties: {enabled: {type: boolean, default: false}, base_environment_id: {type: string}, max_active: {type: integer, default: 10}, ttl_days: {type: integer, default: 7}, from_forks: {type: boolean, default: false}, node_selector: {type: object, additionalProperties: {type: string}}, seed_command: {type: array, items: {type: string}}, strategy: {$ref: '#/components/schemas/Strategy'}}
+      properties: {enabled: {type: boolean, default: false}, base_environment_id: {type: string}, max_active: {type: integer, default: 10}, ttl_days: {type: integer, default: 7}, cleanup_grace_minutes: {type: integer, default: 60}, from_forks: {type: boolean, default: false}, node_selector: {type: object, additionalProperties: {type: string}}, seed_command: {type: array, items: {type: string}}, strategy: {$ref: '#/components/schemas/Strategy'}}
     ProjectUpdate:
       type: object
       properties: {name: {type: string}, settings: {$ref: '#/components/schemas/ProjectSettings'}, config_source: {type: object, additionalProperties: true}}
     Environment:
       type: object
-      properties: {id: {type: string}, project_id: {type: string}, name: {type: string}, slug: {type: string}, kind: {type: string, enum: [production, staging, preview, custom]}, protected: {type: boolean}, base_environment_id: {type: string}, preview: {type: object, properties: {repo: {type: string}, pr_number: {type: integer}, state: {type: string}, expires_at: {type: string, format: date-time}, url: {type: string}}}, settings: {type: object, additionalProperties: true}}
+      properties: {id: {type: string}, project_id: {type: string}, name: {type: string}, slug: {type: string}, kind: {type: string, enum: [production, staging, preview, custom]}, protected: {type: boolean}, base_environment_id: {type: string}, preview: {type: object, properties: {repo: {type: string}, pr_number: {type: integer}, branch: {type: string}, state: {type: string, enum: [creating, active, failed, closing, deleted]}, expires_at: {type: string, format: date-time}, last_push_at: {type: string, format: date-time}, url: {type: string}, urls: {type: array, items: {type: string}}, from_fork: {type: boolean}, waiting_for_label: {type: boolean}, failure_reason: {type: string}, head_sha: {type: string}}}, settings: {type: object, additionalProperties: true}}
     ServiceConfig:
       type: object
       description: "Same shape as one entry of services in polipan.yaml, after defaults. See docs/spec/07-config-as-code.md."
@@ -1939,7 +1939,7 @@ components:
       type: object
       properties:
         plan_hash: {type: string}
-        items: {type: array, items: {type: object, properties: {service: {type: string}, source_release_id: {type: string}, image_digest: {type: string}, changes: {type: array, items: {$ref: '#/components/schemas/FieldChange'}}, missing_variables: {type: array, items: {type: string}}, strategy: {$ref: '#/components/schemas/Strategy'}, skipped_reason: {type: string}}}}
+        items: {type: array, items: {type: object, properties: {service: {type: string}, source_release_id: {type: string}, source_release_number: {type: integer}, target_service_id: {type: string}, target_release_id: {type: string}, create: {type: boolean, description: "The service does not exist in the target and is created (create_missing)"}, image_digest: {type: string}, changes: {type: array, items: {$ref: '#/components/schemas/FieldChange'}}, variables_added: {type: array, items: {type: string}, description: "Names only, also for secrets"}, variables_removed: {type: array, items: {type: string}}, missing_variables: {type: array, items: {type: string}}, allowed_missing: {type: array, items: {type: string}}, strategy: {$ref: '#/components/schemas/Strategy'}, warnings: {type: array, items: {$ref: '#/components/schemas/Warning'}}, skipped_reason: {type: string, description: "database_skipped, no_live_release or missing_in_target"}}}}
         warnings: {type: array, items: {$ref: '#/components/schemas/Warning'}}
     FieldChange:
       type: object

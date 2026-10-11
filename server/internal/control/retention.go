@@ -111,11 +111,29 @@ func (c *Control) pruneReleases(ctx context.Context, s *svcInfo, keep int) error
 	if err != nil {
 		return err
 	}
-	// Image GC: the nodes remove the images (a running image stays, Docker refuses), the registry drops the manifests.
-	nodes, _ := queryStrings(ctx, c.DB, `SELECT id FROM nodes WHERE state = 'ready'`)
-	if len(refs) == 0 {
-		nodes = nil
+	c.gcImages(ctx, refs)
+	b, _ := json.Marshal(relIDs)
+	c.Log.Info("releases pruned", "service", s.id, "releases", string(b))
+	return nil
+}
+
+// sweepExpired removes the stopped containers of failed deployments after failed_green_keep.
+func (c *Control) sweepExpired(ctx context.Context) {
+	list, err := c.placementList(ctx, `SELECT id, node_id FROM placements WHERE role = 'stopped' AND expires_at IS NOT NULL AND expires_at < $1`, c.Clock.Now())
+	if err != nil || len(list) == 0 {
+		return
 	}
+	if err := c.deletePlacements(ctx, list); err != nil && ctx.Err() == nil {
+		c.Log.Warn("sweep failed containers", "err", err)
+	}
+}
+
+// gcImages removes images from the nodes (a running image stays, Docker refuses) and the manifests from the registry.
+func (c *Control) gcImages(ctx context.Context, refs []string) {
+	if len(refs) == 0 {
+		return
+	}
+	nodes, _ := queryStrings(ctx, c.DB, `SELECT id FROM nodes WHERE state = 'ready'`)
 	for _, n := range nodes {
 		if c.Sender == nil || !c.Sender.Connected(n) {
 			continue
@@ -132,18 +150,26 @@ func (c *Control) pruneReleases(ctx context.Context, s *svcInfo, keep int) error
 			}
 		}
 	}
-	b, _ := json.Marshal(relIDs)
-	c.Log.Info("releases pruned", "service", s.id, "releases", string(b))
-	return nil
 }
 
-// sweepExpired removes the stopped containers of failed deployments after failed_green_keep.
-func (c *Control) sweepExpired(ctx context.Context) {
-	list, err := c.placementList(ctx, `SELECT id, node_id FROM placements WHERE role = 'stopped' AND expires_at IS NOT NULL AND expires_at < $1`, c.Clock.Now())
-	if err != nil || len(list) == 0 {
-		return
+// RemoveServiceImages marks every release of the services as pruned and removes the images that no other release keeps.
+// It is for the services of a deleted preview environment (REQ-PREV-007, orchestrator.ImageRemover).
+func (c *Control) RemoveServiceImages(ctx context.Context, serviceIDs []string) error {
+	if len(serviceIDs) == 0 {
+		return nil
 	}
-	if err := c.deletePlacements(ctx, list); err != nil && ctx.Err() == nil {
-		c.Log.Warn("sweep failed containers", "err", err)
+	relIDs, err := queryStrings(ctx, c.DB, `SELECT id FROM releases WHERE service_id = ANY($1) AND pruned_at IS NULL`, serviceIDs)
+	if err != nil || len(relIDs) == 0 {
+		return err
 	}
+	if _, err := c.DB.Exec(ctx, `UPDATE releases SET pruned_at = now() WHERE id = ANY($1)`, relIDs); err != nil {
+		return err
+	}
+	refs, err := queryStrings(ctx, c.DB, `SELECT DISTINCT image_ref FROM releases WHERE id = ANY($1)
+		AND image_ref NOT IN (SELECT image_ref FROM releases WHERE pruned_at IS NULL)`, relIDs)
+	if err != nil {
+		return err
+	}
+	c.gcImages(ctx, refs)
+	return nil
 }

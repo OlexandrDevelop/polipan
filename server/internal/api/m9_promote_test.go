@@ -18,10 +18,27 @@ import (
 	pb "github.com/polipan/polipan/proto/agentv1"
 	"github.com/polipan/polipan/server/internal/api"
 	"github.com/polipan/polipan/server/internal/auth"
+	"github.com/polipan/polipan/server/internal/build"
 	"github.com/polipan/polipan/server/internal/control"
 	"github.com/polipan/polipan/server/internal/gateway/gatewaytest"
+	"github.com/polipan/polipan/server/internal/git"
+	"github.com/polipan/polipan/server/internal/preview"
+	"github.com/polipan/polipan/server/internal/registry"
 	"github.com/polipan/polipan/server/internal/secrets"
+	"github.com/polipan/polipan/server/internal/ssrf"
+	"github.com/polipan/polipan/server/internal/store"
 )
+
+const m9PullHost = "registry.test:5000"
+
+// m9Pusher "pushes" the build output: the digest is the hash of the tag (the commit).
+type m9Pusher struct{}
+
+func (m9Pusher) Push(_ context.Context, _, repo, tag string) (string, string, error) {
+	sum := sha256.Sum256([]byte(tag))
+	d := "sha256:" + hex.EncodeToString(sum[:])
+	return m9PullHost + "/" + repo + "@" + d, d, nil
+}
 
 // m9 is the API on top of the real deploy engine and a fake agent. A pull gives a digest that depends on the image,
 // so two services of one test have two digests. failPull makes the pull of an image fail.
@@ -30,8 +47,12 @@ type m9 struct {
 	gw       *gatewaytest.Env
 	ctl      *control.Control
 	agent    *gatewaytest.Agent
+	pv       *preview.Service
+	fake     *git.FakeProvider // the Git provider of the connections: it records statuses and comments
+	builder  *build.Fake
 	mu       sync.Mutex
 	pulls    []string
+	cmds     []string
 	failPull string
 }
 
@@ -43,17 +64,41 @@ func newM9(t *testing.T) *m9 {
 		t.Fatal(err)
 	}
 	gw.Cfg.ExternalURL = "https://panel.example.com"
+	reg := registry.New(registry.Config{URL: "https://" + m9PullHost, PullHost: m9PullHost, Dir: t.TempDir()}, gw.Pool, gw.CA, testKEK)
+	builder := &build.Fake{}
+	keys := store.NewGitSecrets(gw.Pool, make([]byte, 32))
 	ctl := control.New(control.Deps{DB: gw.Pool, Clock: gw.Clock, Config: gw.Cfg, CA: gw.CA, Sender: gw.GW, Secrets: sec,
-		SwitchAckTimeout: 5 * time.Second, PostSwitchCheck: 50 * time.Millisecond})
+		SwitchAckTimeout: 5 * time.Second, PostSwitchCheck: 50 * time.Millisecond,
+		Build: &control.BuildDeps{Cloner: &git.FakeCloner{Commit: "1111111aaaaaaa", Files: map[string]string{"Dockerfile": "FROM nginx:alpine\n"}},
+			Builder: builder, Pusher: m9Pusher{}, Registry: reg, Keys: keys, WorkDir: t.TempDir()}})
 	t.Cleanup(ctl.Close)
 	gw.GW.State = ctl
 	gw.GW.Health = ctl
+	fake := &git.FakeProvider{}
+	st := store.New(gw.Pool)
+	gd := &api.GitDeps{Keys: keys,
+		Policy: func(context.Context, string) ssrf.Policy {
+			p, _ := ssrf.New(false, "10.210.0.0/16", ssrf.DefaultDockerNetworks)
+			p.Resolver = publicResolver{}
+			return p
+		},
+		NewProvider: func(git.Connection, ssrf.Policy) (git.Provider, error) { return fake, nil }}
+	pv := preview.New(preview.Deps{Pool: gw.Pool, Store: st, Orch: ctl, Secrets: sec, Clock: gw.Clock, Log: slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		ExternalURL: "https://panel.example.com",
+		Provider: func(ctx context.Context, orgID, conn string) (git.Provider, error) {
+			c, err := st.GetGitConnection(ctx, orgID, conn)
+			if err != nil {
+				return nil, err
+			}
+			return gd.ProviderOf(ctx, c)
+		}})
+	gd.Previews = pv
 	h, err := api.NewRouter(api.Deps{Log: slog.New(slog.NewJSONHandler(io.Discard, nil)), DB: gw.Pool, Clock: gw.Clock, RateLimit: 100000,
-		Pool: gw.Pool, Orchestrator: ctl, ExternalURL: "http://localhost", AgentListen: ":9443", SetupToken: "setup-secret", KEK: testKEK, Secrets: sec})
+		Pool: gw.Pool, Orchestrator: ctl, ExternalURL: "https://panel.example.com", AgentListen: ":9443", SetupToken: "setup-secret", KEK: testKEK, Secrets: sec, Git: gd})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := &m9{testEnv: &testEnv{t: t, h: h, pool: gw.Pool, orch: &fakeOrch{pool: gw.Pool}, clk: gw.Clock}, gw: gw, ctl: ctl}
+	m := &m9{testEnv: &testEnv{t: t, h: h, pool: gw.Pool, orch: &fakeOrch{pool: gw.Pool}, clk: gw.Clock}, gw: gw, ctl: ctl, pv: pv, fake: fake, builder: builder}
 	m.agent = gw.NewReadyNode(t, "n1")
 	m.agent.Async = true
 	m.agent.OnCommand = m.onCommand
@@ -61,6 +106,12 @@ func newM9(t *testing.T) *m9 {
 }
 
 func (m *m9) onCommand(c *pb.Command) *pb.CommandAck {
+	switch b := c.Body.(type) {
+	case *pb.Command_RemoveWorkload:
+		m.mu.Lock()
+		m.cmds = append(m.cmds, fmt.Sprintf("remove:%s:volumes=%v", b.RemoveWorkload.PlacementId, b.RemoveWorkload.RemoveVolumes))
+		m.mu.Unlock()
+	}
 	if p, ok := c.Body.(*pb.Command_PullImage); ok {
 		ref := p.PullImage.ImageRef
 		m.mu.Lock()
@@ -140,12 +191,12 @@ func (m *m9) devClient() *client {
 }
 
 type promoFixture struct {
-	c                *client
-	project          string
-	staging, prod    string
-	stgSvc, prodSvc  string
-	stgRel           string
-	stgDig           string
+	c               *client
+	project         string
+	staging, prod   string
+	stgSvc, prodSvc string
+	stgRel          string
+	stgDig          string
 }
 
 // promoSetup makes a project with a live "web" in staging and a "web" in production (own domain, own secret).

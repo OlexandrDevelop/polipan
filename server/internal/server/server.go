@@ -22,11 +22,14 @@ import (
 	"github.com/polipan/polipan/server/internal/control"
 	"github.com/polipan/polipan/server/internal/db"
 	"github.com/polipan/polipan/server/internal/gateway"
+	"github.com/polipan/polipan/server/internal/git"
 	"github.com/polipan/polipan/server/internal/obs"
 	"github.com/polipan/polipan/server/internal/pki"
+	"github.com/polipan/polipan/server/internal/preview"
 	"github.com/polipan/polipan/server/internal/queue"
 	"github.com/polipan/polipan/server/internal/secrets"
 	"github.com/polipan/polipan/server/internal/shared/clock"
+	"github.com/polipan/polipan/server/internal/store"
 	"github.com/polipan/polipan/server/internal/web"
 )
 
@@ -89,12 +92,24 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 
 	bk := backup.New(backup.Deps{DB: pool, Secrets: sec, Sender: gw, Orch: ctl, Clock: clk, Log: log, SSRF: ctl.SSRFPolicy})
 	ctl.Mover = bk
+	// M9: the preview environments. They post the commit status and the comment through the Git connection of the service.
+	st := store.New(pool)
+	gitDeps := &api.GitDeps{Keys: builds.Keys, Policy: ctl.SSRFPolicy}
+	previews := preview.New(preview.Deps{Pool: pool, Store: st, Orch: ctl, Secrets: sec, Clock: clk, Log: log, ExternalURL: cfg.ExternalURL,
+		Provider: func(ctx context.Context, orgID, connectionID string) (git.Provider, error) {
+			c, err := st.GetGitConnection(ctx, orgID, connectionID)
+			if err != nil {
+				return nil, err
+			}
+			return gitDeps.ProviderOf(ctx, c)
+		}})
+	gitDeps.Previews = previews
 	handler, err := api.NewRouter(api.Deps{
 		Log: log, DB: pool, Pool: pool, Clock: clk, RateLimit: cfg.APIRateLimit, Web: web.Handler(),
 		Orchestrator: ctl, ExternalURL: cfg.ExternalURL, TrustedProxies: cfg.TrustedProxies, AgentListen: cfg.AgentListen,
 		Secrets: sec, Exec: gw, Backup: bk, KEK: kek, Obs: backends, Alerts: alerts, Monitoring: api.MonitoringSettings{
 			MetricsRetentionDays: cfg.StorageMetricsRetentionDays, LogsRetentionDays: cfg.StorageLogsRetentionDays},
-		Git:        &api.GitDeps{Keys: builds.Keys, Policy: ctl.SSRFPolicy},
+		Git:        gitDeps,
 		SetupToken: pki.SetupToken(kek), SessionTTL: cfg.SessionTTL, SessionAbsoluteTTL: cfg.SessionAbsoluteTTL,
 	})
 	if err != nil {
@@ -137,6 +152,11 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		defer close(alertDone)
 		alerts.Run(runCtx)
 	}()
+	previewDone := make(chan struct{})
+	go func() {
+		defer close(previewDone)
+		previews.Run(runCtx)
+	}()
 	var ingestSrv *http.Server
 	if backends != nil && cfg.IngestListen != "" {
 		ingest := &obs.Ingest{DB: pool, Backends: backends, Log: log, Clock: clk}
@@ -159,6 +179,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 			_ = ingestSrv.Close()
 		}
 		<-alertDone
+		<-previewDone
 		<-gwDone
 		<-ctlDone
 		<-bkDone

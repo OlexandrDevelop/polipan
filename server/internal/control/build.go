@@ -244,7 +244,7 @@ func (c *Control) buildTimeValues(ctx context.Context, serviceID, projectID stri
 	if err != nil {
 		return nil, nil, err
 	}
-	for _, e := range vars.Effective(entries, scope.EnvironmentID, serviceID, scope.Preview) {
+	for _, e := range vars.Effective(scope.Visible(entries), scope.EnvironmentID, serviceID, scope.Preview) {
 		if !e.BuildTime {
 			continue
 		}

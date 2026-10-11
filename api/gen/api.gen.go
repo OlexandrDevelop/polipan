@@ -232,6 +232,15 @@ const (
 	EnvironmentKindStaging    EnvironmentKind = "staging"
 )
 
+// Defines values for EnvironmentPreviewState.
+const (
+	EnvironmentPreviewStateActive   EnvironmentPreviewState = "active"
+	EnvironmentPreviewStateClosing  EnvironmentPreviewState = "closing"
+	EnvironmentPreviewStateCreating EnvironmentPreviewState = "creating"
+	EnvironmentPreviewStateDeleted  EnvironmentPreviewState = "deleted"
+	EnvironmentPreviewStateFailed   EnvironmentPreviewState = "failed"
+)
+
 // Defines values for FailoverStatusState.
 const (
 	FailoverStatusStateBlocked FailoverStatusState = "blocked"
@@ -276,9 +285,9 @@ const (
 
 // Defines values for MemberStatus.
 const (
-	Active   MemberStatus = "active"
-	Disabled MemberStatus = "disabled"
-	Invited  MemberStatus = "invited"
+	MemberStatusActive   MemberStatus = "active"
+	MemberStatusDisabled MemberStatus = "disabled"
+	MemberStatusInvited  MemberStatus = "invited"
 )
 
 // Defines values for NodeState.
@@ -1007,11 +1016,18 @@ type Environment struct {
 	Kind              *EnvironmentKind `json:"kind,omitempty"`
 	Name              *string          `json:"name,omitempty"`
 	Preview           *struct {
-		ExpiresAt *time.Time `json:"expires_at,omitempty"`
-		PrNumber  *int       `json:"pr_number,omitempty"`
-		Repo      *string    `json:"repo,omitempty"`
-		State     *string    `json:"state,omitempty"`
-		Url       *string    `json:"url,omitempty"`
+		Branch          *string                  `json:"branch,omitempty"`
+		ExpiresAt       *time.Time               `json:"expires_at,omitempty"`
+		FailureReason   *string                  `json:"failure_reason,omitempty"`
+		FromFork        *bool                    `json:"from_fork,omitempty"`
+		HeadSha         *string                  `json:"head_sha,omitempty"`
+		LastPushAt      *time.Time               `json:"last_push_at,omitempty"`
+		PrNumber        *int                     `json:"pr_number,omitempty"`
+		Repo            *string                  `json:"repo,omitempty"`
+		State           *EnvironmentPreviewState `json:"state,omitempty"`
+		Url             *string                  `json:"url,omitempty"`
+		Urls            *[]string                `json:"urls,omitempty"`
+		WaitingForLabel *bool                    `json:"waiting_for_label,omitempty"`
 	} `json:"preview,omitempty"`
 	ProjectId *string                 `json:"project_id,omitempty"`
 	Protected *bool                   `json:"protected,omitempty"`
@@ -1021,6 +1037,9 @@ type Environment struct {
 
 // EnvironmentKind defines model for Environment.Kind.
 type EnvironmentKind string
+
+// EnvironmentPreviewState defines model for Environment.Preview.State.
+type EnvironmentPreviewState string
 
 // Error defines model for Error.
 type Error struct {
@@ -1269,14 +1288,15 @@ type PlacementRole string
 
 // PreviewSettings defines model for PreviewSettings.
 type PreviewSettings struct {
-	BaseEnvironmentId *string            `json:"base_environment_id,omitempty"`
-	Enabled           *bool              `json:"enabled,omitempty"`
-	FromForks         *bool              `json:"from_forks,omitempty"`
-	MaxActive         *int               `json:"max_active,omitempty"`
-	NodeSelector      *map[string]string `json:"node_selector,omitempty"`
-	SeedCommand       *[]string          `json:"seed_command,omitempty"`
-	Strategy          *Strategy          `json:"strategy,omitempty"`
-	TtlDays           *int               `json:"ttl_days,omitempty"`
+	BaseEnvironmentId   *string            `json:"base_environment_id,omitempty"`
+	CleanupGraceMinutes *int               `json:"cleanup_grace_minutes,omitempty"`
+	Enabled             *bool              `json:"enabled,omitempty"`
+	FromForks           *bool              `json:"from_forks,omitempty"`
+	MaxActive           *int               `json:"max_active,omitempty"`
+	NodeSelector        *map[string]string `json:"node_selector,omitempty"`
+	SeedCommand         *[]string          `json:"seed_command,omitempty"`
+	Strategy            *Strategy          `json:"strategy,omitempty"`
+	TtlDays             *int               `json:"ttl_days,omitempty"`
 }
 
 // Project defines model for Project.
@@ -1338,13 +1358,27 @@ type PromoteRequest struct {
 // PromotionPlan defines model for PromotionPlan.
 type PromotionPlan struct {
 	Items *[]struct {
-		Changes          *[]FieldChange `json:"changes,omitempty"`
-		ImageDigest      *string        `json:"image_digest,omitempty"`
-		MissingVariables *[]string      `json:"missing_variables,omitempty"`
-		Service          *string        `json:"service,omitempty"`
-		SkippedReason    *string        `json:"skipped_reason,omitempty"`
-		SourceReleaseId  *string        `json:"source_release_id,omitempty"`
-		Strategy         *Strategy      `json:"strategy,omitempty"`
+		AllowedMissing *[]string      `json:"allowed_missing,omitempty"`
+		Changes        *[]FieldChange `json:"changes,omitempty"`
+
+		// Create The service does not exist in the target and is created (create_missing)
+		Create           *bool     `json:"create,omitempty"`
+		ImageDigest      *string   `json:"image_digest,omitempty"`
+		MissingVariables *[]string `json:"missing_variables,omitempty"`
+		Service          *string   `json:"service,omitempty"`
+
+		// SkippedReason database_skipped, no_live_release or missing_in_target
+		SkippedReason       *string   `json:"skipped_reason,omitempty"`
+		SourceReleaseId     *string   `json:"source_release_id,omitempty"`
+		SourceReleaseNumber *int      `json:"source_release_number,omitempty"`
+		Strategy            *Strategy `json:"strategy,omitempty"`
+		TargetReleaseId     *string   `json:"target_release_id,omitempty"`
+		TargetServiceId     *string   `json:"target_service_id,omitempty"`
+
+		// VariablesAdded Names only, also for secrets
+		VariablesAdded   *[]string  `json:"variables_added,omitempty"`
+		VariablesRemoved *[]string  `json:"variables_removed,omitempty"`
+		Warnings         *[]Warning `json:"warnings,omitempty"`
 	} `json:"items,omitempty"`
 	PlanHash *string    `json:"plan_hash,omitempty"`
 	Warnings *[]Warning `json:"warnings,omitempty"`
@@ -14771,9 +14805,14 @@ type ListLoginProvidersResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *[]struct {
-		Id   *string `json:"id,omitempty"`
-		Kind *string `json:"kind,omitempty"`
-		Name *string `json:"name,omitempty"`
+		// BreakGlass An owner may still log in with a password and 2FA: the page shows a recovery login link
+		BreakGlass *bool   `json:"break_glass,omitempty"`
+		Id         *string `json:"id,omitempty"`
+		Kind       *string `json:"kind,omitempty"`
+		Name       *string `json:"name,omitempty"`
+
+		// SsoRequired The organization requires SSO: the page hides the password form
+		SsoRequired *bool `json:"sso_required,omitempty"`
 	}
 }
 
@@ -20660,9 +20699,14 @@ func ParseListLoginProvidersResponse(rsp *http.Response) (*ListLoginProvidersRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []struct {
-			Id   *string `json:"id,omitempty"`
-			Kind *string `json:"kind,omitempty"`
-			Name *string `json:"name,omitempty"`
+			// BreakGlass An owner may still log in with a password and 2FA: the page shows a recovery login link
+			BreakGlass *bool   `json:"break_glass,omitempty"`
+			Id         *string `json:"id,omitempty"`
+			Kind       *string `json:"kind,omitempty"`
+			Name       *string `json:"name,omitempty"`
+
+			// SsoRequired The organization requires SSO: the page hides the password form
+			SsoRequired *bool `json:"sso_required,omitempty"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err

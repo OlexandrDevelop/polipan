@@ -11,6 +11,7 @@ import (
 	"github.com/polipan/polipan/api/gen"
 	"github.com/polipan/polipan/server/internal/git"
 	"github.com/polipan/polipan/server/internal/logging"
+	"github.com/polipan/polipan/server/internal/preview"
 	"github.com/polipan/polipan/server/internal/store"
 )
 
@@ -319,6 +320,19 @@ func (h *Handlers) UpdateEnvironment(w http.ResponseWriter, r *http.Request, env
 func (h *Handlers) DeleteEnvironment(w http.ResponseWriter, r *http.Request, environmentID gen.EnvironmentId, _ gen.DeleteEnvironmentParams) {
 	cur, err := h.Store.GetEnvironment(r.Context(), h.orgID(r), environmentID)
 	if fail(w, r, err) {
+		return
+	}
+	if cur.Kind == "preview" && h.Git != nil && h.Git.Previews != nil {
+		// A preview is deleted with its containers, volumes, domains and images (REQ-PREV-007, REQ-PREV-014).
+		if err := h.Git.Previews.Delete(r.Context(), h.orgID(r), environmentID, PrincipalFrom(r.Context()).User.ID); err != nil {
+			if errors.Is(err, preview.ErrNotFound) {
+				notFoundError(w, r)
+				return
+			}
+			WriteError(w, r, http.StatusConflict, CodeConflict, "the preview was not deleted: "+err.Error(), map[string]any{"reason": "preview_delete_failed"})
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	if denyProtected(w, r, "env:delete", cur.Protected) {

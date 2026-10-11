@@ -50,6 +50,9 @@ type Options struct {
 	IncludeDatabases bool
 	// Strategy asks for a strategy. Empty means the one of the target.
 	Strategy string
+	// AllowPreview lets a preview environment be the target. Only the preview service uses it, to run the live Release
+	// of a base service in a preview (REQ-PREV-003). The API never sets it (REQ-PROMO-009).
+	AllowPreview bool
 	// KeepMissing is for a preview: a name that the base environment uses and the preview does not have is not an
 	// error. A reference that does not resolve still fails the deployment, with the names (REQ-PREV-010).
 	KeepMissing bool
@@ -187,13 +190,13 @@ func (pl *Planner) release(ctx context.Context, id string) (*relRow, error) {
 }
 
 // checkTarget applies REQ-PROMO-009: the same project, and no preview as target.
-func checkTarget(srcEnv, tgtEnv *EnvInfo) error {
+func checkTarget(srcEnv, tgtEnv *EnvInfo, allowPreview bool) error {
 	switch {
 	case srcEnv.ID == tgtEnv.ID:
 		return ErrSameEnvironment
 	case srcEnv.ProjectID != tgtEnv.ProjectID:
 		return ErrOtherProject
-	case tgtEnv.Kind == "preview":
+	case tgtEnv.Kind == "preview" && !allowPreview:
 		return ErrPreviewTarget
 	}
 	return nil
@@ -220,7 +223,7 @@ func (pl *Planner) ForRelease(ctx context.Context, releaseID string, o Options) 
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := checkTarget(srcEnv, tgtEnv); err != nil {
+	if err := checkTarget(srcEnv, tgtEnv, o.AllowPreview); err != nil {
 		return nil, tgtEnv, err
 	}
 	it, err := pl.item(ctx, src, rel, tgtEnv, o)
@@ -243,7 +246,7 @@ func (pl *Planner) ForEnvironment(ctx context.Context, srcEnvID string, o Option
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := checkTarget(srcEnv, tgtEnv); err != nil {
+	if err := checkTarget(srcEnv, tgtEnv, o.AllowPreview); err != nil {
 		return nil, tgtEnv, err
 	}
 	rows, err := pl.DB.Query(ctx, `SELECT id FROM services WHERE environment_id = $1 AND deleted_at IS NULL ORDER BY name`, srcEnvID)

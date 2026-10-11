@@ -2430,6 +2430,8 @@ export interface components {
             max_active: number;
             /** @default 7 */
             ttl_days: number;
+            /** @default 60 */
+            cleanup_grace_minutes: number;
             /** @default false */
             from_forks: boolean;
             node_selector?: {
@@ -2457,10 +2459,19 @@ export interface components {
             preview?: {
                 repo?: string;
                 pr_number?: number;
-                state?: string;
+                branch?: string;
+                /** @enum {string} */
+                state?: "creating" | "active" | "failed" | "closing" | "deleted";
                 /** Format: date-time */
                 expires_at?: string;
+                /** Format: date-time */
+                last_push_at?: string;
                 url?: string;
+                urls?: string[];
+                from_fork?: boolean;
+                waiting_for_label?: boolean;
+                failure_reason?: string;
+                head_sha?: string;
             };
             settings?: {
                 [key: string]: unknown;
@@ -2690,10 +2701,21 @@ export interface components {
             items?: {
                 service?: string;
                 source_release_id?: string;
+                source_release_number?: number;
+                target_service_id?: string;
+                target_release_id?: string;
+                /** @description The service does not exist in the target and is created (create_missing) */
+                create?: boolean;
                 image_digest?: string;
                 changes?: components["schemas"]["FieldChange"][];
+                /** @description Names only, also for secrets */
+                variables_added?: string[];
+                variables_removed?: string[];
                 missing_variables?: string[];
+                allowed_missing?: string[];
                 strategy?: components["schemas"]["Strategy"];
+                warnings?: components["schemas"]["Warning"][];
+                /** @description database_skipped, no_live_release or missing_in_target */
                 skipped_reason?: string;
             }[];
             warnings?: components["schemas"]["Warning"][];
