@@ -15,7 +15,9 @@ test('REQ-UI-007 AC-DEPLOY-04 the deploy dialog shows the plan before anything s
   await page.getByRole('button', { name: 'Deploy', exact: true }).click()
   const dialog = page.getByRole('dialog')
   // The plan: the forced strategy with its reason, the downtime and the warning.
-  await expect(dialog.getByText('Recreate (stop the old, then start the new)')).toBeVisible()
+  await expect(
+    dialog.locator('dd').filter({ hasText: 'Recreate (stop the old, then start the new)' }),
+  ).toBeVisible()
   await expect(dialog.getByText(/Zero downtime is not available/)).toBeVisible()
   await expect(dialog.getByText('Short downtime expected')).toBeVisible()
   await expect(dialog.getByText(/pre-deploy command runs while the old release/)).toBeVisible()

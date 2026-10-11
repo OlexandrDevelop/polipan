@@ -68,8 +68,8 @@ type Engine struct {
 	// when it is inside this subnet.
 	NetSubnet *net.IPNet
 	Store     *state.Store
-	Sink     Sink // optional
-	Network  string
+	Sink      Sink // optional
+	Network   string
 	// Backup runs the backup jobs (F10). Nil means the agent cannot run backups.
 	Backup *backup.Runner
 	// DNSServers are set in the DNS field of the containers.
