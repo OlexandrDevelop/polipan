@@ -722,18 +722,6 @@ func (b *builder) diffTargets() {
 	}
 }
 
-func (b *builder) targetIDs(names []string) []string {
-	var ids []string
-	for _, n := range names {
-		if lt := b.live.Targets[n]; lt != nil {
-			ids = append(ids, lt.ID)
-		} else {
-			ids = append(ids, "name:"+n) // a target of this file that apply creates first
-		}
-	}
-	return ids
-}
-
 func (b *builder) diffPolicies() {
 	for _, key := range sortedKeys(b.d.Services) {
 		ds := b.d.Services[key]

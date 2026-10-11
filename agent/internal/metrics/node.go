@@ -16,12 +16,10 @@ type cpuTimes struct{ busy, total uint64 }
 
 // nodeStats is what the collector reads from /proc and the file system.
 type nodeStats struct {
-	cpu       cpuTimes
-	cores     int
-	memUsed   uint64
-	load1     float64
-	diskUsed  uint64
-	diskTotal uint64
+	cpu     cpuTimes
+	cores   int
+	memUsed uint64
+	load1   float64
 }
 
 // readProc reads /proc under root (root is "/" on a real node, a temp folder in tests).

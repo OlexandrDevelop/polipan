@@ -170,40 +170,6 @@ func decodeSample(b []byte) (rwSample, error) {
 	return s, nil
 }
 
-// encodeRemoteWrite makes a snappy compressed remote write body. The agent side does not need it: tests do.
-func encodeRemoteWrite(series []rwSeries) []byte {
-	var raw []byte
-	for _, s := range series {
-		var ts []byte
-		names := make([]string, 0, len(s.Labels))
-		for k := range s.Labels {
-			names = append(names, k)
-		}
-		sort.Strings(names)
-		for _, k := range names {
-			var l []byte
-			l = protowire.AppendTag(l, 1, protowire.BytesType)
-			l = protowire.AppendString(l, k)
-			l = protowire.AppendTag(l, 2, protowire.BytesType)
-			l = protowire.AppendString(l, s.Labels[k])
-			ts = protowire.AppendTag(ts, 1, protowire.BytesType)
-			ts = protowire.AppendBytes(ts, l)
-		}
-		for _, sm := range s.Samples {
-			var b []byte
-			b = protowire.AppendTag(b, 1, protowire.Fixed64Type)
-			b = protowire.AppendFixed64(b, math.Float64bits(sm.Value))
-			b = protowire.AppendTag(b, 2, protowire.VarintType)
-			b = protowire.AppendVarint(b, uint64(sm.TS))
-			ts = protowire.AppendTag(ts, 2, protowire.BytesType)
-			ts = protowire.AppendBytes(ts, b)
-		}
-		raw = protowire.AppendTag(raw, 1, protowire.BytesType)
-		raw = protowire.AppendBytes(raw, ts)
-	}
-	return snappy.Encode(nil, raw)
-}
-
 // promText writes a series in the text format of the Prometheus import of VictoriaMetrics.
 func promText(sb *strings.Builder, name string, labels map[string]string, s rwSample) {
 	sb.WriteString(name)

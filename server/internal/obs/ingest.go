@@ -340,8 +340,8 @@ func (in *Ingest) logs(w http.ResponseWriter, r *http.Request, nodeID string, sc
 		// The first lines of a new container can come before the scope cache knows its service. Look again before
 		// the lines are given up: the agent counts a 204 as done and never sends them again.
 		if fresh := in.fresh(r.Context(), nodeID, sc); fresh != nil {
-			if out2, dropped2, err := in.cleanLogs(nodeID, fresh, bytes.NewReader(raw)); err == nil {
-				out, dropped = out2, dropped2
+			if out2, _, err := in.cleanLogs(nodeID, fresh, bytes.NewReader(raw)); err == nil {
+				out = out2
 			}
 		}
 	}

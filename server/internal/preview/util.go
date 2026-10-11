@@ -15,10 +15,10 @@ func jsonMarshal(v any) ([]byte, error) { return json.Marshal(v) }
 func itoa(n int) string                 { return strconv.Itoa(n) }
 func isNoRows(err error) bool           { return errors.Is(err, pgx.ErrNoRows) }
 
-var store404 = errors.New("preview: not found")
+var errStore404 = errors.New("preview: not found")
 
 // ErrNotFound is returned for a preview that does not exist.
-var ErrNotFound = store404
+var ErrNotFound = errStore404
 
 type querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)

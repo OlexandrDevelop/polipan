@@ -248,7 +248,7 @@ func (s *Service) Delete(ctx context.Context, orgID, envID, userID string) error
 		return err
 	}
 	if len(envs) == 0 {
-		return store404
+		return errStore404
 	}
 	return s.deleteLocked(ctx, envs[0], "manual", userID)
 }

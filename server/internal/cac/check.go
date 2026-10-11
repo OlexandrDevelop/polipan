@@ -109,9 +109,7 @@ func (p *Parsed) checkStatic() []Issue {
 			if env != "" && f.Environments[env].Services[name] != nil {
 				where = join("environments", env, "services", name)
 			}
-			for _, is := range p.checkService(eff, where) {
-				out = append(out, is)
-			}
+			out = append(out, p.checkService(eff, where)...)
 			for i, d := range eff.Service.Domains {
 				host, err := NormalizeHost(d.Host)
 				if err != nil {

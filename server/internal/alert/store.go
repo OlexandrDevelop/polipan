@@ -127,21 +127,19 @@ type RuleInput struct {
 
 // Instance is a firing or resolved alert.
 type Instance struct {
-	ID               string
-	RuleID           string
-	RuleName         string
-	RuleType         string
-	Severity         string
-	Fingerprint      string
-	State            string
-	FirstFiredAt     time.Time
-	LastNotifiedAt   *time.Time
-	ResolvedAt       *time.Time
-	Muted            bool
-	Suppressed       bool
-	Details          map[string]any
-	notifyCount      int
-	resolvedNotified bool
+	ID             string
+	RuleID         string
+	RuleName       string
+	RuleType       string
+	Severity       string
+	Fingerprint    string
+	State          string
+	FirstFiredAt   time.Time
+	LastNotifiedAt *time.Time
+	ResolvedAt     *time.Time
+	Muted          bool
+	Suppressed     bool
+	Details        map[string]any
 }
 
 // Store reads and writes the alert tables.

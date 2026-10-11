@@ -116,7 +116,6 @@ type Deps struct {
 type Service struct {
 	Deps
 	mu sync.Mutex
-	wg sync.WaitGroup
 }
 
 // New makes the service. Call Run in a goroutine.

@@ -520,7 +520,7 @@ func (p *Parsed) desireService(eff *Effective, env, where string, live *Live, bc
 		}
 	}
 	for k, v := range s.Env {
-		ds.Vars[k] = DesiredVar{Value: v.Value, Preview: v.Preview, BuildTime: v.BuildTime}
+		ds.Vars[k] = DesiredVar(v)
 	}
 	// A map of settings is managed key by key: a key the file does not set stays free in the UI.
 	for _, k := range []string{"git", "strategy_options", "extra"} {

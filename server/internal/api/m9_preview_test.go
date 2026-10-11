@@ -18,15 +18,15 @@ import (
 // previewFixture is a project with a base environment (staging): a git service "web", a database "db" and an image
 // service "static" that is live. The org has a preview domain and the project has previews on.
 type previewFixture struct {
-	c                  *client
-	project, staging   string
-	prod               string
-	conn, hook, secret string
-	web, db, static    string
-	staticDigest       string
-	staticRelease      string
-	deliveries         int
-	commitA, commitB   string
+	c                *client
+	project, staging string
+	prod             string
+	conn, secret     string
+	web, db, static  string
+	staticDigest     string
+	staticRelease    string
+	deliveries       int
+	commitA, commitB string
 }
 
 const (
