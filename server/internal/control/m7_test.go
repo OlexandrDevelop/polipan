@@ -124,7 +124,10 @@ func (m *m7) addNode(t *testing.T, name string) *node7 {
 	a.Connect(t)
 	go func() {
 		for ds := range a.States {
-			n.last.Store(ds)
+			// Like the real agent, keep the newest version. The first state of a Hello can arrive after a newer push.
+			if old := n.last.Load(); old == nil || ds.Version >= old.Version {
+				n.last.Store(ds)
+			}
 		}
 	}()
 	m.nodes[name] = n
@@ -502,7 +505,10 @@ func TestAC_NODE_05_FailoverBlocked(t *testing.T) {
 	if !strings.Contains(reason, "allow_data_loss_failover is off") {
 		t.Fatalf("reason: %s", reason)
 	}
-	if got := m.q(t, `SELECT count(*) FROM events WHERE topic = 'alert' AND payload->>'rule' = 'failover_blocked' AND payload->>'reason' LIKE '%allow_data_loss_failover%'`); got != "1" {
+	// The state is saved before the audit event and the alert, so wait for the alert.
+	const blockedAlert = `SELECT count(*) FROM events WHERE topic = 'alert' AND payload->>'rule' = 'failover_blocked' AND payload->>'reason' LIKE '%allow_data_loss_failover%'`
+	waitFor(t, "the alert is written", func() bool { return m.q(t, blockedAlert) != "0" })
+	if got := m.q(t, blockedAlert); got != "1" {
 		t.Fatalf("one alert, written once: %s", got)
 	}
 	time.Sleep(300 * time.Millisecond) // more ticks must not write it again
