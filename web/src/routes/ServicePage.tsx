@@ -19,6 +19,7 @@ import {
   Panel,
   EmptyState,
   EnvironmentBadges,
+  KeyHint,
   Skeleton,
   StatusBadge,
 } from '@/components/ui'
@@ -444,6 +445,7 @@ export function ServicePage() {
           }}
         >
           {environment.kind === 'production' ? t('service.deploy_production') : t('service.deploy')}
+          <KeyHint k="d" />
         </Button>
       )}
       {rollbackAccess !== 'hidden' && (

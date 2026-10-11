@@ -376,6 +376,15 @@ export function AppShell() {
                   </Link>
                 </li>
               ))}
+            <li className="sm:hidden">
+              <button
+                type="button"
+                className={`${navLink} w-full !justify-start !text-base`}
+                onClick={() => logout.mutate()}
+              >
+                {t('nav.sign_out')}
+              </button>
+            </li>
           </ul>
         </Modal>
       )}

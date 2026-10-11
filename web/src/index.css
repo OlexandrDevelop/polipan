@@ -214,9 +214,9 @@ body {
 
 /* A key hint chip. */
 kbd.key {
-  border: 1px solid var(--color-border-strong);
+  border: 1px solid currentColor;
   padding: 0 0.5ch;
-  color: var(--color-muted);
+  color: inherit;
   font-size: 0.85em;
 }
 
@@ -569,6 +569,12 @@ dialog {
   :focus-visible {
     outline-width: 3px;
   }
+}
+
+/* The heading takes the focus when a page opens, for screen readers. It is not a control. */
+h1:focus-visible {
+  outline: none;
+  box-shadow: none !important;
 }
 
 /* REQ-UI-017: on touch input a link that stands alone is at least 44 px high. A link inside a

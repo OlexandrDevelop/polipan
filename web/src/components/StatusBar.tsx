@@ -160,7 +160,7 @@ export function StatusBar({
         </button>
         <button
           type="button"
-          className={bracket}
+          className={`${bracket} max-sm:hidden`}
           aria-busy={signingOut || undefined}
           onClick={onSignOut}
         >
