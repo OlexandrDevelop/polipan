@@ -1856,6 +1856,8 @@
   "previews.enabled_hint": "Each pull request gets its own environment.",
   "previews.max_active": "Most active previews",
   "previews.ttl_days": "Days to keep",
+  "previews.grace_minutes": "Minutes to keep after the PR closes",
+  "previews.grace_hint": "The preview is deleted after this time. A reopened PR within this time brings it back.",
   "previews.ttl_hint": "Counted from the last push.",
   "previews.number_invalid": "Enter a whole number above 0.",
   "previews.from_forks": "Previews from forks",

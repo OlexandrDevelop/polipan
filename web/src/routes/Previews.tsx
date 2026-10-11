@@ -229,6 +229,7 @@ function PreviewSettingsForm({
   const [base, setBase] = useState(current?.base_environment_id ?? '')
   const [maxActive, setMaxActive] = useState(String(current?.max_active ?? 10))
   const [ttl, setTtl] = useState(String(current?.ttl_days ?? 7))
+  const [grace, setGrace] = useState(String(current?.cleanup_grace_minutes ?? 60))
   const [forks, setForks] = useState(current?.from_forks ?? false)
   const [selector, setSelector] = useState(selectorText(current?.node_selector))
   const [seed, setSeed] = useState((current?.seed_command ?? []).join(' '))
@@ -237,6 +238,7 @@ function PreviewSettingsForm({
 
   const maxOk = Number.isInteger(Number(maxActive)) && Number(maxActive) >= 1
   const ttlOk = Number.isInteger(Number(ttl)) && Number(ttl) >= 1
+  const graceOk = Number.isInteger(Number(grace)) && Number(grace) >= 0
   const selectorOk = selectorValid(selector)
   const bases = environments.filter((e) => e.kind !== 'preview')
 
@@ -246,6 +248,7 @@ function PreviewSettingsForm({
         enabled,
         max_active: Number(maxActive),
         ttl_days: Number(ttl),
+        cleanup_grace_minutes: Number(grace),
         from_forks: forks,
         ...(base ? { base_environment_id: base } : {}),
         ...(parseSelector(selector) ? { node_selector: parseSelector(selector) } : {}),
@@ -274,7 +277,7 @@ function PreviewSettingsForm({
   function submit(event: FormEvent) {
     event.preventDefault()
     setSaved(false)
-    if (maxOk && ttlOk && selectorOk) save.mutate()
+    if (maxOk && ttlOk && graceOk && selectorOk) save.mutate()
   }
 
   return (
@@ -331,6 +334,16 @@ function PreviewSettingsForm({
             disabled={!allowed}
             error={ttlOk ? null : t('previews.number_invalid')}
             onChange={(e) => setTtl(e.target.value)}
+          />
+          <TextField
+            label={t('previews.grace_minutes')}
+            hint={t('previews.grace_hint')}
+            type="number"
+            min={0}
+            value={grace}
+            disabled={!allowed}
+            error={graceOk ? null : t('previews.number_invalid')}
+            onChange={(e) => setGrace(e.target.value)}
           />
         </div>
         <CheckboxField
