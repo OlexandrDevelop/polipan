@@ -518,3 +518,13 @@ Totals: 372 requirements, 141 acceptance criteria.
 | REQ-UI-031 | MUST | [ui/components.md](ui/components.md) | M2 | unit/component/e2e test by REQ id |
 | REQ-UI-032 | MUST | [ui/components.md](ui/components.md) | M3 | unit/component/e2e test by REQ id |
 | REQ-UI-033 | SHOULD | [ui/screens.md](ui/screens.md) | M8 | unit/component/e2e test by REQ id |
+| REQ-UI-034 | MUST | [ui/terminal-style.md](ui/terminal-style.md#requirements) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-035 | MUST | [ui/terminal-style.md](ui/terminal-style.md#requirements) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-036 | SHOULD | [ui/terminal-style.md](ui/terminal-style.md#requirements) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-037 | MUST | [ui/terminal-style.md](ui/terminal-style.md#requirements) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-038 | MUST | [ui/terminal-style.md](ui/terminal-style.md#requirements) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-039 | MUST | [ui/terminal-style.md](ui/terminal-style.md#requirements) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-040 | SHOULD | [ui/terminal-style.md](ui/terminal-style.md#requirements) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-041 | SHOULD | [ui/terminal-style.md](ui/terminal-style.md#requirements) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-042 | MUST | [ui/terminal-style.md](ui/terminal-style.md#requirements) | M10 | unit/component/e2e test by REQ id |
+| REQ-UI-043 | MUST | [ui/terminal-style.md](ui/terminal-style.md#requirements) | M10 | unit/component/e2e test by REQ id |

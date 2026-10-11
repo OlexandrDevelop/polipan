@@ -1,0 +1,406 @@
+{
+ "$description": "Polipan terminal-style design tokens (T-338). Names match docs/spec/ui/design-tokens.json (bg, surface, text, muted, border, border-strong, primary, on-primary, success, warning, danger, info) so the build can swap files. New names: raised, amber, cyan, selection, log-time, chart. Contrast is WCAG 2.1, measured by script against bg, surface and raised. Text 4.5:1, borders and icons 3:1. Decorative borders (border) are never the only mark of a control.",
+ "color": {
+  "light": {
+   "bg": "#fbf8f0",
+   "surface": "#f3efe3",
+   "raised": "#ebe6d6",
+   "text": "#161b18",
+   "muted": "#4c5a52",
+   "border": "#d8d2c0",
+   "border-strong": "#6b756f",
+   "primary": "#0d6a37",
+   "on-primary": "#fbf8f0",
+   "amber": "#855300",
+   "cyan": "#0a6577",
+   "success": "#0d6a37",
+   "warning": "#855300",
+   "danger": "#b3261e",
+   "info": "#0a6577",
+   "selection": "#d3e8da",
+   "log-time": "#5b6962",
+   "chart": [
+    "#0d6a37",
+    "#0a6577",
+    "#855300",
+    "#8a2b8a",
+    "#2a4fb0",
+    "#b3261e"
+   ]
+  },
+  "dark": {
+   "bg": "#0a0d0c",
+   "surface": "#101512",
+   "raised": "#161d19",
+   "text": "#d5e0d9",
+   "muted": "#8fa196",
+   "border": "#212a25",
+   "border-strong": "#5d7066",
+   "primary": "#4be08a",
+   "on-primary": "#04120a",
+   "amber": "#f0b33c",
+   "cyan": "#4cd3e6",
+   "success": "#4be08a",
+   "warning": "#f0b33c",
+   "danger": "#ff7070",
+   "info": "#4cd3e6",
+   "selection": "#1c3a2b",
+   "log-time": "#7d9086",
+   "chart": [
+    "#4be08a",
+    "#4cd3e6",
+    "#f0b33c",
+    "#e58be5",
+    "#82aaff",
+    "#ff7070"
+   ]
+  }
+ },
+ "contrast": {
+  "$note": "Ratios of each token on bg / surface / raised. All pairs pass AA. A CI test must recompute them.",
+  "light": {
+   "text": {
+    "bg": 16.43,
+    "surface": 15.17,
+    "raised": 13.97
+   },
+   "muted": {
+    "bg": 6.84,
+    "surface": 6.32,
+    "raised": 5.82
+   },
+   "log-time": {
+    "bg": 5.43,
+    "surface": 5.02,
+    "raised": 4.62
+   },
+   "primary": {
+    "bg": 6.31,
+    "surface": 5.83,
+    "raised": 5.37
+   },
+   "amber": {
+    "bg": 6.12,
+    "surface": 5.65,
+    "raised": 5.2
+   },
+   "cyan": {
+    "bg": 6.3,
+    "surface": 5.82,
+    "raised": 5.36
+   },
+   "success": {
+    "bg": 6.31,
+    "surface": 5.83,
+    "raised": 5.37
+   },
+   "warning": {
+    "bg": 6.12,
+    "surface": 5.65,
+    "raised": 5.2
+   },
+   "danger": {
+    "bg": 6.16,
+    "surface": 5.69,
+    "raised": 5.24
+   },
+   "info": {
+    "bg": 6.3,
+    "surface": 5.82,
+    "raised": 5.36
+   },
+   "border-strong": {
+    "bg": 4.5,
+    "surface": 4.15,
+    "raised": 3.82
+   },
+   "on-primary_on_primary": 6.31,
+   "text_on_selection": 13.56,
+   "muted_on_selection": 5.65,
+   "primary_on_selection": 5.21,
+   "chart": [
+    {
+     "bg": 6.31,
+     "surface": 5.83,
+     "raised": 5.37
+    },
+    {
+     "bg": 6.3,
+     "surface": 5.82,
+     "raised": 5.36
+    },
+    {
+     "bg": 6.12,
+     "surface": 5.65,
+     "raised": 5.2
+    },
+    {
+     "bg": 7.08,
+     "surface": 6.54,
+     "raised": 6.02
+    },
+    {
+     "bg": 6.96,
+     "surface": 6.42,
+     "raised": 5.92
+    },
+    {
+     "bg": 6.16,
+     "surface": 5.69,
+     "raised": 5.24
+    }
+   ],
+   "decor_border_on_bg": 1.42
+  },
+  "dark": {
+   "text": {
+    "bg": 14.4,
+    "surface": 13.61,
+    "raised": 12.66
+   },
+   "muted": {
+    "bg": 7.16,
+    "surface": 6.77,
+    "raised": 6.3
+   },
+   "log-time": {
+    "bg": 5.77,
+    "surface": 5.45,
+    "raised": 5.07
+   },
+   "primary": {
+    "bg": 11.46,
+    "surface": 10.83,
+    "raised": 10.07
+   },
+   "amber": {
+    "bg": 10.43,
+    "surface": 9.86,
+    "raised": 9.17
+   },
+   "cyan": {
+    "bg": 10.94,
+    "surface": 10.34,
+    "raised": 9.61
+   },
+   "success": {
+    "bg": 11.46,
+    "surface": 10.83,
+    "raised": 10.07
+   },
+   "warning": {
+    "bg": 10.43,
+    "surface": 9.86,
+    "raised": 9.17
+   },
+   "danger": {
+    "bg": 7.25,
+    "surface": 6.86,
+    "raised": 6.38
+   },
+   "info": {
+    "bg": 10.94,
+    "surface": 10.34,
+    "raised": 9.61
+   },
+   "border-strong": {
+    "bg": 3.69,
+    "surface": 3.49,
+    "raised": 3.25
+   },
+   "on-primary_on_primary": 11.25,
+   "text_on_selection": 9.17,
+   "muted_on_selection": 4.56,
+   "primary_on_selection": 7.3,
+   "chart": [
+    {
+     "bg": 11.46,
+     "surface": 10.83,
+     "raised": 10.07
+    },
+    {
+     "bg": 10.94,
+     "surface": 10.34,
+     "raised": 9.61
+    },
+    {
+     "bg": 10.43,
+     "surface": 9.86,
+     "raised": 9.17
+    },
+    {
+     "bg": 8.51,
+     "surface": 8.05,
+     "raised": 7.48
+    },
+    {
+     "bg": 8.5,
+     "surface": 8.03,
+     "raised": 7.47
+    },
+    {
+     "bg": 7.25,
+     "surface": 6.86,
+     "raised": 6.38
+    }
+   ],
+   "decor_border_on_bg": 1.32
+  }
+ },
+ "rules": {
+  "text-pairs": [
+   "text",
+   "muted",
+   "log-time",
+   "primary",
+   "amber",
+   "cyan",
+   "success",
+   "warning",
+   "danger",
+   "info"
+  ],
+  "control-pairs": [
+   "border-strong",
+   "chart[0..5]"
+  ],
+  "glow-never-carries-meaning": "Glow, scanlines and curvature are decoration only. No pair is measured with glow."
+ },
+ "space": {
+  "1": "4px",
+  "2": "8px",
+  "3": "12px",
+  "4": "16px",
+  "5": "24px",
+  "6": "32px",
+  "7": "48px",
+  "cell": "1ch (one mono column)",
+  "row": "1lh"
+ },
+ "radius": {
+  "none": "0",
+  "sm": "2px",
+  "md": "2px",
+  "lg": "4px",
+  "full": "9999px",
+  "$note": "Panels and buttons use 0. md and lg exist so old names still resolve. full is for the live dot only."
+ },
+ "border": {
+  "width": "1px",
+  "width-focus": "2px",
+  "style": "solid",
+  "panel": "1px solid var(--color-border-strong)",
+  "divider": "1px solid var(--color-border)",
+  "dashed": "1px dashed var(--color-border-strong)"
+ },
+ "font": {
+  "sans": "Inter Variable, system-ui, sans-serif (self-hosted woff2, Latin only, long text only)",
+  "mono": "JetBrains Mono Variable, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace (self-hosted woff2, Latin, weights 400 500 700)",
+  "ui-font": "mono",
+  "ligatures": "off for logs, on for labels only if the build wants; default off",
+  "scale": {
+   "xs": "12/16",
+   "sm": "13/20",
+   "base": "14/22",
+   "lg": "16/24",
+   "xl": "20/28",
+   "2xl": "28/36"
+  },
+  "scale-phone": {
+   "xs": "12/16",
+   "sm": "14/20",
+   "base": "16/24",
+   "lg": "18/28",
+   "xl": "22/30",
+   "2xl": "28/36",
+   "$note": "Inputs are 16px on phone to stop zoom on focus."
+  },
+  "weights": [
+   400,
+   500,
+   700
+  ],
+  "tracking-caps": "0.06em",
+  "tabular-nums": "always on in tables, counters, logs (font-variant-numeric: tabular-nums)",
+  "budget": "JetBrains Mono Variable Latin woff2 about 40 KB + Inter Variable Latin about 48 KB, total <= 120 KB (REQ-UI-029)"
+ },
+ "shadow": {
+  "none": "none",
+  "popover": "0 8px 24px rgb(0 0 0 / .45)",
+  "popover-light": "0 6px 20px rgb(0 0 0 / .16)",
+  "$note": "Layers are shown by 1px borders, not by shadows. Shadow is only for the palette and menus."
+ },
+ "glow": {
+  "$note": "Only on focus, the live dot and the selected row accent. Off in light theme and in Calm mode. Never on text smaller than 16px.",
+  "focus": "0 0 0 1px var(--color-primary), 0 0 12px color-mix(in srgb, var(--color-primary) 45%, transparent)",
+  "live": "0 0 6px color-mix(in srgb, var(--color-success) 70%, transparent)",
+  "text": "0 0 8px color-mix(in srgb, var(--color-primary) 40%, transparent)",
+  "effects-switch-default": "off"
+ },
+ "effects": {
+  "scanlines": {
+   "default": "off",
+   "opacity": 0.06,
+   "pitch": "3px",
+   "layer": "fixed overlay, pointer-events none, aria-hidden, mix only transform-free CSS gradient",
+   "max-opacity": 0.08
+  },
+  "curvature": {
+   "default": "off",
+   "note": "Only a vignette and 2px inner radius on the app frame. No warp of text. Disabled under 1024px, prefers-contrast and Calm mode."
+  },
+  "glow": {
+   "default": "off"
+  }
+ },
+ "motion": {
+  "instant": "0ms",
+  "fast": "120ms",
+  "base": "200ms",
+  "slow": "320ms",
+  "easing": "cubic-bezier(.2,.8,.2,1)",
+  "easing-linear": "linear (only for the packet flow and the cursor blink)",
+  "properties": "transform and opacity only (color and background-color allowed for 120ms hover)",
+  "cursor-blink": "1060ms steps(1), only on focus, max 10 blinks then stays solid",
+  "typewriter": "max 40 chars per frame, never delays real data by more than 1 frame",
+  "boot": "max 600ms, once per session, any key or click skips",
+  "row-flash": "320ms opacity of an overlay, one-shot",
+  "counter": "200ms, number roll by transform, final value is in the DOM text at once",
+  "packet": "1600ms linear loop per packet, translateX, 3 to 6 packets",
+  "reduced": "With prefers-reduced-motion: reduce or Calm mode: all durations 0ms, no blink, no packets (static arrows and numbers), no boot, no typewriter, no flash (a static marker stays 2s)."
+ },
+ "breakpoints": {
+  "phone": "0-639",
+  "tablet": "640-1023",
+  "laptop": "1024-1535",
+  "large": "1536+"
+ },
+ "touch": {
+  "min-target": "44px",
+  "desktop-min-target": "32px",
+  "row-height": {
+   "phone": "48px",
+   "tablet": "40px",
+   "laptop": "28px (1.75 lines)",
+   "compact": "22px"
+  }
+ },
+ "layout": {
+  "statusbar-height": "28px",
+  "statusbar-height-phone": "40px",
+  "cmdline-height": "36px",
+  "cmdline-height-phone": "48px",
+  "sidebar": "232px",
+  "rail": "64px",
+  "content-max-large": "1600px"
+ },
+ "z": {
+  "base": 0,
+  "sticky": 10,
+  "drawer": 20,
+  "dialog": 30,
+  "toast": 40,
+  "tooltip": 50,
+  "scanlines": 60
+ }
+}
