@@ -701,7 +701,7 @@ def chaos_end():
 # ---- M4: databases, templates, backups (run-m4.sh) ----
 
 M4 = "/e2e/m4.json"
-MINIO = {"endpoint": "http://127.0.0.1:9000", "bucket": "backups", "path": "pp"}
+MINIO = {"endpoint": "http://192.168.79.2:9000", "bucket": "backups", "path": "pp"}
 MINIO_CREDS = {"access_key_id": "minio", "secret_access_key": "minio-secret-123"}
 
 
@@ -795,7 +795,7 @@ def m4_setup():
     _, minio = p.call("POST", "/backup-targets", {"name": "minio", "kind": "s3", "config": MINIO, "credentials": MINIO_CREDS}, expect=201)
     key = open("/e2e/sftp/id_ed25519").read()
     _, sftp = p.call("POST", "/backup-targets", {"name": "sftp", "kind": "sftp",
-                     "config": {"host": "127.0.0.1", "port": 2222, "user": "bk", "path": "/srv/restic"}, "credentials": {"private_key": key}}, expect=201)
+                     "config": {"host": "192.168.79.2", "port": 2222, "user": "bk", "path": "/srv/restic"}, "credentials": {"private_key": key}}, expect=201)
     for t in (minio, sftp):
         _, res = p.call("POST", f"/backup-targets/{t['id']}/test", expect=200)
         if not res["ok"]:

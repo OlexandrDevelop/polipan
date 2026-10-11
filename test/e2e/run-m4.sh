@@ -59,9 +59,11 @@ dx sh /e2e/setup.sh
 
 step "Start MinIO and an SFTP server"
 # The MinIO images moved away from Docker Hub and Quay is not always reachable: Chainguard builds MinIO from source.
+# The server refuses loopback addresses for targets (REQ-SEC-104). MinIO and the SFTP server also answer on this address.
+dx ip addr add 192.168.79.2/32 dev lo
 dx mkdir -p /minio-data && dx chmod 777 /minio-data
 dx docker run -d --name minio --net host -v /minio-data:/data -e MINIO_ROOT_USER=minio -e MINIO_ROOT_PASSWORD=minio-secret-123 \
-  chainguard/minio:latest server /data --address 127.0.0.1:9000 --console-address 127.0.0.1:9001 >/dev/null
+  chainguard/minio:latest server /data --address 0.0.0.0:9000 --console-address 127.0.0.1:9001 >/dev/null
 dx docker run -d --name sftp --net host -v /e2e/sftp:/keys alpine:latest sh -c '
   apk add --no-cache openssh >/dev/null &&
   ssh-keygen -q -t ed25519 -N "" -f /keys/id_ed25519 &&
