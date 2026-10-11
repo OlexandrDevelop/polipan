@@ -79,7 +79,7 @@ func (s *Service) expireOne(ctx context.Context, env *envState) {
 // checkPending looks at the deployments of a preview. When all ended, it sets the state and tells the PR.
 func (s *Service) checkPending(ctx context.Context, env *envState) {
 	pending := env.pending()
-	var failed []string
+	var failed, publicText []string
 	allLive := true
 	for svc, dep := range pending {
 		var state string
@@ -107,6 +107,12 @@ func (s *Service) checkPending(ctx context.Context, env *envState) {
 				}
 			}
 			failed = append(failed, msg)
+			// The text on the PR is public: only the service and the reason code, no detail of the node or the build.
+			short := name + ": " + state
+			if reason != nil {
+				short = name + ": " + *reason
+			}
+			publicText = append(publicText, short)
 		}
 	}
 	kv := map[string]any{"preview_pending": map[string]any{}}
@@ -114,6 +120,7 @@ func (s *Service) checkPending(ctx context.Context, env *envState) {
 		kv["preview_state"], kv["preview_failure"] = StateActive, ""
 	} else {
 		kv["preview_state"], kv["preview_failure"] = StateFailed, strings.Join(failed, "; ")
+		kv["preview_failure_public"] = strings.Join(publicText, "; ")
 	}
 	if err := s.setSettings(ctx, env.ID, kv); err != nil {
 		s.Log.Error("preview: set the state", "environment", env.Slug, "error", err)
@@ -128,7 +135,7 @@ func (s *Service) checkPending(ctx context.Context, env *envState) {
 		s.report(ctx, env, git.StatusSuccess, "The preview is ready", urls)
 		return
 	}
-	s.report(ctx, env, git.StatusFailure, "The preview failed: "+strings.Join(failed, "; "), nil)
+	s.report(ctx, env, git.StatusFailure, "The preview failed: "+strings.Join(publicText, "; "), nil)
 }
 
 func trimDetail(s string) string {
@@ -190,7 +197,7 @@ func (s *Service) report(ctx context.Context, env *envState, state, text string,
 		}
 		b.WriteString("\n")
 	default:
-		b.WriteString("The preview failed.\n\n```\n" + env.str("preview_failure") + "\n```\n\n")
+		b.WriteString("The preview failed.\n\n```\n" + env.str("preview_failure_public") + "\n```\n\nThe details are in Polipan.\n\n")
 	}
 	if sha := env.str("head_sha"); len(sha) >= 7 {
 		b.WriteString("Commit: `" + sha[:7] + "`\n")

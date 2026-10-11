@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/polipan/polipan/server/internal/git"
 	"github.com/polipan/polipan/server/internal/store"
@@ -146,4 +147,23 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Info, error) {
 	}
 	fresh, err := s.Get(ctx, p.OrgID, env.ID)
 	return fresh, err
+}
+
+// Extend adds days to the TTL of a preview: the new end is the later of now and the old end, plus the days.
+func (s *Service) Extend(ctx context.Context, orgID, envID string, days int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	envs, err := s.list(ctx, `e.id = $1 AND p.org_id = $2 AND e.kind = 'preview' AND e.deleted_at IS NULL`, envID, orgID)
+	if err != nil {
+		return err
+	}
+	if len(envs) == 0 {
+		return ErrNotFound
+	}
+	base := s.Clock.Now()
+	if e := envs[0].Expires; e != nil && e.After(base) {
+		base = *e
+	}
+	_, err = s.Pool.Exec(ctx, `UPDATE environments SET preview_expires_at = $2, updated_at = now() WHERE id = $1`, envID, base.Add(time.Duration(days)*24*time.Hour))
+	return err
 }

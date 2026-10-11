@@ -396,6 +396,21 @@ func TestAC_PREV_08_TTL(t *testing.T) {
 	m.settle("pr-11", "active")
 	env := m.previewEnv("pr-11")
 	clk := m.gw.Clock
+	// The settings of a preview hold its state: only extend_days can be set (the TTL end moves by that many days).
+	before := m.q(`SELECT extract(epoch FROM preview_expires_at)::bigint FROM environments WHERE id = $1`, env)
+	if rec := f.c.do("PATCH", "/api/v1/environments/"+env, map[string]any{"settings": map[string]any{"preview_fork": false}}); rec.Code != 422 {
+		t.Fatalf("a state key was set through the API: %d", rec.Code)
+	}
+	if rec := f.c.do("PATCH", "/api/v1/environments/"+env, map[string]any{"protected": true}); rec.Code != 422 {
+		t.Fatalf("a preview was protected: %d", rec.Code)
+	}
+	f.c.ok(200, "PATCH", "/api/v1/environments/"+env, map[string]any{"settings": map[string]any{"extend_days": 2}})
+	after := m.q(`SELECT extract(epoch FROM preview_expires_at)::bigint FROM environments WHERE id = $1`, env)
+	if before == after || m.q(`SELECT settings->>'preview_state' FROM environments WHERE id = $1`, env) != "active" {
+		t.Fatalf("extend_days: %s -> %s", before, after)
+	}
+	f.c.ok(200, "PATCH", "/api/v1/environments/"+env, map[string]any{"settings": map[string]any{"extend_days": 1}})
+	m.exec(`UPDATE environments SET preview_expires_at = $2 WHERE id = $1`, env, clk.Now().Add(3*24*time.Hour))
 	clk.Advance(2 * 24 * time.Hour)
 	m.prEvent(f, "synchronized", 11, commitB, "a", nil)
 	m.settle("pr-11", "active")

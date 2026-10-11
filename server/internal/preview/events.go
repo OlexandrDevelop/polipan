@@ -5,6 +5,7 @@ package preview
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -425,7 +426,7 @@ func (s *Service) deployAll(ctx context.Context, env *envState, svcs []store.Pre
 		if err != nil {
 			s.Log.Warn("preview: deployment not queued", "environment", env.Slug, "service", sv.Name, "error", err)
 			if firstErr == nil {
-				firstErr = errors.New(sv.Name + ": " + err.Error())
+				firstErr = fmt.Errorf("%s: %w", sv.Name, err)
 			}
 			continue
 		}
@@ -433,19 +434,27 @@ func (s *Service) deployAll(ctx context.Context, env *envState, svcs []store.Pre
 	}
 	kv := map[string]any{"preview_pending": pending}
 	if firstErr != nil && len(pending) == 0 {
-		kv["preview_state"], kv["preview_failure"] = StateFailed, reasonOf(firstErr)
+		kv["preview_state"], kv["preview_failure"], kv["preview_failure_public"] = StateFailed, reasonOf(firstErr), publicReason(firstErr)
 	}
 	if err := s.setSettings(ctx, env.ID, kv); err != nil {
 		return err
 	}
 	if firstErr != nil {
 		if len(pending) == 0 {
-			env.Settings["preview_failure"] = reasonOf(firstErr)
-			s.report(ctx, env, "failure", reasonOf(firstErr), nil)
+			env.Settings["preview_failure"], env.Settings["preview_failure_public"] = reasonOf(firstErr), publicReason(firstErr)
+			s.report(ctx, env, "failure", "The preview failed: "+publicReason(firstErr), nil)
 		}
 		return firstErr
 	}
 	return nil
+}
+
+// publicReason is the reason on the PR: a code, no detail of the platform.
+func publicReason(err error) string {
+	if errors.Is(err, orchestrator.ErrNoNode) {
+		return "node_unavailable"
+	}
+	return "deploy_not_started"
 }
 
 func reasonOf(err error) string {

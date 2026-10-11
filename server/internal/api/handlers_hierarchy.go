@@ -293,6 +293,10 @@ func (h *Handlers) UpdateEnvironment(w http.ResponseWriter, r *http.Request, env
 	if denyProtected(w, r, "env:update", cur.Protected) {
 		return
 	}
+	if cur.Kind == "preview" {
+		h.updatePreview(w, r, cur, body.Name, body.Protected, body.Settings)
+		return
+	}
 	if body.Protected != nil && requireAdmin(w, r, "changing protected") {
 		return
 	}

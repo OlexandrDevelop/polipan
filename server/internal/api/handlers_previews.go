@@ -123,3 +123,45 @@ func (h *Handlers) CreatePreview(w http.ResponseWriter, r *http.Request, project
 	w.Header().Set("Location", BasePath+"/environments/"+info.ID)
 	WriteJSON(w, http.StatusAccepted, previewJSON(*info))
 }
+
+// updatePreview is the update of a preview environment. Its settings hold the state of the preview, so only
+// extend_days (days to add to the TTL) can be set. A preview has no name change and is never protected (REQ-PREV-012).
+func (h *Handlers) updatePreview(w http.ResponseWriter, r *http.Request, cur *store.Environment, name *string, protected *bool, settings *map[string]any) {
+	if name != nil || protected != nil {
+		invalid(w, r, "name", "a preview cannot be renamed or protected")
+		return
+	}
+	if !h.previewsReady(w, r) {
+		return
+	}
+	days := 0
+	if settings != nil {
+		for k, v := range *settings {
+			f, ok := v.(float64)
+			if k != "extend_days" || !ok || f < 1 || f > 365 || f != float64(int(f)) {
+				invalid(w, r, "settings."+k, "only settings.extend_days (1 to 365) can be set on a preview")
+				return
+			}
+			days = int(f)
+		}
+	}
+	if days > 0 {
+		if err := h.Git.Previews.Extend(r.Context(), h.orgID(r), cur.ID, days); err != nil {
+			if errors.Is(err, preview.ErrNotFound) {
+				notFoundError(w, r)
+				return
+			}
+			internalError(w, r, err)
+			return
+		}
+	}
+	info, err := h.Git.Previews.Get(r.Context(), h.orgID(r), cur.ID)
+	if errors.Is(err, preview.ErrNotFound) {
+		notFoundError(w, r)
+		return
+	}
+	if fail(w, r, err) {
+		return
+	}
+	WriteJSON(w, http.StatusOK, previewJSON(*info))
+}
