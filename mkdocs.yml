@@ -6,4 +6,29 @@ theme:
   name: material
 nav:
   - Home: index.md
+  - Guide:
+      - Install: guide/install.md
+      - First steps: guide/first-steps.md
+      - Apps and deploys: guide/apps-and-deploys.md
+      - Domains and HTTPS: guide/domains.md
+      - Variables and secrets: guide/variables-secrets.md
+      - Servers (nodes): guide/nodes.md
+      - Previews and promotion: guide/previews-promotion.md
+      - Logs, metrics and alerts: guide/monitoring-alerts.md
+      - Access control: guide/access-control.md
+      - CLI: guide/cli.md
+      - Terraform: guide/terraform.md
+      - Config as code: guide/config-as-code.md
+      - Upgrade guide: guide/upgrade.md
+      - Troubleshooting: guide/troubleshooting.md
+  - Operations:
+      - Backups: operations/backups.md
+      - Databases and templates: operations/databases-and-templates.md
+      - SSO: operations/sso.md
+      - Registry garbage collection: operations/registry-gc.md
+      - Release: operations/release.md
+      - Release notes 1.0 (draft): operations/release-notes-1.0.md
+      - Threat model coverage: operations/threat-model-coverage.md
+      - Security process dry run: operations/security-process-dry-run.md
+      - Performance and chaos report: operations/performance-chaos-report.md
   - Specification: spec/README.md

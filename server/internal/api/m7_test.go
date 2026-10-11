@@ -35,9 +35,15 @@ func (f *fakeOrch) record(action string) error {
 	return c.err
 }
 
-func (f *fakeOrch) CordonNode(_ context.Context, _, id, _ string) error   { return f.record("cordon:" + id) }
-func (f *fakeOrch) UncordonNode(_ context.Context, _, id, _ string) error { return f.record("uncordon:" + id) }
-func (f *fakeOrch) DrainNode(_ context.Context, _, id, _ string) error    { return f.record("drain:" + id) }
+func (f *fakeOrch) CordonNode(_ context.Context, _, id, _ string) error {
+	return f.record("cordon:" + id)
+}
+func (f *fakeOrch) UncordonNode(_ context.Context, _, id, _ string) error {
+	return f.record("uncordon:" + id)
+}
+func (f *fakeOrch) DrainNode(_ context.Context, _, id, _ string) error {
+	return f.record("drain:" + id)
+}
 func (f *fakeOrch) SetMaintenance(_ context.Context, _, id string, on bool, _ string) error {
 	if on {
 		return f.record("maintenance:on:" + id)

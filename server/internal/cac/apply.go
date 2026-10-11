@@ -753,4 +753,3 @@ func (r *run) deployAll(ctx context.Context) {
 func (r *run) closeDrift(ctx context.Context) {
 	_, _ = r.a.Pool.Exec(ctx, `UPDATE config_drift SET resolved_at = now() WHERE project_id = $1 AND resolved_at IS NULL`, r.opt.ProjectID)
 }
-

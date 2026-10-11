@@ -584,4 +584,3 @@ func (a *app) ssoLoginCmd() *cobra.Command {
 		return a.done(strings.TrimRight(e.URL, "/") + "/api/v1/auth/sso/" + id + "/start")
 	})
 }
-

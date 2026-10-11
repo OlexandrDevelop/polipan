@@ -76,10 +76,10 @@ func newM6Env(t *testing.T) *m6Env {
 		ExternalURL: "https://panel.example.com", AgentListen: ":9443", SetupToken: "setup-secret", KEK: testKEK, Secrets: sec, Backup: bk,
 		Git: &api.GitDeps{Keys: store.NewGitSecrets(e.pool, make([]byte, 32)), Cloner: cl,
 			NewProvider: func(git.Connection, ssrf.Policy) (git.Provider, error) { return prov, nil }, Policy: func(context.Context, string) ssrf.Policy {
-			p, _ := ssrf.New(false, "10.210.0.0/16", ssrf.DefaultDockerNetworks)
-			p.Resolver = publicResolver{}
-			return p
-		}},
+				p, _ := ssrf.New(false, "10.210.0.0/16", ssrf.DefaultDockerNetworks)
+				p.Resolver = publicResolver{}
+				return p
+			}},
 	})
 	if err != nil {
 		t.Fatal(err)

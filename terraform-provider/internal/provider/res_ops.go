@@ -378,7 +378,7 @@ var alertRuleSpec = spec[alertRuleModel]{
 			"threshold":               schema.Float64Attribute{Optional: true, Description: "Threshold of the rule."},
 			"for_seconds":             schema.Int64Attribute{Optional: true, Description: "The condition must hold this long."},
 			"query":                   schema.StringAttribute{Optional: true, Description: "Log query, for rules on log lines."},
-			"event_count":                   schema.Int64Attribute{Optional: true, Description: "Number of events, for rules on log lines."},
+			"event_count":             schema.Int64Attribute{Optional: true, Description: "Number of events, for rules on log lines."},
 			"repeat_interval_seconds": schema.Int64Attribute{Optional: true, Computed: true, Description: "Seconds between repeated alerts. Server default 14400.", PlanModifiers: intKeep},
 			"enabled":                 schema.BoolAttribute{Optional: true, Computed: true, Description: "Turn the rule on or off. Default true.", PlanModifiers: boolKeep},
 		},

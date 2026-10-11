@@ -495,7 +495,9 @@ func TestAC_NODE_05_FailoverBlocked(t *testing.T) {
 		t.Fatal("the volume is pinned to the first node")
 	}
 	m.failNode(t, a)
-	waitFor(t, "failover is blocked", func() bool { return m.q(t, `SELECT failover_state FROM services WHERE id = $1`, m.serviceID) == "blocked" })
+	waitFor(t, "failover is blocked", func() bool {
+		return m.q(t, `SELECT failover_state FROM services WHERE id = $1`, m.serviceID) == "blocked"
+	})
 	reason := m.q(t, `SELECT failover_reason FROM services WHERE id = $1`, m.serviceID)
 	if !strings.Contains(reason, "allow_data_loss_failover is off") {
 		t.Fatalf("reason: %s", reason)
@@ -527,14 +529,18 @@ func TestREQ_NODE_007_FailoverNoneStays(t *testing.T) {
 	m.addNode(t, "n-b")
 	m.deploy(t, orchestrator.DeployParams{})
 	m.failNode(t, a)
-	waitFor(t, "blocked", func() bool { return m.q(t, `SELECT failover_state FROM services WHERE id = $1`, m.serviceID) == "blocked" })
+	waitFor(t, "blocked", func() bool {
+		return m.q(t, `SELECT failover_state FROM services WHERE id = $1`, m.serviceID) == "blocked"
+	})
 	if !strings.Contains(m.q(t, `SELECT failover_reason FROM services WHERE id = $1`, m.serviceID), "failover is off") {
 		t.Fatal("reason")
 	}
 	// The node returns: the service is healthy again, nothing moved.
 	m.env.Clock.Advance(time.Second)
 	a.a.Heartbeat(t)
-	waitFor(t, "healthy", func() bool { return m.q(t, `SELECT failover_state FROM services WHERE id = $1`, m.serviceID) == "healthy" })
+	waitFor(t, "healthy", func() bool {
+		return m.q(t, `SELECT failover_state FROM services WHERE id = $1`, m.serviceID) == "healthy"
+	})
 	if m.nodesOfService(t) != "n-a" {
 		t.Fatal("the service stays on its node")
 	}
