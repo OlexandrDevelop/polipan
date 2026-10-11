@@ -281,7 +281,9 @@ func (h *Handlers) MoveDomain(w http.ResponseWriter, r *http.Request, domainID g
 	if fail(w, r, err) {
 		return
 	}
-	if denyProtected(w, r, "domain:manage", protected) || denyProtected(w, r, "domain:manage", target.EnvProtected) {
+	// The guard checked the project of the domain. The target service can be in another project: check the role of
+	// that project, its protected flag and the project limit of an API token there too.
+	if denyProtected(w, r, "domain:manage", protected) || h.denyInProject(w, r, target.ProjectID, "domain:manage", target.EnvProtected) {
 		return
 	}
 	if h.denyManaged(w, r, d.ServiceID, "domains") || h.denyManaged(w, r, target.ID, "domains") {

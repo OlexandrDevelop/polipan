@@ -79,3 +79,34 @@ func TestM10b_DeleteOrg(t *testing.T) {
 		t.Fatalf("after delete: %d %s", rec.Code, rec.Body)
 	}
 }
+
+// SEC-1: moveDomain checks the target project too. A token limited to one project, and a user with a viewer role in the
+// target project, cannot give a domain to a service of that project.
+func TestM10b_MoveDomainChecksTheTargetProject(t *testing.T) {
+	e := newTestEnv(t, "http://panel.example.com")
+	c := e.owner()
+	projA, envsA := c.project("alpha")
+	projB, envsB := c.project("beta")
+	a := c.service(envsA["staging"], "web")
+	b := c.service(envsB["staging"], "internal")
+	dom := c.ok(201, "POST", "/api/v1/services/"+a+"/domains", map[string]any{"host": "cross.example.com"})
+	id := str(dom, "id")
+
+	// A token of project alpha: the target is in project beta.
+	tok := c.ok(201, "POST", "/api/v1/tokens", map[string]any{"name": "alpha", "scopes": []string{"write"}, "project_id": projA})
+	rec := e.bearer(str(tok, "token"), "POST", "/api/v1/domains/"+id+"/move", map[string]any{"target_service_id": b})
+	if rec.Code != 403 || !strings.Contains(rec.Body.String(), "token_project") {
+		t.Fatalf("limited token into another project: %d %s", rec.Code, rec.Body)
+	}
+	// A developer with a viewer role in project beta.
+	dev := e.userClient("usr_dev", "dev@example.com", "developer")
+	c.ok(200, "PUT", "/api/v1/projects/"+projB+"/roles", []map[string]any{{"user_id": "usr_dev", "role": "viewer"}})
+	if rec := dev.do("POST", "/api/v1/domains/"+id+"/move", map[string]any{"target_service_id": b}); rec.Code != 403 {
+		t.Fatalf("viewer in the target project: %d %s", rec.Code, rec.Body)
+	}
+	if e.count(`SELECT count(*) FROM domains WHERE id = $1 AND service_id = $2`, id, a) != 1 {
+		t.Fatal("the domain moved although the request was refused")
+	}
+	// The owner still can.
+	c.ok(200, "POST", "/api/v1/domains/"+id+"/move", map[string]any{"target_service_id": b})
+}
