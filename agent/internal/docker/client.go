@@ -18,7 +18,8 @@ import (
 	"time"
 )
 
-const apiPrefix = "http://docker/v1.41"
+// Docker Engine 25 and newer speak API 1.44. Docker 29 refuses clients older than 1.44.
+const apiPrefix = "http://docker/v1.44"
 
 // HTTPClient is the real Docker client. It speaks the Engine API over a unix socket.
 type HTTPClient struct {

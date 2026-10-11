@@ -215,7 +215,7 @@ cmd_status() {
     echo "VM: stopped"
   fi
   local virt real_k base_k
-  virt=$(qemu-img info --output=json "$disk" | sed -n 's/.*"virtual-size": \([0-9]*\).*/\1/p' | head -n 1)
+  virt=$(qemu-img info -U --output=json "$disk" | sed -n 's/.*"virtual-size": \([0-9]*\).*/\1/p' | tail -n 1)
   real_k=$(du -k "$disk" | cut -f 1)
   base_k=$(du -k "$base" 2>/dev/null | cut -f 1 || echo 0)
   echo "Disk: max $((virt / 1024 / 1024 / 1024)) GB, real size of the VM disk: $((real_k / 1024)) MB"
