@@ -97,6 +97,21 @@ test('AC-REL-01 the rollback button flow starts a rollback of the chosen release
   expect(state.rollbackCalls).toEqual([{ release_id: 'r1' }])
 })
 
+test('the rollback dialog works on a page without a secure context (plain HTTP)', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined })
+  })
+  const state = defaultState()
+  await mockApi(page, state)
+  await page.goto(`${serviceUrl}/releases`)
+  await page.getByRole('button', { name: 'Roll back', exact: true }).first().click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Roll back to v1' }).click()
+  await expect(page).toHaveURL(/\/deployments\/d2$/)
+  expect(state.rollbackCalls).toEqual([{ release_id: 'r1' }])
+})
+
 test('REQ-UI-022 REQ-UI-002 a paused event stream shows the banner and clears it', async ({
   page,
 }) => {

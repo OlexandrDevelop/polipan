@@ -10,6 +10,7 @@ import { Modal } from '@/components/Modal'
 import { Banner, Button, EnvironmentBadges, Skeleton, TextField } from '@/components/ui'
 import { hasKey, t } from '@/i18n'
 import type { Environment, Service } from '@/scope'
+import { newKey } from '../idempotency'
 
 const MAX_CHANGES = 12
 
@@ -37,7 +38,7 @@ export function RollbackDialog({
   const params = useParams({ strict: false })
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [key] = useState(() => crypto.randomUUID())
+  const [key] = useState(() => newKey())
   const [typed, setTyped] = useState('')
   const liveId = service.live_release_id
 

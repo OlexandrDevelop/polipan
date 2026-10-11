@@ -30,6 +30,7 @@ import {
 } from '@/routes/Catalog'
 import type { Template } from '@/routes/Catalog'
 import type { Environment, Project } from '@/scope'
+import { newKey } from '../idempotency'
 
 type Service = components['schemas']['Service']
 type Engine = NonNullable<components['schemas']['ServiceCreate']['db_engine']>
@@ -90,7 +91,7 @@ function DatabaseWizard({ base, environment }: { base: Base; environment: Enviro
           api.POST('/services/{service_id}/deploy', {
             params: {
               path: { service_id: service.id ?? '' },
-              header: { 'Idempotency-Key': crypto.randomUUID() },
+              header: { 'Idempotency-Key': newKey() },
             },
             body: { dry_run: false },
           }),
@@ -283,7 +284,7 @@ function TemplateWizard({ base, environment }: { base: Base; environment: Enviro
     mutationFn: () =>
       unwrap(
         api.POST('/templates/{slug}/instantiate', {
-          params: { path: { slug }, header: { 'Idempotency-Key': crypto.randomUUID() } },
+          params: { path: { slug }, header: { 'Idempotency-Key': newKey() } },
           body: instantiateBody(template as Template, environment.id ?? '', values),
         }),
       ),

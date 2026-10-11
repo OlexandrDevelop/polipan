@@ -27,6 +27,7 @@ import { useAccess } from '@/permissions'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { useScope } from '@/scope'
 import type { Tone } from '@/status'
+import { newKey } from '../idempotency'
 
 type ConfigPlan = components['schemas']['ConfigPlan']
 type SyncState = NonNullable<components['schemas']['Project']['config_sync_state']>
@@ -261,7 +262,7 @@ function ApplyDialog({
         api.POST('/projects/{project_id}/config/apply', {
           params: {
             path: { project_id: projectId },
-            header: { 'Idempotency-Key': crypto.randomUUID() },
+            header: { 'Idempotency-Key': newKey() },
           },
           body: {
             config,
