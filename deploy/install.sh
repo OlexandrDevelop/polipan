@@ -241,7 +241,7 @@ systemctl restart polipan-build-firewall || fail "could not load the build netwo
 userns_sysctl=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
 userns_restricted=""
 [ "$(cat "$userns_sysctl" 2>/dev/null || echo 0)" = "1" ] && userns_restricted=1
-if [ -d /sys/kernel/security/apparmor ]; then
+if [ -n "$userns_restricted" ] && [ -d /sys/kernel/security/apparmor ]; then
   if ! command -v apparmor_parser >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
     say "Installing apparmor"
     DEBIAN_FRONTEND=noninteractive apt-get install -y apparmor >/dev/null 2>&1 || true
@@ -268,7 +268,11 @@ PROFILE
     rm -f /etc/apparmor.d/polipan-buildkit
     fail "could not load the AppArmor profile for BuildKit (apparmor_parser is missing or failed). Install the package apparmor and run this script again. Only if you accept the risk, run it with --allow-userns-sysctl: it turns off the Ubuntu limit on user namespaces for the whole server (sysctl kernel.apparmor_restrict_unprivileged_userns=0)."
   fi
-elif [ -n "$userns_restricted" ]; then
+elif [ -z "$userns_restricted" ]; then
+  # No limit on this host (for example Ubuntu 22.04 or Debian 12, AppArmor 3): the profile is not needed and its
+  # AppArmor 4 syntax would not load. Keep the old setting.
+  sed -i 's/apparmor=polipan-buildkit/apparmor=unconfined/' "$dir/docker-compose.yml"
+else
   if [ -n "$allow_userns_sysctl" ]; then
     say "WARNING: --allow-userns-sysctl is set. This turns off the limit on user namespaces for the whole server."
     printf '# Polipan: rootless BuildKit needs user namespaces (install.sh --allow-userns-sysctl)\nkernel.apparmor_restrict_unprivileged_userns = 0\n' > /etc/sysctl.d/60-polipan-userns.conf
