@@ -32,9 +32,10 @@ type Message struct {
 	LastLines   []string // last log lines of a failed deployment
 	Count       int      // messages sent for this alert, with this one
 	Details     map[string]any
-	// The incident of which this alert is the probable cause: the other alerts, cause first (at most 10), and
-	// their number.
+	// The incident of this alert: the other alerts, cause first (at most 10), and their number. RootCause is set
+	// when this alert is not the probable cause itself (the root could not carry the message).
 	IncidentID   string
+	RootCause    string
 	Related      []string
 	RelatedCount int
 }
@@ -94,7 +95,7 @@ func (e *Engine) buildMessage(ctx context.Context, instanceID, kind string) (*Me
 	}
 	m.What = describe(m)
 	if kind != KindResolved {
-		if m.IncidentID, m.Related, m.RelatedCount, err = e.relatedOf(ctx, e.DB, instanceID); err != nil {
+		if m.IncidentID, m.RootCause, m.Related, m.RelatedCount, err = e.relatedOf(ctx, e.DB, instanceID); err != nil {
 			return nil, err
 		}
 	}
@@ -249,7 +250,12 @@ func (m *Message) webhookBody(now time.Time) map[string]any {
 		"fingerprint": m.Fingerprint, "details": details, "sent_at": now.UTC().Format(time.RFC3339),
 	}
 	if m.RelatedCount > 0 {
-		body["incident"] = map[string]any{"id": m.IncidentID, "related_count": m.RelatedCount, "related": m.Related}
+		probable := m.What
+		if m.RootCause != "" {
+			probable = m.RootCause
+		}
+		body["incident"] = map[string]any{"id": m.IncidentID, "related_count": m.RelatedCount, "related": m.Related,
+			"probable_cause": probable, "is_probable_cause": m.RootCause == ""}
 	}
 	return body
 }

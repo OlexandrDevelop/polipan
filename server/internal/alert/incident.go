@@ -234,32 +234,41 @@ func incidentOf(ctx context.Context, q dbq, instanceID string) (*incidentInfo, e
 	return &inc, nil
 }
 
-// relatedOf gives the one line texts of the other alerts of the incident whose root is this instance, cause first.
-func (e *Engine) relatedOf(ctx context.Context, q dbq, instanceID string) (string, []string, int, error) {
+// relatedOf gives the incident context of an alert that sends a message: the other alerts of its incident, cause
+// first (at most 10), and their number. When the alert is not the root (the root could not carry the message, see
+// rootCovers), it also gives the probable cause of the incident.
+func (e *Engine) relatedOf(ctx context.Context, q dbq, instanceID string) (incID, rootCause string, related []string, count int, err error) {
 	inc, err := incidentOf(ctx, q, instanceID)
-	if err != nil || inc == nil || inc.RootID != instanceID || inc.Members < 2 {
-		return "", nil, 0, err
+	if err != nil || inc == nil || inc.Members < 2 {
+		return "", "", nil, 0, err
+	}
+	if inc.RootID != instanceID {
+		if err := q.QueryRow(ctx, `SELECT COALESCE(root_cause, '') FROM incidents WHERE id = $1`, inc.ID).Scan(&rootCause); err != nil {
+			return "", "", nil, 0, err
+		}
 	}
 	list, err := incidentMembers(ctx, q, inc.ID)
 	if err != nil {
-		return "", nil, 0, err
+		return "", "", nil, 0, err
 	}
 	SortByCause(list)
-	var out []string
 	for _, in := range list {
 		if in.ID == instanceID {
 			continue
 		}
-		if len(out) == 10 {
+		if len(related) == 10 {
 			break
 		}
 		text := e.describeInstance(ctx, q, in)
+		if in.ID == inc.RootID {
+			text += " (probable cause)"
+		}
 		if in.State == "resolved" {
 			text += " (resolved)"
 		}
-		out = append(out, text)
+		related = append(related, text)
 	}
-	return inc.ID, out, len(list) - 1, nil
+	return inc.ID, rootCause, related, len(list) - 1, nil
 }
 
 // relatedText is the block of the related alerts in a plain text message.
@@ -268,6 +277,9 @@ func (m *Message) relatedText() string {
 		return ""
 	}
 	s := fmt.Sprintf("Probable cause of %d related alerts on this node:\n", m.RelatedCount)
+	if m.RootCause != "" {
+		s = fmt.Sprintf("Part of an incident on this node. Probable cause: %s\nOther alerts of the incident (%d):\n", truncate(m.RootCause, 300), m.RelatedCount)
+	}
 	for _, r := range m.Related {
 		s += "  - " + truncate(r, 300) + "\n"
 	}
