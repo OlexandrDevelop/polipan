@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"strconv"
+	"time"
 )
 
 // DefaultDataDir is where the agent keeps desired.json and its keys (02-architecture, section 6).
@@ -49,12 +50,20 @@ type Config struct {
 	DockerSocket string
 	// MetricsAddr is where the agent serves its metrics for vmagent (12 section 7). Use a loopback address.
 	MetricsAddr string
+	// BuildKitRoot is the host path of the BuildKit state. Empty = found from the buildkitd container.
+	BuildKitRoot string
+	// Cleanup turns the removal of dangling images on or off. CleanupInterval is the time between two runs and
+	// CleanupHighPercent the disk level that starts a run sooner (12 section 7.1).
+	Cleanup            bool
+	CleanupInterval    time.Duration
+	CleanupHighPercent float64
 }
 
 // FromEnv returns the default config changed by the environment variables.
 func FromEnv(getenv func(string) string) Config {
 	c := Config{DataDir: DefaultDataDir, LogLevel: "info", Network: "polipan", WireguardPort: 51820,
-		Firewall: true, DockerSocket: "/var/run/docker.sock", MetricsAddr: "127.0.0.1:9445"}
+		Firewall: true, DockerSocket: "/var/run/docker.sock", MetricsAddr: "127.0.0.1:9445",
+		Cleanup: true, CleanupInterval: time.Hour, CleanupHighPercent: 85}
 	set := func(dst *string, key string) {
 		if v := getenv(key); v != "" {
 			*dst = v
@@ -76,6 +85,7 @@ func FromEnv(getenv func(string) string) Config {
 	set(&c.WildcardDomains, "POLIPAN_AGENT_WILDCARD_DOMAINS")
 	set(&c.DockerSocket, "POLIPAN_AGENT_DOCKER_SOCKET")
 	set(&c.MetricsAddr, "POLIPAN_AGENT_METRICS_ADDR")
+	set(&c.BuildKitRoot, "POLIPAN_AGENT_BUILDKIT_ROOT")
 	if v := getenv("POLIPAN_AGENT_WIREGUARD_PORT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n < 65536 {
 			c.WireguardPort = n
@@ -84,6 +94,21 @@ func FromEnv(getenv func(string) string) Config {
 	if v := getenv("POLIPAN_AGENT_FIREWALL"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			c.Firewall = b
+		}
+	}
+	if v := getenv("POLIPAN_AGENT_CLEANUP"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			c.Cleanup = b
+		}
+	}
+	if v := getenv("POLIPAN_AGENT_CLEANUP_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d >= time.Minute {
+			c.CleanupInterval = d
+		}
+	}
+	if v := getenv("POLIPAN_AGENT_CLEANUP_HIGH_PERCENT"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 && f <= 100 {
+			c.CleanupHighPercent = f
 		}
 	}
 	return c

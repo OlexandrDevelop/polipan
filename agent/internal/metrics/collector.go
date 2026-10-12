@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/polipan/polipan/agent/internal/diskfs"
 	"github.com/polipan/polipan/agent/internal/docker"
 )
 
@@ -60,6 +61,8 @@ type Collector struct {
 	DiskPath string
 	// Disk reads the disk usage. Nil = statfs (tests replace it).
 	Disk func(path string) (used, total uint64, err error)
+	// Filesystems gives the root, Docker data-root and BuildKit file systems for polipan_node_fs_*. Optional.
+	Filesystems func(ctx context.Context) []diskfs.FS
 	// The sources below come from the reconcile engine. Each one is optional.
 	Health         func() []HealthSample
 	Volumes        func() []VolumeSample
@@ -110,6 +113,7 @@ func (c *Collector) Render(ctx context.Context) []byte {
 	e := newExposition()
 	c.containers(ctx, e)
 	c.node(e)
+	c.filesystems(ctx, e)
 	c.volumes(e)
 	c.health(e)
 	if c.DesiredVersion != nil {
@@ -253,6 +257,19 @@ func (c *Collector) node(e *exposition) {
 	if used, total, err := disk(path); err == nil {
 		e.add("polipan_node_disk_used_bytes", "Used bytes of the node disk.", "gauge", float64(used), "node", c.NodeID)
 		e.add("polipan_node_disk_total_bytes", "Size of the node disk.", "gauge", float64(total), "node", c.NodeID)
+	}
+}
+
+// filesystems writes one series per file system. The labels say where it is mounted and which paths are on it.
+func (c *Collector) filesystems(ctx context.Context, e *exposition) {
+	if c.Filesystems == nil {
+		return
+	}
+	for _, f := range c.Filesystems(ctx) {
+		l := []string{"node", c.NodeID, "mountpoint", f.Mount, "roles", f.RoleList()}
+		e.add("polipan_node_fs_used_bytes", "Used bytes of a file system of the node.", "gauge", float64(f.Used), l...)
+		e.add("polipan_node_fs_avail_bytes", "Free bytes of a file system of the node, without the root reserve.", "gauge", float64(f.Avail), l...)
+		e.add("polipan_node_fs_size_bytes", "Size of a file system of the node.", "gauge", float64(f.Size), l...)
 	}
 }
 

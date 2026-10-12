@@ -21,6 +21,12 @@ import (
 // Docker Engine 25 and newer speak API 1.44. Docker 29 refuses clients older than 1.44.
 const apiPrefix = "http://docker/v1.44"
 
+// The log rotation of every workload container: at most LogMaxFiles files of LogMaxSize.
+const (
+	LogMaxSize  = "10m"
+	LogMaxFiles = "3"
+)
+
 // HTTPClient is the real Docker client. It speaks the Engine API over a unix socket.
 type HTTPClient struct {
 	hc     *http.Client
@@ -291,6 +297,72 @@ func (c *HTTPClient) ImageRemove(ctx context.Context, ref string) error {
 	return resp.Body.Close()
 }
 
+// Image is one entry of the image list.
+type Image struct {
+	ID          string
+	RepoTags    []string
+	RepoDigests []string
+	Created     time.Time
+	Size        int64
+}
+
+// Images lists the top-level images.
+func (c *HTTPClient) Images(ctx context.Context) ([]Image, error) {
+	var items []struct {
+		ID          string   `json:"Id"`
+		RepoTags    []string `json:"RepoTags"`
+		RepoDigests []string `json:"RepoDigests"`
+		Created     int64    `json:"Created"`
+		Size        int64    `json:"Size"`
+	}
+	if err := c.getJSON(ctx, "/images/json", nil, &items); err != nil {
+		return nil, err
+	}
+	out := make([]Image, 0, len(items))
+	for _, it := range items {
+		out = append(out, Image{ID: it.ID, RepoTags: it.RepoTags, RepoDigests: it.RepoDigests,
+			Created: time.Unix(it.Created, 0), Size: it.Size})
+	}
+	return out, nil
+}
+
+// RootDir returns the Docker data-root, for example /var/lib/docker.
+func (c *HTTPClient) RootDir(ctx context.Context) (string, error) {
+	var info struct {
+		DockerRootDir string `json:"DockerRootDir"`
+	}
+	if err := c.getJSON(ctx, "/info", nil, &info); err != nil {
+		return "", err
+	}
+	return info.DockerRootDir, nil
+}
+
+// BuildKitRoot returns the host path of the state of the buildkitd container of the panel (compose service
+// buildkitd). Empty when this node runs none.
+func (c *HTTPClient) BuildKitRoot(ctx context.Context) (string, error) {
+	list, err := c.List(ctx, map[string]string{"com.docker.compose.service": "buildkitd"})
+	if err != nil || len(list) == 0 {
+		return "", err
+	}
+	var r struct {
+		Mounts []struct {
+			Source      string `json:"Source"`
+			Destination string `json:"Destination"`
+			RW          bool   `json:"RW"`
+		} `json:"Mounts"`
+	}
+	if err := c.getJSON(ctx, "/containers/"+url.PathEscape(list[0].ID)+"/json", nil, &r); err != nil {
+		return "", err
+	}
+	for _, m := range r.Mounts {
+		// Rootless: /home/user/.local/share/buildkit, rootful: /var/lib/buildkit.
+		if m.RW && m.Source != "" && strings.HasSuffix(m.Destination, "/buildkit") {
+			return m.Source, nil
+		}
+	}
+	return "", nil
+}
+
 // CreateAndStart creates and starts a container.
 func (c *HTTPClient) CreateAndStart(ctx context.Context, spec ContainerSpec) (string, error) {
 	body := createBody(spec)
@@ -344,6 +416,8 @@ func createBody(spec ContainerSpec) map[string]any {
 	if spec.RestartPolicy != "" {
 		host["RestartPolicy"] = map[string]any{"Name": spec.RestartPolicy}
 	}
+	// The json-file log of a container is rotated, so it cannot fill the disk (12-observability section 7.1).
+	host["LogConfig"] = map[string]any{"Type": "json-file", "Config": map[string]string{"max-size": LogMaxSize, "max-file": LogMaxFiles}}
 	if len(spec.Mounts) > 0 {
 		var ms []map[string]any
 		for _, m := range spec.Mounts {

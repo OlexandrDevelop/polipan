@@ -24,7 +24,9 @@ import (
 	"time"
 
 	"github.com/polipan/polipan/agent/internal/backup"
+	"github.com/polipan/polipan/agent/internal/cleanup"
 	"github.com/polipan/polipan/agent/internal/config"
+	"github.com/polipan/polipan/agent/internal/diskfs"
 	"github.com/polipan/polipan/agent/internal/dns"
 	"github.com/polipan/polipan/agent/internal/docker"
 	"github.com/polipan/polipan/agent/internal/firewall"
@@ -237,8 +239,14 @@ func startTelemetry(ctx context.Context, cfg config.Config, d *docker.HTTPClient
 		nodeID = id.Node.NodeID
 	}
 	access := &metrics.Access{NodeID: nodeID, Log: log}
+	paths := &diskfs.Paths{Docker: d, BuildKitRoot: cfg.BuildKitRoot}
+	disks := func(ctx context.Context) []diskfs.FS { return diskfs.Measure(paths.Get(ctx)) }
 	col := &metrics.Collector{Docker: d, NodeID: nodeID, Health: eng.HealthSamples, Volumes: eng.VolumeSamples,
-		DesiredVersion: eng.Version, Access: access, Log: log}
+		DesiredVersion: eng.Version, Access: access, Log: log, Filesystems: disks}
+	if cfg.Cleanup {
+		cl := &cleanup.Cleaner{Docker: d, Disks: disks, Interval: cfg.CleanupInterval, High: cfg.CleanupHighPercent, Log: log}
+		go cl.Run(ctx)
+	}
 	ship := &logship.Shipper{Dir: filepath.Join(cfg.DataDir, "logship"), Source: d, Log: log,
 		Sender: &logship.HTTPSender{DataDir: cfg.DataDir}}
 	tm := &telemetry.Manager{Docker: d, DataDir: cfg.DataDir, NodeID: nodeID, Log: log, Collector: col, Access: access,
