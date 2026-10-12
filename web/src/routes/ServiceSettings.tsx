@@ -41,7 +41,8 @@ interface Form {
 }
 
 function readForm(config: Config): Form {
-  const source = obj(config.source)
+  // The server keeps the Git source in config.git.
+  const source = obj(config.git ?? config.source)
   const resources = obj(config.resources)
   const options = obj(config.strategy_options)
   return {
@@ -72,9 +73,9 @@ function writeConfig(config: Config, f: Form, git: boolean): Config {
     else next[key] = value
   }
   if (git) {
-    next.source = {
-      ...obj(config.source),
-      type: 'git',
+    delete next.source
+    next.git = {
+      ...obj(config.git ?? config.source),
       repo: f.repo.trim(),
       branch: f.branch.trim(),
       builder: f.builder,
@@ -159,6 +160,7 @@ export function ServiceSettings({
   const errors = submitted ? validate(form, git) : {}
 
   const save = useMutation({
+    meta: { success: 'settings.saved' },
     mutationFn: () =>
       unwrap(
         api.PATCH('/services/{service_id}', {
