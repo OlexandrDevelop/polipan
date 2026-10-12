@@ -6,6 +6,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
+import { DeployAllDialog } from '@/components/DeployAllDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Modal } from '@/components/Modal'
 import { PromoteDialog } from '@/components/PromoteDialog'
@@ -142,6 +143,10 @@ function ServiceCards({ environment, project }: { environment: Environment; proj
   const services = useServices(environment.id)
   const access = accessFor(role, 'service:create', environment.protected)
 
+  const [deployingAll, setDeployingAll] = useState(false)
+  const deployAccess = accessFor(role, 'service:deploy', environment.protected)
+  const notDeployed = (services.data ?? []).filter((s) => !s.live_release_id)
+
   const addButton =
     access === 'hidden' ? undefined : access === 'blocked' ? (
       <Button variant="primary" reason={t('common.needs_admin')}>
@@ -172,7 +177,19 @@ function ServiceCards({ environment, project }: { environment: Environment; proj
   }
   return (
     <div className="space-y-4">
-      {addButton && <div className="flex justify-end">{addButton}</div>}
+      {(addButton || (deployAccess === 'allow' && notDeployed.length > 0)) && (
+        <div className="flex flex-wrap justify-end gap-2">
+          {deployAccess === 'allow' && notDeployed.length > 0 && (
+            <Button onClick={() => setDeployingAll(true)}>
+              {t('deployall.button', { count: notDeployed.length })}
+            </Button>
+          )}
+          {addButton}
+        </div>
+      )}
+      {deployingAll && (
+        <DeployAllDialog services={notDeployed} onClose={() => setDeployingAll(false)} />
+      )}
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {services.data.map((service) => (
           <li key={service.id}>
