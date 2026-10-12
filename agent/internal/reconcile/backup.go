@@ -89,7 +89,7 @@ func (e *Engine) restoreSnapshot(ctx context.Context, rs *agentv1.RestoreSnapsho
 	}
 	secrets := backupSecrets([]*agentv1.BackupTargetSpec{rs.Target}, rs.RepoPassword)
 	// Files (redis, volumes): the container is stopped during the restore, and the reconcile loop must not start it.
-	var restart func()
+	var restart func() error
 	if rs.StopContainer && rs.GetSource().GetContainer() != "" {
 		c, err := e.Docker.Inspect(ctx, rs.Source.Container)
 		if err != nil {
@@ -102,19 +102,34 @@ func (e *Engine) restoreSnapshot(ctx context.Context, rs *agentv1.RestoreSnapsho
 				e.unsuppress(placement)
 				return e.backupFailed(fmt.Errorf("cannot stop %s: %w", rs.Source.Container, err), secrets)
 			}
-			restart = func() {
+			restart = func() error {
 				sctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 				defer cancel()
 				e.unsuppress(placement)
-				if err := e.Docker.Start(sctx, c.ID); err != nil {
+				// The volume guard (08 section 7a): another container may hold the data now.
+				e.startMu.Lock()
+				defer e.startMu.Unlock()
+				var err error
+				if w := e.workload(placement); w != nil {
+					err = e.guard(sctx, w, c.ID)
+				} else {
+					err = e.guardContainer(sctx, c.ID)
+				}
+				if err == nil {
+					err = e.Docker.Start(sctx, c.ID)
+				}
+				if err != nil {
 					e.Log.Error("cannot start the container after a restore", "container", c.ID, "error", err)
 				}
+				return err
 			}
 		}
 	}
 	err := e.Backup.Restore(ctx, rs)
 	if restart != nil {
-		restart()
+		if rerr := restart(); rerr != nil && err == nil {
+			err = rerr // the data is restored, but the container did not start again (volume_in_use or Docker)
+		}
 	}
 	if err != nil {
 		return e.backupFailed(err, secrets)

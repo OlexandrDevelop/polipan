@@ -208,6 +208,12 @@ func (e *Engine) run(ctx context.Context, cmd *agentv1.Command) ([]byte, string,
 			w = proto.Clone(w).(*agentv1.WorkloadSpec)
 			w.Role = "live"
 		}
+		e.runMu.Lock()
+		err := e.requireRepaired(ctx)
+		e.runMu.Unlock()
+		if err != nil {
+			return fail(err, "internal_error")
+		}
 		if err := e.ensure(ctx, w, ex); err != nil {
 			return fail(err, "container_start_failed")
 		}

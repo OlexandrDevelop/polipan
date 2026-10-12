@@ -105,6 +105,7 @@ type Engine struct {
 	noRestart  map[string]bool    // container ids that already have the restart policy "no" (kept old containers)
 	refused    map[string]refusal // placements that the volume guard did not start
 	repaired   bool               // the restart policies of the old containers were fixed after the agent start
+	startMu    sync.Mutex         // one volume guard and container start at a time (reconcile, commands, restore)
 	hs         map[string]*hstate // health state by placement
 	ingMu      sync.Mutex         // one ingress load at a time
 	ingSpec    [32]byte
@@ -209,7 +210,7 @@ func (e *Engine) Run(ctx context.Context) {
 		iv = 30 * time.Second
 	}
 	e.runMu.Lock()
-	e.repairPolicies(ctx)
+	_ = e.repairPolicies(ctx) // logged; Reconcile tries again and does nothing until it succeeds
 	e.runMu.Unlock()
 	t := time.NewTicker(iv)
 	defer t.Stop()
@@ -234,7 +235,7 @@ func hashSpec(s *agentv1.IngressSpec) [32]byte {
 func (e *Engine) Reconcile(ctx context.Context) {
 	e.runMu.Lock()
 	defer e.runMu.Unlock()
-	e.repairPolicies(ctx)
+	_ = e.repairPolicies(ctx)
 	e.mu.Lock()
 	ds, hold := e.desired, e.hold
 	e.mu.Unlock()
@@ -242,6 +243,12 @@ func (e *Engine) Reconcile(ctx context.Context) {
 		return
 	}
 	var errs []string
+	// No container is touched before the old ones have the restart policy "no" (REQ-DEPLOY-113).
+	if err := e.requireRepaired(ctx); err != nil {
+		errs = append(errs, codeFor(err, "internal_error")+": "+err.Error())
+		e.finish(ctx, ds, errs, false)
+		return
+	}
 	if e.Infra != nil && !e.infraOK {
 		if err := e.Infra(ctx); err != nil {
 			errs = append(errs, "infra: "+err.Error())
@@ -532,6 +539,8 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 		if err != nil {
 			return err
 		}
+		e.startMu.Lock()
+		defer e.startMu.Unlock()
 		if err := e.guard(ctx, w, ""); err != nil {
 			return err
 		}
@@ -550,6 +559,8 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 	if _, err := e.prepareMounts(ctx, w); err != nil {
 		return err
 	}
+	e.startMu.Lock()
+	defer e.startMu.Unlock()
 	if err := e.guard(ctx, w, ex.ID); err != nil {
 		return err
 	}
@@ -641,12 +652,12 @@ func stoppedFirst(ws []*agentv1.WorkloadSpec) []*agentv1.WorkloadSpec {
 // live one at the next boot. A running one with the role stopped is stopped too. Containers that
 // Polipan does not manage are not touched. On a Docker error it runs again on the next reconcile.
 // Without a saved desired state it waits for the first one from the server.
-func (e *Engine) repairPolicies(ctx context.Context) {
+func (e *Engine) repairPolicies(ctx context.Context) error {
 	e.mu.Lock()
 	ds, done := e.desired, e.repaired
 	e.mu.Unlock()
 	if done || ds == nil {
-		return // without a desired state nothing is known: it runs when the first one arrives
+		return nil // without a desired state nothing is known: it runs when the first one arrives
 	}
 	byName := map[string]*agentv1.WorkloadSpec{}
 	for _, w := range ds.Workloads {
@@ -655,7 +666,7 @@ func (e *Engine) repairPolicies(ctx context.Context) {
 	managed, err := e.Docker.List(ctx, map[string]string{LabelManaged: "true"})
 	if err != nil {
 		e.Log.Warn("restart policies not checked", "error", err)
-		return
+		return err
 	}
 	fixed := 0
 	for _, c := range managed {
@@ -673,7 +684,7 @@ func (e *Engine) repairPolicies(ctx context.Context) {
 		running := ok && (c.State == "running" || c.State == "restarting" || c.State == "paused")
 		if err := e.retire(ctx, c.ID, c.Labels[LabelPlacement], running, grace); err != nil {
 			e.Log.Warn("restart policy not fixed", "container", c.Name, "error", err)
-			return
+			return err
 		}
 		fixed++
 	}
@@ -681,6 +692,15 @@ func (e *Engine) repairPolicies(ctx context.Context) {
 	e.mu.Lock()
 	e.repaired = true
 	e.mu.Unlock()
+	return nil
+}
+
+// requireRepaired runs repairPolicies when it has not succeeded yet and returns its error.
+func (e *Engine) requireRepaired(ctx context.Context) error {
+	if err := e.repairPolicies(ctx); err != nil {
+		return fmt.Errorf("restart policies of old containers not fixed: %w", err)
+	}
+	return nil
 }
 
 type codedErr struct {

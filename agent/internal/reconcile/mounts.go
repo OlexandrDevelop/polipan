@@ -311,6 +311,43 @@ func (e *Engine) guardMounts(ctx context.Context, w *agentv1.WorkloadSpec, self 
 			want = append(want, guarded{label: "bind:" + m.Source, path: dir})
 		}
 	}
+	return e.checkHolders(ctx, l, want, self, w.ContainerName, w.PlacementId)
+}
+
+// guardContainer is the volume guard for a container that is not in the desired state (for example the
+// source of a restore): its own writable volumes and binds are the guarded sources.
+func (e *Engine) guardContainer(ctx context.Context, id string) error {
+	l, ok := e.Docker.(docker.MountLister)
+	if !ok {
+		return nil
+	}
+	cs, err := l.MountedContainers(ctx)
+	if err != nil {
+		return err
+	}
+	var want []guarded
+	name, placement := "", ""
+	for _, c := range cs {
+		if c.ID != id {
+			continue
+		}
+		name, placement = c.Name, c.Labels[LabelPlacement]
+		for _, m := range c.Mounts {
+			if !m.RW {
+				continue
+			}
+			label := "bind" // a host path is never shown
+			if m.Type == "volume" {
+				label = m.Name
+			}
+			want = append(want, guarded{label: label, volume: m.Name, path: m.Source})
+		}
+	}
+	return e.checkHolders(ctx, l, want, id, name, placement)
+}
+
+// checkHolders refuses when another container holds one of the guarded sources (see guardMounts).
+func (e *Engine) checkHolders(ctx context.Context, l docker.MountLister, want []guarded, self, selfName, placement string) error {
 	if len(want) == 0 {
 		return nil
 	}
@@ -319,7 +356,7 @@ func (e *Engine) guardMounts(ctx context.Context, w *agentv1.WorkloadSpec, self 
 		return err // no inventory, no start
 	}
 	for _, c := range cs {
-		if c.ID == self || c.Name == w.ContainerName {
+		if c.ID == self || (selfName != "" && c.Name == selfName) {
 			continue
 		}
 		g, held := holds(c.Mounts, want)
@@ -340,13 +377,13 @@ func (e *Engine) guardMounts(ctx context.Context, w *agentv1.WorkloadSpec, self 
 			}
 		}
 		if old, grace := e.oldRelease(c.Name, c.Labels); old {
-			e.Log.Warn("stopping an old container that holds a volume of the workload", "container", c.Name, "placement", w.PlacementId)
+			e.Log.Warn("stopping an old container that holds a volume of the workload", "container", c.Name, "placement", placement)
 			if err := e.retire(ctx, c.ID, c.Labels[LabelPlacement], active, grace); err != nil {
 				return err
 			}
 			continue
 		}
-		return &volumeInUseErr{Source: g.label, ConflictingContainerID: shortID(c.ID), PlacementID: w.PlacementId}
+		return &volumeInUseErr{Source: g.label, ConflictingContainerID: shortID(c.ID), PlacementID: placement}
 	}
 	return nil
 }
