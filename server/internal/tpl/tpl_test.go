@@ -15,7 +15,7 @@ func TestBuiltinTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"directus", "ghost", "gitea", "metabase", "minio", "n8n", "nextcloud", "pgadmin", "plausible", "uptime-kuma", "vaultwarden", "wordpress"}
+	want := []string{"directus", "ghost", "gitea", "laravel", "metabase", "minio", "n8n", "nextcloud", "pgadmin", "plausible", "uptime-kuma", "vaultwarden", "wordpress"}
 	if len(list) != len(want) {
 		t.Fatalf("got %d templates, want %d", len(list), len(want))
 	}

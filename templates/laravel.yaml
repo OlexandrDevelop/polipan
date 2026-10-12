@@ -1,0 +1,64 @@
+slug: laravel
+version: 1.0.0
+name: Laravel
+description: A new Laravel app (PHP 8.4, nginx and PHP-FPM in one image) with PostgreSQL and Redis. The first start makes the app and runs the migrations.
+icon: https://laravel.com/img/favicon/favicon.ico
+tags: [php, framework]
+inputs:
+  - { name: domain, label: Domain, type: domain, required: true }
+services:
+  laravel-db:
+    type: database
+    db: { engine: postgres, version: "16" }
+  laravel-redis:
+    source: { image: { name: "redis:7-alpine" } }
+    ports: [6379]
+    volumes:
+      - { name: data, path: /data }
+    healthcheck: { type: tcp, port: 6379 }
+  laravel:
+    source: { image: { name: "serversideup/php:8.4-fpm-nginx" } }
+    ports: [8080]
+    # The code of the app is in a volume, so it stays after a restart. The first start makes a new Laravel app
+    # there. You can change the code in the volume, or deploy your own image instead of this one.
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        cd /var/www/html
+        if [ ! -f artisan ]; then
+          composer create-project laravel/laravel /tmp/app --prefer-dist --no-interaction --no-scripts
+          cp -a /tmp/app/. /var/www/html/
+          rm -rf /tmp/app
+          php artisan package:discover --ansi
+        fi
+        if ! grep -q '^APP_KEY=base64' .env 2>/dev/null; then
+          [ -f .env ] || cp .env.example .env
+          php artisan key:generate --force
+        fi
+        php artisan migrate --force
+        exec docker-php-serversideup-entrypoint /init
+    env:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: "https://${{inputs.domain}}"
+      DB_CONNECTION: pgsql
+      DB_HOST: "${{db.laravel-db.HOST}}"
+      DB_PORT: "${{db.laravel-db.PORT}}"
+      DB_DATABASE: "${{db.laravel-db.NAME}}"
+      DB_USERNAME: "${{db.laravel-db.USER}}"
+      DB_PASSWORD: "${{db.laravel-db.PASSWORD}}"
+      REDIS_HOST: "${{services.laravel-redis.host}}"
+      REDIS_PORT: "6379"
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: database
+      PHP_OPCACHE_ENABLE: "1"
+    volumes:
+      - { name: app, path: /var/www/html }
+    domains:
+      - { host: "${{inputs.domain}}", port: 8080 }
+    healthcheck: { type: tcp, port: 8080, start_period: 600s }
+    resources: { memory: 768Mi }
+    depends_on: [laravel-db, laravel-redis]
