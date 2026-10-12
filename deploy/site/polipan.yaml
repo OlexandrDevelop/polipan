@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: Apache-2.0
+# The public Polipan sites as one Polipan project: the landing page, the docs and the community forum.
+#
+# Before you apply it:
+#   1. Make the project `polipan-site` and the secret FORUM_SECRET (32 characters or more).
+#   2. Link the Git repository in the project. The `repo` value below is the place to put your own.
+#   3. Set the DNS A records of polipan.dev, get.polipan.dev, docs.polipan.dev and community.polipan.dev
+#      to the server.
+#
+#   polipan validate -f deploy/site/polipan.yaml
+#   polipan plan -f deploy/site/polipan.yaml
+#   polipan apply -f deploy/site/polipan.yaml --yes
+version: 1
+project: polipan-site
+services:
+  site:
+    source:
+      git: { repo: polipan/polipan, branch: main, path: /site, builder: dockerfile }
+    ports: [8080]
+    domains:
+      - { host: polipan.dev, port: 8080 }
+      - { host: get.polipan.dev, port: 8080 }
+    healthcheck: { type: http, path: /healthz, port: 8080 }
+    resources: { cpu: "250m", memory: 128Mi }
+
+  docs:
+    source:
+      git: { repo: polipan/polipan, branch: main, path: /, builder: dockerfile, dockerfile: docs.Dockerfile }
+    ports: [8080]
+    domains:
+      - { host: docs.polipan.dev, port: 8080 }
+    healthcheck: { type: http, path: /healthz, port: 8080 }
+    resources: { cpu: "250m", memory: 128Mi }
+
+  forum-db:
+    type: database
+    db: { engine: postgres, version: "17" }
+    volumes:
+      - { name: data, path: /var/lib/postgresql/data }
+    resources: { cpu: "500m", memory: 512Mi }
+
+  forum:
+    source:
+      git: { repo: polipan/polipan, branch: main, path: /forum, builder: dockerfile }
+    ports: [8080]
+    env:
+      DATABASE_URL: "${{db.forum-db.URL}}"
+      FORUM_BASE_URL: https://community.polipan.dev
+      FORUM_MAIN_URL: https://polipan.dev
+      FORUM_DOCS_URL: https://docs.polipan.dev
+      FORUM_TRUSTED_PROXY: "true"
+    secrets: [FORUM_SECRET]
+    domains:
+      - { host: community.polipan.dev, port: 8080 }
+    healthcheck: { type: http, path: /healthz, port: 8080 }
+    resources: { cpu: "250m", memory: 256Mi }
+    depends_on: [forum-db]

@@ -27,6 +27,7 @@ nav:
       - SSO: operations/sso.md
       - Registry garbage collection: operations/registry-gc.md
       - Release: operations/release.md
+      - Public sites: operations/public-sites.md
       - Release notes 1.0 (draft): operations/release-notes-1.0.md
       - Threat model coverage: operations/threat-model-coverage.md
       - Security process dry run: operations/security-process-dry-run.md

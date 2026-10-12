@@ -1,0 +1,11 @@
+.git
+bin
+dist
+**/node_modules
+site
+forum
+web
+server
+agent
+cli
+test
