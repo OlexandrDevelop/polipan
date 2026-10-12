@@ -1976,6 +1976,8 @@
   "palette.metrics": "Apri le metriche di {name}",
   "nav.more": "Altro",
   "nav.settings": "Impostazioni",
+  "nav.workspace": "Spazio di lavoro",
+  "header.systems_ok": "Sistemi operativi",
   "nav.loaded": "Caricato: {title}",
   "list.show_more": "Mostra altri {count}",
   "list.shown": "Mostrati {shown} di {total}",

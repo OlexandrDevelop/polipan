@@ -1976,6 +1976,8 @@
   "palette.metrics": "Άνοιγμα metrics του {name}",
   "nav.more": "Περισσότερα",
   "nav.settings": "Ρυθμίσεις",
+  "nav.workspace": "Χώρος εργασίας",
+  "header.systems_ok": "Τα συστήματα λειτουργούν",
   "nav.loaded": "Φορτώθηκε: {title}",
   "list.show_more": "Εμφάνιση {count} ακόμη",
   "list.shown": "Εμφάνιση {shown} από {total}",

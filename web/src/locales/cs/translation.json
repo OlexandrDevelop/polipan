@@ -1976,6 +1976,8 @@
   "palette.metrics": "Otevřít metriky {name}",
   "nav.more": "Více",
   "nav.settings": "Nastavení",
+  "nav.workspace": "Pracovní prostor",
+  "header.systems_ok": "Systémy fungují",
   "nav.loaded": "Načteno: {title}",
   "list.show_more": "Zobrazit dalších: {count}",
   "list.shown": "Zobrazeno {shown} z {total}",

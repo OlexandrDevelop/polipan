@@ -1976,6 +1976,8 @@
   "palette.metrics": "Відкрити метрики {name}",
   "nav.more": "Ще",
   "nav.settings": "Налаштування",
+  "nav.workspace": "Робочий простір",
+  "header.systems_ok": "Системи працюють",
   "nav.loaded": "Завантажено: {title}",
   "list.show_more": "Показати ще: {count}",
   "list.shown": "Показано {shown} з {total}",

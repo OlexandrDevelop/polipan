@@ -115,7 +115,7 @@ export function ServiceDelete({
     <Panel
       id="settings-danger"
       title={t('delete.title')}
-      className="space-y-3 !border-danger [&>.panel-title]:!text-danger"
+      className="space-y-3 [&_.panel-title]:!text-danger [&_.panel-head]:!border-danger/40"
     >
       <p className="text-muted">{t('delete.text')}</p>
       <Button

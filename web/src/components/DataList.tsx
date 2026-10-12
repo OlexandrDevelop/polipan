@@ -66,7 +66,7 @@ export function DataList<T>({
   const details = columns.filter((c) => c !== primary && !c.cardHidden)
   return (
     <>
-      <div className="hidden overflow-x-auto sm:block">
+      <div className="hidden overflow-x-auto border border-[var(--card-line)] bg-[var(--card-bg)] sm:block">
         <table className="dense w-full border-collapse text-left">
           <caption className="sr-only">{caption}</caption>
           <thead>

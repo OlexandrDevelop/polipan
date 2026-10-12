@@ -18,6 +18,7 @@ import {
   EmptyState,
   Meter,
   Panel,
+  StatCard,
   Skeleton,
   StatusBadge,
   TextField,
@@ -147,23 +148,26 @@ function AlertsCard({ org }: { org: string }) {
   const alerts = useAlertInstances()
   const firing = (alerts.data ?? []).filter((a) => a.state === 'firing')
   return (
-    <div className="space-y-1">
-      {alerts.isPending && <Skeleton lines={1} />}
-      {alerts.isError && <ErrorBanner error={alerts.error} onRetry={() => void alerts.refetch()} />}
-      {alerts.data && firing.length === 0 && (
-        <p className="text-muted">{t('dashboard.all_quiet')}</p>
-      )}
-      {firing.length > 0 && (
-        <p className="flex items-center gap-2">
-          <StatusBadge tone="danger" label={t('dashboard.firing', { count: firing.length })} />
-        </p>
-      )}
-      <p>
-        <Link to="/o/$org/alerts" params={{ org }} className="text-primary underline">
-          {t('dashboard.alerts')} →
-        </Link>
-      </p>
-    </div>
+    <StatCard
+      label={t('dashboard.alerts')}
+      tone={firing.length > 0 ? 'danger' : undefined}
+      note={
+        <div className="space-y-1">
+          {alerts.isError && (
+            <ErrorBanner error={alerts.error} onRetry={() => void alerts.refetch()} />
+          )}
+          {alerts.data && firing.length === 0 && <p>{t('dashboard.all_quiet')}</p>}
+          {firing.length > 0 && (
+            <StatusBadge tone="danger" label={t('dashboard.firing', { count: firing.length })} />
+          )}
+          <Link to="/o/$org/alerts" params={{ org }} className="block text-primary underline">
+            {t('dashboard.alerts')} →
+          </Link>
+        </div>
+      }
+    >
+      {alerts.isPending ? '-' : <Counter value={firing.length} />}
+    </StatCard>
   )
 }
 
@@ -177,19 +181,26 @@ function BackupsCard({ org }: { org: string }) {
   })
   const worst = worstPolicy(policies.data ?? [])
   return (
-    <div className="space-y-1">
-      {policies.isPending && <Skeleton lines={1} />}
-      {policies.isError && (
-        <ErrorBanner error={policies.error} onRetry={() => void policies.refetch()} />
-      )}
-      {policies.data && !worst && <StatusBadge tone="warning" label={t('backup.badge.none')} />}
-      {worst && <VerifiedBadge policy={worst} />}
-      <p>
-        <Link to="/o/$org/backups" params={{ org }} className="text-primary underline">
-          {t('dashboard.backups')} →
-        </Link>
-      </p>
-    </div>
+    <StatCard
+      label={t('dashboard.backups')}
+      tone={policies.data && !worst ? 'warning' : undefined}
+      note={
+        <div className="space-y-1">
+          {policies.isError && (
+            <ErrorBanner error={policies.error} onRetry={() => void policies.refetch()} />
+          )}
+          <Link to="/o/$org/backups" params={{ org }} className="block text-primary underline">
+            {t('dashboard.backups')} →
+          </Link>
+        </div>
+      }
+    >
+      <span className="text-base">
+        {policies.isPending && '-'}
+        {policies.data && !worst && <StatusBadge tone="warning" label={t('backup.badge.none')} />}
+        {worst && <VerifiedBadge policy={worst} />}
+      </span>
+    </StatCard>
   )
 }
 
@@ -282,45 +293,58 @@ export function DashboardPage() {
       <PageHeader title={t('dashboard.title')} />
       <Onboarding />
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <Panel title={t('dashboard.projects')} className="space-y-2">
+        <StatCard
+          label={t('dashboard.projects')}
+          note={
+            <Link to="/o/$org/projects" params={{ org }} className="text-primary underline">
+              {t('dashboard.projects')} →
+            </Link>
+          }
+        >
           {projects.isError ? (
             <ErrorBanner error={projects.error} onRetry={() => void projects.refetch()} />
           ) : (
-            <p className="font-term text-4xl font-bold">
-              <Counter value={projects.data?.length ?? '-'} />
-            </p>
+            <Counter value={projects.data?.length ?? '-'} />
           )}
-        </Panel>
-        <Panel title={t('dashboard.nodes')} className="space-y-2">
-          {nodes.isPending && <Skeleton lines={1} />}
-          {nodes.isError && (
-            <ErrorBanner error={nodes.error} onRetry={() => void nodes.refetch()} />
+        </StatCard>
+        <StatCard
+          label={t('dashboard.nodes')}
+          tone={
+            nodes.data && byState.size > 0 && (byState.get('ready') ?? 0) < nodes.data.length
+              ? 'warning'
+              : undefined
+          }
+          note={
+            <div className="space-y-1">
+              {nodes.isError && (
+                <ErrorBanner error={nodes.error} onRetry={() => void nodes.refetch()} />
+              )}
+              {nodes.data && byState.size === 0 && <p>{t('dashboard.no_nodes')}</p>}
+              <ul className="flex flex-wrap gap-x-3 gap-y-1">
+                {[...byState.entries()].map(([state, count]) => (
+                  <li key={state} className="flex items-center gap-1">
+                    <StatusBadge tone={nodeTone(state)} label={tState('status.node', state)} />
+                    <span className="font-term font-bold">{count}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link to="/o/$org/nodes" params={{ org }} className="text-primary underline">
+                {t('dashboard.nodes')} →
+              </Link>
+            </div>
+          }
+        >
+          {nodes.isPending ? (
+            '-'
+          ) : (
+            <>
+              <Counter value={byState.get('ready') ?? 0} />
+              <span className="text-base text-muted">/{nodes.data?.length ?? 0}</span>
+            </>
           )}
-          {nodes.data && byState.size === 0 && (
-            <p className="text-muted">{t('dashboard.no_nodes')}</p>
-          )}
-          <ul className="space-y-1">
-            {[...byState.entries()].map(([state, count]) => (
-              <li key={state} className="flex items-center gap-2">
-                <StatusBadge tone={nodeTone(state)} label={tState('status.node', state)} />
-                <span className="font-term font-bold">
-                  <Counter value={count} />
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p>
-            <Link to="/o/$org/nodes" params={{ org }} className="text-primary underline">
-              {t('dashboard.nodes')} →
-            </Link>
-          </p>
-        </Panel>
-        <Panel title={t('dashboard.alerts')} className="space-y-2">
-          <AlertsCard org={org} />
-        </Panel>
-        <Panel title={t('dashboard.backups')} className="space-y-2">
-          <BackupsCard org={org} />
-        </Panel>
+        </StatCard>
+        <AlertsCard org={org} />
+        <BackupsCard org={org} />
       </div>
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         {/* The panel is there while the nodes load, so the page below does not jump. */}

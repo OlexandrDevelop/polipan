@@ -414,12 +414,40 @@ export function Panel({
   children: ReactNode
   className?: string
 } & Omit<HTMLAttributes<HTMLElement>, 'title'>) {
+  // The spacing classes (space-y-*) are for the body of the card. The others (a place in a grid, a
+  // border colour) are for the card itself.
+  const words = className.split(/\s+/).filter(Boolean)
+  const spacing = words.filter((w) => /(^|:)space-y-/.test(w)).join(' ')
+  const own = words.filter((w) => !/(^|:)space-y-/.test(w)).join(' ')
   return (
-    <section className={`panel ${className}`} {...rest}>
-      <h2 className="panel-title">{title}</h2>
-      {hint && <span className="panel-hint">{hint}</span>}
-      {children}
+    <section className={`panel ${own}`} {...rest}>
+      <div className="panel-head">
+        <h2 className="panel-title">{title}</h2>
+        {hint && <span className="panel-hint">{hint}</span>}
+      </div>
+      <div className={`panel-body ${spacing}`}>{children}</div>
     </section>
+  )
+}
+
+// One number of the dashboard.
+export function StatCard({
+  label,
+  tone,
+  children,
+  note,
+}: {
+  label: string
+  tone?: 'warning' | 'danger'
+  children: ReactNode
+  note?: ReactNode
+}) {
+  return (
+    <div className="stat" data-tone={tone}>
+      <p className="stat-label">{label}</p>
+      <div className="stat-value font-term">{children}</div>
+      {note && <div className="mt-2 text-muted">{note}</div>}
+    </div>
   )
 }
 

@@ -1976,6 +1976,8 @@
   "palette.metrics": "Metrics van {name} openen",
   "nav.more": "Meer",
   "nav.settings": "Instellingen",
+  "nav.workspace": "Werkruimte",
+  "header.systems_ok": "Systemen actief",
   "nav.loaded": "Geladen: {title}",
   "list.show_more": "{count} meer tonen",
   "list.shown": "{shown} van {total} getoond",

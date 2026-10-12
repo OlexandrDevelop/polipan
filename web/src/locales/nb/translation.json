@@ -1976,6 +1976,8 @@
   "palette.metrics": "Åpne målinger for {name}",
   "nav.more": "Mer",
   "nav.settings": "Innstillinger",
+  "nav.workspace": "Arbeidsområde",
+  "header.systems_ok": "Systemene fungerer",
   "nav.loaded": "Lastet: {title}",
   "list.show_more": "Vis {count} til",
   "list.shown": "Viser {shown} av {total}",

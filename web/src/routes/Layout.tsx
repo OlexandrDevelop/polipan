@@ -18,6 +18,7 @@ import { CommandPalette } from '@/components/CommandPalette'
 import { ContextSwitcher } from '@/components/ContextSwitcher'
 import { Modal } from '@/components/Modal'
 import { StatusBar } from '@/components/StatusBar'
+import { Sidebar } from '@/components/Sidebar'
 import { Banner, KeyHint, Skeleton } from '@/components/ui'
 import { readContext, saveContext } from '@/context'
 import { t } from '@/i18n'
@@ -287,20 +288,27 @@ export function AppShell() {
 
   const bar = links.filter((l) => l.show)
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col lg:grid lg:grid-cols-[15.5rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr_auto]">
       <Boot />
       <div className="fx-scanlines" aria-hidden="true" />
-      <header className="font-term sticky top-0 z-20 flex min-h-9 items-center gap-2 border-b border-border-strong bg-surface px-3 max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:order-4 max-sm:min-h-14 max-sm:border-b-0 max-sm:border-t max-sm:pb-[env(safe-area-inset-bottom)] sm:order-1">
-        <span aria-hidden="true" className="font-bold text-primary">
-          $
+      <header className="font-term sticky top-0 z-20 flex min-h-9 items-center gap-2 border-b border-border-strong bg-surface px-3 max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:order-4 max-sm:min-h-14 max-sm:border-b-0 max-sm:border-t max-sm:pb-[env(safe-area-inset-bottom)] sm:order-1 lg:col-span-2 lg:row-start-1 lg:min-h-14 lg:gap-0 lg:border-[var(--card-line)] lg:bg-[var(--card-bg)] lg:px-0">
+        <span className="flex items-center gap-2 lg:w-[15.5rem] lg:shrink-0 lg:self-stretch lg:border-r lg:border-[var(--card-line)] lg:px-5">
+          <span aria-hidden="true" className="font-bold text-primary">
+            $
+          </span>
+          <span className="hidden min-w-0 items-center gap-1 text-muted lg:flex">
+            <span className="font-bold text-text">polipan</span>
+            <span aria-hidden="true">/</span>
+            <span className="truncate font-semibold">{org}</span>
+          </span>
+          <span className="hidden min-w-0 items-center gap-1 text-muted sm:flex lg:hidden">
+            <span>polipan</span>
+            <span aria-hidden="true">/</span>
+            <span className="truncate">{org}</span>
+            <span aria-hidden="true">/</span>
+          </span>
         </span>
-        <span className="hidden min-w-0 items-center gap-1 text-muted lg:flex">
-          <span>polipan</span>
-          <span aria-hidden="true">/</span>
-          <span className="truncate">{org}</span>
-          <span aria-hidden="true">/</span>
-        </span>
-        <div className="flex min-w-0 items-center">
+        <div className="flex min-w-0 items-center lg:self-stretch lg:border-r lg:border-[var(--card-line)] lg:px-5">
           <ContextSwitcher org={org} projectSlug={project} envSlug={env} />
         </div>
         <button
@@ -308,7 +316,7 @@ export function AppShell() {
           aria-keyshortcuts="Control+K Meta+K :"
           aria-label={t('palette.label')}
           onClick={() => setPalette(true)}
-          className="prompt-line group flex min-h-8 min-w-0 flex-1 items-center gap-2 border border-border-strong bg-bg px-2 text-left text-muted hover:bg-raised max-sm:min-h-11"
+          className="prompt-line group flex min-h-8 min-w-0 flex-1 items-center gap-2 border border-border-strong bg-bg px-2 text-left text-muted hover:bg-raised max-sm:min-h-11 lg:mx-5 lg:min-h-10 lg:max-w-xl lg:border-[var(--card-line)] lg:px-4"
         >
           <span aria-hidden="true">:</span>
           <span aria-hidden="true" className="truncate">
@@ -319,10 +327,20 @@ export function AppShell() {
             <KeyHint k={t('palette.shortcut')} />
           </span>
         </button>
+        <span
+          className={`ml-auto hidden items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] lg:flex lg:self-stretch lg:border-l lg:border-[var(--card-line)] lg:px-5 ${live.disconnected ? 'text-warning' : 'text-success'}`}
+        >
+          <span
+            aria-hidden="true"
+            className="live-dot"
+            data-state={live.disconnected ? 'reconnecting' : 'live'}
+          />
+          {live.disconnected ? t('statusbar.reconnecting') : t('header.systems_ok')}
+        </span>
       </header>
       <nav
         aria-label={t('nav.main')}
-        className="font-term sticky top-9 z-10 border-b border-border bg-bg pb-[env(safe-area-inset-bottom)] max-sm:fixed max-sm:inset-x-0 max-sm:bottom-14 max-sm:top-auto max-sm:z-20 max-sm:order-3 max-sm:border-b-0 max-sm:border-t max-sm:bg-surface max-sm:pb-0 sm:order-2"
+        className="font-term sticky top-9 z-10 lg:hidden border-b border-border bg-bg pb-[env(safe-area-inset-bottom)] max-sm:fixed max-sm:inset-x-0 max-sm:bottom-14 max-sm:top-auto max-sm:z-20 max-sm:order-3 max-sm:border-b-0 max-sm:border-t max-sm:bg-surface max-sm:pb-0 sm:order-2"
       >
         <ul className="flex gap-0 overflow-x-auto sm:px-2 max-sm:justify-around">
           {bar.map((l) => (
@@ -369,10 +387,18 @@ export function AppShell() {
           </li>
         </ul>
       </nav>
+      <Sidebar
+        org={org}
+        links={bar.map((l) => ({ to: l.to, label: l.label, exact: l.exact, settings: l.settings }))}
+        name={me.data?.user?.name ?? me.data?.user?.email ?? ''}
+        role={me.data?.org_role ?? ''}
+        onSignOut={() => logout.mutate()}
+        signingOut={logout.isPending}
+      />
       <main
         id="main"
         tabIndex={-1}
-        className="mx-auto w-full max-w-[1600px] flex-1 p-4 outline-none max-sm:order-2 max-sm:pb-32 sm:order-3 sm:p-6 lg:p-8"
+        className="mx-auto w-full max-w-[1500px] min-w-0 flex-1 p-4 outline-none max-sm:order-2 max-sm:pb-32 sm:order-3 sm:p-6 lg:col-start-2 lg:row-start-2 lg:px-10 lg:py-8"
       >
         {/* The deployment page shows its own banner for its own stream. */}
         {live.disconnected && !deployment && (

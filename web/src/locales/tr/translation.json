@@ -1976,6 +1976,8 @@
   "palette.metrics": "{name} metriklerini aç",
   "nav.more": "Daha fazla",
   "nav.settings": "Ayarlar",
+  "nav.workspace": "Çalışma alanı",
+  "header.systems_ok": "Sistemler çalışıyor",
   "nav.loaded": "Yüklendi: {title}",
   "list.show_more": "{count} tane daha göster",
   "list.shown": "{total} içinden {shown} gösteriliyor",
