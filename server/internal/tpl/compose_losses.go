@@ -384,9 +384,13 @@ func buildPath(b any) string {
 // buildArgLoss tells that a build argument looks like a secret and is imported as a build-time secret. Its value is
 // never in the message.
 func buildArgLoss(where, name string) Loss {
-	return Loss{Path: where, Key: "build", Disposition: LossImported,
-		Lost:        "the build argument " + name + " looks like a secret: it is imported as a build-time secret, not as a plain build argument",
-		Replacement: fmt.Sprintf("secrets:\n  - name: %s\n    build_time: true\n# The value is in the Secrets tab. Change it there.", name)}
+	return Loss{Path: where, Key: "build", Disposition: LossManual,
+		Lost: "the build argument " + name + " looks like a secret: it is imported as a build-time secret, not as a build argument. " +
+			"A Dockerfile line ARG " + name + " gets no value now: change the Dockerfile before the first build",
+		Replacement: fmt.Sprintf("# In the Dockerfile, remove ARG %s and read the secret in the RUN step that needs it:\n"+
+			"RUN --mount=type=secret,id=%s,env=%s <your command>\n"+
+			"# or, with an older BuildKit: RUN --mount=type=secret,id=%s %s=\"$(cat /run/secrets/%s)\" <your command>\n"+
+			"# polipan.yaml:\nsecrets:\n  - name: %s\n    build_time: true\n# The value is in the Secrets tab. Change it there.", name, name, name, name, name, name, name)}
 }
 
 // topLevelLosses tells what the top-level volumes, networks, configs and secrets of a file had that is not
@@ -404,18 +408,19 @@ func topLevelLosses(doc map[string]any) []Loss {
 	vols, _ := doc["volumes"].(map[string]any)
 	for _, name := range sortedKeys(vols) {
 		def, _ := vols[name].(map[string]any)
-		var keys []string
-		for _, k := range sortedKeys(def) {
-			if k != "name" {
-				keys = append(keys, k)
-			}
-		}
-		if len(keys) == 0 {
-			continue
+		keys := sortedKeys(def)
+		if len(keys) == 0 || (len(keys) == 1 && keys[0] == "name" && fmt.Sprint(def["name"]) == name) {
+			continue // the service gets this volume as it is
 		}
 		l := Loss{Path: "volumes." + name, Key: "volumes", Disposition: LossIgnored,
 			Lost:        fmt.Sprintf("the settings %s of the volume %s: Polipan makes a local volume on the node", strings.Join(keys, ", "), name),
 			Replacement: fmt.Sprintf("volumes:\n  - name: %s\n    path: <path in the container>\n    size_limit: <size, for example 10Gi>  # optional", name)}
+		if n, ok := def["name"]; ok && fmt.Sprint(n) != "" && fmt.Sprint(n) != name {
+			// name: is the Docker name of the volume. Polipan does not use it: the volume gets the key as its name.
+			l.Lost += fmt.Sprintf(". The Docker name %s is not used: the volume is named %s, and the data of %s is not in it", fmt.Sprint(n), name, fmt.Sprint(n))
+			l.Replacement += "\n# A new volume is empty: copy the data of the old Docker volume into it after the first deploy."
+			l.Disposition = LossManual
+		}
 		if truthy(def["external"]) {
 			l.Disposition = LossManual
 			l.Lost = "the external volume " + name + " and its data: Polipan makes a new empty volume"
