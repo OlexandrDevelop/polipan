@@ -314,9 +314,10 @@ func (e *Engine) guardMounts(ctx context.Context, w *agentv1.WorkloadSpec, self 
 	return e.checkHolders(ctx, l, want, self, w.ContainerName, w.PlacementId)
 }
 
-// guardContainer is the volume guard for a container that is not in the desired state (for example the
-// source of a restore): its own writable volumes and binds are the guarded sources.
-func (e *Engine) guardContainer(ctx context.Context, id string) error {
+// guardContainer is the volume guard for an existing container (the source of a restore): the guarded
+// sources are its actual writable Docker mounts, not the ones of the desired state, which may have
+// changed meanwhile. A mount is exempt only when w (may be nil) has the same source as a shared mount.
+func (e *Engine) guardContainer(ctx context.Context, id string, w *agentv1.WorkloadSpec) error {
 	l, ok := e.Docker.(docker.MountLister)
 	if !ok {
 		return nil
@@ -334,16 +335,40 @@ func (e *Engine) guardContainer(ctx context.Context, id string) error {
 		name, placement = c.Name, c.Labels[LabelPlacement]
 		for _, m := range c.Mounts {
 			if !m.RW {
-				continue
+				continue // Docker mounts it read-only
 			}
-			label := "bind" // a host path is never shown
-			if m.Type == "volume" {
-				label = m.Name
+			label, shared := e.intended(m, w)
+			if shared {
+				continue
 			}
 			want = append(want, guarded{label: label, volume: m.Name, path: m.Source})
 		}
 	}
 	return e.checkHolders(ctx, l, want, id, name, placement)
+}
+
+// intended finds the mount of w with the same source as the actual mount m. It returns the label of
+// the error (never a host path) and whether that mount is shared.
+func (e *Engine) intended(m docker.MountUse, w *agentv1.WorkloadSpec) (string, bool) {
+	label := "bind"
+	if m.Type == "volume" {
+		label = m.Name
+	}
+	if w == nil {
+		return label, false
+	}
+	for _, wm := range w.Mounts {
+		switch {
+		case m.Type == "volume" && (wm.Kind == "volume" || wm.Kind == "") && wm.Source == m.Name:
+			return label, wm.Shared
+		case m.Type == "bind" && wm.Kind == "bind":
+			dir, err := e.bindPath(w.ServiceId, wm.Source, false)
+			if err == nil && filepath.Clean(dir) == filepath.Clean(m.Source) {
+				return "bind:" + wm.Source, wm.Shared
+			}
+		}
+	}
+	return label, false
 }
 
 // checkHolders refuses when another container holds one of the guarded sources (see guardMounts).

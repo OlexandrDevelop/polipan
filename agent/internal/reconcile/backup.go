@@ -109,12 +109,8 @@ func (e *Engine) restoreSnapshot(ctx context.Context, rs *agentv1.RestoreSnapsho
 				// The volume guard (08 section 7a): another container may hold the data now.
 				e.startMu.Lock()
 				defer e.startMu.Unlock()
-				var err error
-				if w := e.workload(placement); w != nil {
-					err = e.guard(sctx, w, c.ID)
-				} else {
-					err = e.guardContainer(sctx, c.ID)
-				}
+				// The actual mounts of the container count: the desired state may have changed during the restore.
+				err := e.guardContainer(sctx, c.ID, e.workload(placement))
 				if err == nil {
 					err = e.Docker.Start(sctx, c.ID)
 				}
