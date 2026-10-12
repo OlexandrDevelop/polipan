@@ -207,12 +207,11 @@ func (e *Engine) CloseIncidents(ctx context.Context) error {
 
 // incidentInfo is what the sender needs to know about the incident of an instance.
 type incidentInfo struct {
-	ID         string
-	Open       bool
-	OpenedAt   time.Time
-	RootID     string
-	RootFiring bool
-	Members    int
+	ID       string
+	Open     bool
+	OpenedAt time.Time
+	RootID   string
+	Members  int
 }
 
 // incidentOf reads the incident of an instance. Nil when the instance has none.
@@ -220,10 +219,9 @@ func incidentOf(ctx context.Context, q dbq, instanceID string) (*incidentInfo, e
 	var inc incidentInfo
 	var root *string
 	err := q.QueryRow(ctx, `SELECT inc.id, inc.state = 'open', inc.opened_at, inc.root_instance_id,
-		COALESCE((SELECT ri.state = 'firing' FROM alert_instances ri WHERE ri.id = inc.root_instance_id), false),
 		(SELECT count(*) FROM alert_instances m WHERE m.incident_id = inc.id)
 		FROM alert_instances i JOIN incidents inc ON inc.id = i.incident_id WHERE i.id = $1`, instanceID).
-		Scan(&inc.ID, &inc.Open, &inc.OpenedAt, &root, &inc.RootFiring, &inc.Members)
+		Scan(&inc.ID, &inc.Open, &inc.OpenedAt, &root, &inc.Members)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

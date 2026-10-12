@@ -109,12 +109,20 @@ func (e *Engine) notifyOne(ctx context.Context, id string, now time.Time) error 
 	silent := false
 	switch {
 	case kind == KindFiring && inc != nil && inc.RootID != id && inc.Members > 1:
-		silent = true
-		if _, err := tx.Exec(ctx, `UPDATE alert_instances SET absorbed = true WHERE id = $1`, id); err != nil {
+		// Only when the message of the root reaches every channel of this alert. Else this alert sends its own.
+		if silent, err = e.rootCovers(ctx, tx, inc.RootID, chans, now); err != nil {
 			return err
 		}
-	case kind == KindRepeat && absorbed && inc != nil && inc.RootFiring && inc.RootID != id:
-		silent = true // the reminder of the root alert covers it
+		if silent {
+			if _, err := tx.Exec(ctx, `UPDATE alert_instances SET absorbed = true WHERE id = $1`, id); err != nil {
+				return err
+			}
+		}
+	case kind == KindRepeat && absorbed && inc != nil && inc.RootID != id:
+		// The reminder of the root alert covers it, while the root can still send one.
+		if silent, err = e.rootCovers(ctx, tx, inc.RootID, chans, now); err != nil {
+			return err
+		}
 	case kind == KindResolved && absorbed:
 		silent = true
 	}
@@ -267,4 +275,45 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+// rootCovers tells if the root alert of an incident can carry the message of another alert: the root is firing and
+// not hidden by a down node, its rule is enabled and not muted, and its live channels include every live channel of
+// the other alert. A root that resolved during the hold, or that sends nowhere, covers nothing.
+func (e *Engine) rootCovers(ctx context.Context, q dbq, rootID string, memberChans []string, now time.Time) (bool, error) {
+	var state string
+	var sup *string
+	var enabled bool
+	var mutedUntil *time.Time
+	var rootChans []string
+	err := q.QueryRow(ctx, `SELECT i.state, i.suppressed_by, r.enabled, r.muted_until, r.channel_ids
+		FROM alert_instances i JOIN alert_rules r ON r.id = i.rule_id WHERE i.id = $1`, rootID).
+		Scan(&state, &sup, &enabled, &mutedUntil, &rootChans)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if state != "firing" || sup != nil || !enabled || (mutedUntil != nil && mutedUntil.After(now)) {
+		return false, nil
+	}
+	rootLive, err := e.liveChannels(ctx, q, rootChans)
+	if err != nil || len(rootLive) == 0 {
+		return false, err
+	}
+	memberLive, err := e.liveChannels(ctx, q, memberChans)
+	if err != nil {
+		return false, err
+	}
+	have := map[string]bool{}
+	for _, c := range rootLive {
+		have[c] = true
+	}
+	for _, c := range memberLive {
+		if !have[c] {
+			return false, nil
+		}
+	}
+	return true, nil
 }
