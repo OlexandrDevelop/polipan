@@ -1,0 +1,18 @@
+# User unit: starts the Polipan test VM when the host boots (used for the car_driver stack).
+# Setup: see "Start the VM at host boot" in test/vm/README.md.
+# It only runs "vm.sh up" and "vm.sh down". It never runs reset, install or destroy.
+[Unit]
+Description=Polipan test VM (car_driver)
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# vm.sh starts QEMU as a daemon, so the unit stays active after "up" ends.
+# "up" does nothing when the VM already runs, so a second start is safe.
+ExecStart=%h/Work/Personal/Polipan/test/vm/vm.sh up
+ExecStop=%h/Work/Personal/Polipan/test/vm/vm.sh down
+TimeoutStartSec=300
+TimeoutStopSec=150
+
+[Install]
+WantedBy=default.target

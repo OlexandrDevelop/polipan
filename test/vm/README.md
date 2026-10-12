@@ -25,6 +25,24 @@ test/vm/vm.sh ssh       # open a shell in the VM (user polipan, with a key made 
 ```
 
 When the laptop restarts, the VM does not start by itself. Run `up` again. When the VM starts, Polipan starts by itself.
+To start the VM at host boot, see the next part.
+
+## Start the VM at host boot
+
+The unit `test/vm/polipan-vm.service` runs `vm.sh up` at boot and `vm.sh down` at shutdown. It is for the car_driver
+stack. It expects the repository in `~/Work/Personal/Polipan`. Change the paths in the unit if it is elsewhere.
+
+```sh
+mkdir -p ~/.config/systemd/user
+cp test/vm/polipan-vm.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now polipan-vm.service
+loginctl enable-linger "$USER"     # the user manager starts at boot, without a login
+```
+
+Check it with `systemctl --user status polipan-vm.service` and `test/vm/vm.sh status`.
+`systemctl --user restart polipan-vm.service` stops and starts the VM. If `enable-linger` is refused, ask an
+administrator to run it. Without linger the VM starts only after you log in.
 
 ## Open the panel and log in
 
