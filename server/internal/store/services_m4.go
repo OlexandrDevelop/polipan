@@ -33,6 +33,17 @@ type ServiceInput struct {
 	Domains   []Domain
 }
 
+// sourceTypeOf says how a service config gets its code: from a Git repository (config.git) or an image.
+func sourceTypeOf(config json.RawMessage) string {
+	var c struct {
+		Git json.RawMessage `json:"git"`
+	}
+	if json.Unmarshal(config, &c) == nil && len(c.Git) > 0 && string(c.Git) != "null" {
+		return "git"
+	}
+	return "image"
+}
+
 // InstanceInput is the template instance of a group.
 type InstanceInput struct {
 	TemplateID, Version string
@@ -86,7 +97,7 @@ func (s *Store) CreateServices(ctx context.Context, p secrets.SecretProvider, or
 			engine, version = &sv.DBEngine, &sv.DBVersion
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO services (id, environment_id, name, type, source_type, config, template_instance_id, db_engine, db_version)
-			VALUES ($1,$2,$3,$4,'image',$5,$6,$7,$8)`, sv.ID, env.ID, sv.Name, sv.Type, string(sv.Config), instanceID, engine, version); err != nil {
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, sv.ID, env.ID, sv.Name, sv.Type, sourceTypeOf(sv.Config), string(sv.Config), instanceID, engine, version); err != nil {
 			if u, _ := IsUnique(err); u {
 				return nil, ErrServiceNameUsed
 			}
@@ -98,8 +109,15 @@ func (s *Store) CreateServices(ctx context.Context, p secrets.SecretProvider, or
 				if _, _, err := writeSecret(ctx, tx, p, orgID, env.ProjectID, sc, NewSecret{Name: e.Name, Value: e.Value}, false, a); err != nil {
 					return nil, err
 				}
-			} else if _, _, err := writeVariable(ctx, tx, orgID, env.ProjectID, sc, NewVariable{Name: e.Name, Value: e.Value}, false, a); err != nil {
-				return nil, err
+			} else {
+				nv := NewVariable{Name: e.Name, Value: e.Value}
+				if e.BuildTime {
+					yes := true
+					nv.BuildTime = &yes
+				}
+				if _, _, err := writeVariable(ctx, tx, orgID, env.ProjectID, sc, nv, false, a); err != nil {
+					return nil, err
+				}
 			}
 		}
 		for _, v := range sv.Volumes {

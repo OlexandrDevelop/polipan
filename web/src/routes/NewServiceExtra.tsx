@@ -13,8 +13,11 @@ import {
   Banner,
   Button,
   Card,
-  Optional,
+  CheckboxField,
+  FieldGrid,
   EmptyState,
+  Optional,
+  SectionNav,
   SelectField,
   Skeleton,
   TextAreaField,
@@ -388,19 +391,62 @@ interface ComposeResult {
   warnings?: string[]
 }
 
-// UI-05: Compose import. The check (dry_run) shows the services and the warnings first.
+// The variables of the file as NAME=value lines.
+function parseVariables(text: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const at = trimmed.indexOf('=')
+    if (at > 0) out[trimmed.slice(0, at).trim()] = trimmed.slice(at + 1).trim()
+  }
+  return out
+}
+
+// UI-05: Compose import. The file is pasted, or it is read from a Git repository. The check (dry_run)
+// shows the services and the warnings first.
 function ComposeWizard({ base, environment }: { base: Base; environment: Environment }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const [mode, setMode] = useState<'git' | 'paste'>('git')
   const [text, setText] = useState('')
+  const [repo, setRepo] = useState('')
+  const [branch, setBranch] = useState('main')
+  const [file, setFile] = useState('docker-compose.yml')
+  const [variables, setVariables] = useState('')
+  const [skipUnsafe, setSkipUnsafe] = useState(true)
   const [result, setResult] = useState<ComposeResult | null>(null)
   const path = `/environments/${environment.id}/import-compose`
+  const ready = mode === 'paste' ? text.trim() !== '' : repo.trim() !== ''
+  const send = (dry: boolean): Promise<ComposeResult> => {
+    if (mode === 'paste') {
+      const query = [dry && 'dry_run=true', skipUnsafe && 'skip_unsafe=true']
+        .filter(Boolean)
+        .join('&')
+      return postYaml<ComposeResult>(`${path}${query ? `?${query}` : ''}`, text)
+    }
+    return unwrap(
+      api.POST('/environments/{environment_id}/import-compose-git', {
+        params: {
+          path: { environment_id: environment.id ?? '' },
+          query: dry ? { dry_run: true } : {},
+        },
+        body: {
+          repo: repo.trim(),
+          branch: branch.trim() || 'main',
+          path: file.trim() || 'docker-compose.yml',
+          skip_unsafe: skipUnsafe,
+          variables: parseVariables(variables),
+        },
+      }),
+    ) as Promise<ComposeResult>
+  }
   const check = useMutation({
-    mutationFn: () => postYaml<ComposeResult>(`${path}?dry_run=true`, text),
+    mutationFn: () => send(true),
     onSuccess: setResult,
   })
   const run = useMutation({
-    mutationFn: () => postYaml<ComposeResult>(path, text),
+    mutationFn: () => send(false),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['services', environment.id] })
       await navigate({ to: '/o/$org/p/$project/e/$env', params: base })
@@ -408,25 +454,106 @@ function ComposeWizard({ base, environment }: { base: Base; environment: Environ
   })
   const failure = check.error ?? run.error
   const problems = composeProblems(failure instanceof Error ? failure.message : undefined)
+  const changed = () => setResult(null)
   return (
     <form
       className="max-w-3xl space-y-4"
       onSubmit={(e) => {
         e.preventDefault()
-        if (text.trim()) check.mutate()
+        if (ready) check.mutate()
       }}
     >
-      <TextAreaField
-        label={t('compose.label')}
-        hint={t('compose.hint')}
-        rows={14}
-        spellCheck={false}
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value)
-          setResult(null)
+      <SectionNav
+        horizontal
+        controls={false}
+        label={t('compose.mode_label')}
+        items={[
+          { id: 'git', label: t('compose.mode.git') },
+          { id: 'paste', label: t('compose.mode.paste') },
+        ]}
+        active={mode}
+        onChange={(id) => {
+          setMode(id as 'git' | 'paste')
+          changed()
         }}
       />
+      {mode === 'paste' ? (
+        <TextAreaField
+          label={t('compose.label')}
+          hint={t('compose.hint')}
+          rows={14}
+          spellCheck={false}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value)
+            changed()
+          }}
+        />
+      ) : (
+        <div className="space-y-4">
+          <TextField
+            label={t('compose.repo')}
+            hint={t('compose.repo_hint')}
+            required
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            value={repo}
+            onChange={(e) => {
+              setRepo(e.target.value)
+              changed()
+            }}
+          />
+          <FieldGrid>
+            <TextField
+              label={t('wizard.branch')}
+              autoComplete="off"
+              spellCheck={false}
+              value={branch}
+              onChange={(e) => {
+                setBranch(e.target.value)
+                changed()
+              }}
+            />
+            <TextField
+              label={t('compose.file')}
+              hint={t('compose.file_hint')}
+              autoComplete="off"
+              spellCheck={false}
+              value={file}
+              onChange={(e) => {
+                setFile(e.target.value)
+                changed()
+              }}
+            />
+          </FieldGrid>
+        </div>
+      )}
+      <CheckboxField
+        label={t('compose.skip_unsafe')}
+        hint={t('compose.skip_unsafe_hint')}
+        checked={skipUnsafe}
+        onChange={(e) => {
+          setSkipUnsafe(e.target.checked)
+          changed()
+        }}
+      />
+      {mode === 'git' && (
+        <Optional filled={variables !== ''}>
+          <TextAreaField
+            label={t('compose.variables')}
+            hint={t('compose.variables_hint')}
+            rows={4}
+            spellCheck={false}
+            autoCapitalize="none"
+            value={variables}
+            onChange={(e) => {
+              setVariables(e.target.value)
+              changed()
+            }}
+          />
+        </Optional>
+      )}
       {(check.error || run.error) && !problems && (
         <ErrorBanner error={check.error ?? run.error} title={t('compose.failed')} />
       )}
@@ -467,7 +594,11 @@ function ComposeWizard({ base, environment }: { base: Base; environment: Environ
         </div>
       )}
       <div className="flex flex-wrap justify-end gap-2">
-        <Button type="submit" loading={check.isPending}>
+        <Button
+          type="submit"
+          loading={check.isPending}
+          reason={ready ? undefined : t('compose.fill_first')}
+        >
           {t('compose.check')}
         </Button>
         <Button

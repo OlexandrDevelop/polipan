@@ -12,6 +12,8 @@ type EnvEntry struct {
 	Name   string
 	Value  string
 	Secret bool
+	// BuildTime is for a variable that the build of an image reads (a build argument).
+	BuildTime bool
 }
 
 // ServiceSpec is what a new database service needs (REQ-DB-002, REQ-DB-003).

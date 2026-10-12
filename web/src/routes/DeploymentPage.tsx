@@ -254,6 +254,16 @@ export function DeploymentPage() {
       {t('deployment.open_deploy_key')}
     </Link>
   )
+  const buildLink = (
+    <Link
+      to="/o/$org/p/$project/e/$env/s/$service/$tab"
+      params={{ ...params, tab: 'settings' }}
+      hash="source"
+      className="inline-flex min-h-8 items-center border border-primary bg-primary px-3 py-1 font-bold text-on-primary hover:brightness-110 coarse:min-h-11"
+    >
+      {t('deployment.open_build_settings')}
+    </Link>
+  )
   const redeploy = deployAccess === 'allow' && scope.state === 'ok' && (
     <Button onClick={() => setDialog('deploy')}>{t('deployment.deploy_again')}</Button>
   )
@@ -288,11 +298,29 @@ export function DeploymentPage() {
           <Banner
             variant="danger"
             title={t('deployment.failed_title')}
-            action={failure?.needsDeployKey ? keyLink : redeploy || undefined}
+            action={
+              failure?.needsDeployKey
+                ? keyLink
+                : failure?.needsBuildSettings
+                  ? buildLink
+                  : redeploy || undefined
+            }
           >
             <p>{tState('deployment.reason', d.failure_reason)}</p>
             {failure && <p className="text-muted">{failure.text}</p>}
-            {!failure?.needsDeployKey && <p>{t('deployment.failed_next')}</p>}
+            {failure?.raw && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-muted">
+                  {t('deployment.show_details')}
+                </summary>
+                <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words border border-[var(--card-line)] bg-bg p-3 text-xs">
+                  {failure.raw}
+                </pre>
+              </details>
+            )}
+            {!failure?.needsDeployKey && !failure?.needsBuildSettings && (
+              <p>{t('deployment.failed_next')}</p>
+            )}
           </Banner>
         )}
         {d.state === 'rolled_back' && (

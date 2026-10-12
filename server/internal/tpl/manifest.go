@@ -60,11 +60,23 @@ type ServiceEntry struct {
 	DependsOn   []string       `yaml:"depends_on,omitempty" json:"depends_on,omitempty"`
 }
 
-// Source is the source of a template service. Only images are allowed in templates.
+// Source is the source of a template service. A template runs images. A Compose file that is read from a
+// Git repository can also have services that are built from the same repository (Git).
 type Source struct {
 	Image *struct {
 		Name string `yaml:"name" json:"name"`
 	} `yaml:"image,omitempty" json:"image,omitempty"`
+	Git *GitSource `yaml:"git,omitempty" json:"git,omitempty"`
+}
+
+// GitSource is a service that is built from a folder of a Git repository with its Dockerfile.
+type GitSource struct {
+	Repo         string            `yaml:"repo" json:"repo"`
+	Branch       string            `yaml:"branch,omitempty" json:"branch,omitempty"`
+	Path         string            `yaml:"path,omitempty" json:"path,omitempty"`
+	Dockerfile   string            `yaml:"dockerfile,omitempty" json:"dockerfile,omitempty"`
+	BuildArgs    map[string]string `yaml:"build_args,omitempty" json:"build_args,omitempty"`
+	ConnectionID string            `yaml:"connection_id,omitempty" json:"connection_id,omitempty"`
 }
 
 // DB is the db block of a database service.
@@ -248,7 +260,7 @@ func (m *Manifest) Validate() error {
 			add(path+".db", "is required for a database service")
 		case s.Type != "database" && s.DB != nil:
 			add(path+".db", "is only for a database service")
-		case s.Type != "database" && (s.Source == nil || s.Source.Image == nil || s.Source.Image.Name == ""):
+		case s.Type != "database" && (s.Source == nil || ((s.Source.Image == nil || s.Source.Image.Name == "") && (s.Source.Git == nil || s.Source.Git.Repo == ""))):
 			add(path+".source.image.name", "is required (templates run images)")
 		}
 		for _, d := range s.DependsOn {

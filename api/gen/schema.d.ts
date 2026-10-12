@@ -1739,6 +1739,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/environments/{environment_id}/import-compose-git": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. dry_run returns the result only. */
+        post: operations["importComposeGit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/git-connections": {
         parameters: {
             query?: never;
@@ -2548,6 +2565,24 @@ export interface components {
             ip?: string;
             /** Format: date-time */
             created_at?: string;
+        };
+        ComposeGitRequest: {
+            /** @description A full https URL, or owner/name with a Git connection. */
+            repo: string;
+            /** @default main */
+            branch: string;
+            /**
+             * @description The Compose file inside the repository.
+             * @default docker-compose.yml
+             */
+            path: string;
+            connection_id?: string;
+            /** @description Drop what is not allowed, with a warning, instead of refusing the file. */
+            skip_unsafe?: boolean;
+            /** @description Values of ${NAME} in the file. */
+            variables?: {
+                [key: string]: string;
+            };
         };
         ServiceCreate: {
             name: string;
@@ -6580,6 +6615,8 @@ export interface operations {
         parameters: {
             query?: {
                 dry_run?: boolean;
+                /** @description Drop the services and the bind mounts that are not allowed, with a warning, instead of refusing the file. */
+                skip_unsafe?: boolean;
             };
             header?: never;
             path: {
@@ -6590,6 +6627,38 @@ export interface operations {
         requestBody: {
             content: {
                 "application/yaml": string;
+            };
+        };
+        responses: {
+            /** @description Conversion result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        services?: components["schemas"]["ServiceCreate"][];
+                        warnings?: string[];
+                    };
+                };
+            };
+            422: components["responses"]["Error"];
+        };
+    };
+    importComposeGit: {
+        parameters: {
+            query?: {
+                dry_run?: boolean;
+            };
+            header?: never;
+            path: {
+                environment_id: components["parameters"]["EnvironmentId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeGitRequest"];
             };
         };
         responses: {

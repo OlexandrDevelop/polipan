@@ -29,21 +29,89 @@ var (
 
 var composeName = regexp.MustCompile(`[^a-z0-9-]+`)
 
+// ComposeRepo tells where a Compose file was read from. A service with build: is then built from the same
+// repository, from the folder that build.context names.
+type ComposeRepo struct {
+	URL          string // the repository, a full URL, or owner/name with a Git connection
+	Branch       string
+	ConnectionID string
+	Dir          string // the folder of the Compose file inside the repository ("" is the root)
+}
+
+// ComposeOptions are the extra settings of an import.
+type ComposeOptions struct {
+	// Repo is set when the file comes from a Git repository.
+	Repo *ComposeRepo
+	// SkipUnsafe drops what is not allowed (a service that mounts the Docker socket or is privileged, a bind
+	// mount of a folder of the host) and says it in a warning. Without it the whole file is refused.
+	SkipUnsafe bool
+	// Vars are the values of ${NAME} in the file. A name that is not here is empty, with a warning.
+	Vars map[string]string
+}
+
 // ImportCompose converts a Compose file. A file with unsafe settings gives *UnsafeError. A build:
 // key or a service without an image gives Problems. Keys that are not supported are warnings.
 func ImportCompose(data []byte) (*ComposeResult, error) {
+	return ImportComposeWith(data, ComposeOptions{})
+}
+
+var composeVar = regexp.MustCompile(`\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?-)([^}]*))?\}`)
+
+// composeInterpolate fills in ${NAME}, ${NAME:-default} and ${NAME-default}. $$ is a dollar sign.
+// It returns the names that had no value and no default.
+func composeInterpolate(text string, vars map[string]string) (string, []string) {
+	unset := map[string]bool{}
+	out := composeVar.ReplaceAllStringFunc(text, func(m string) string {
+		if m == "$$" {
+			return "$"
+		}
+		g := composeVar.FindStringSubmatch(m)
+		name, op, def := g[1], g[2], g[3]
+		if v, ok := vars[name]; ok && (v != "" || op != ":-") {
+			return v
+		}
+		if op != "" {
+			return def
+		}
+		unset[name] = true
+		return ""
+	})
+	return out, sortedKeys(anyBoolMap(unset))
+}
+
+func anyBoolMap(in map[string]bool) map[string]any {
+	out := make(map[string]any, len(in))
+	for k := range in {
+		out[k] = true
+	}
+	return out
+}
+
+// ImportComposeWith is ImportCompose with options (a file from a Git repository, skipping what is unsafe).
+func ImportComposeWith(data []byte, opts ComposeOptions) (*ComposeResult, error) {
+	text, unset := composeInterpolate(string(data), opts.Vars)
 	var doc map[string]any
-	if err := yaml.Unmarshal(data, &doc); err != nil {
+	if err := yaml.Unmarshal([]byte(text), &doc); err != nil {
 		return nil, Problems{{Message: "the Compose file is not valid YAML: " + err.Error()}}
 	}
 	services, _ := doc["services"].(map[string]any)
 	if len(services) == 0 {
 		return nil, Problems{{Path: "services", Message: "the Compose file has no services"}}
 	}
+	res := &ComposeResult{Manifest: &Manifest{Slug: "compose-import", Version: "1.0.0", Name: "Compose import", Services: map[string]ServiceEntry{}}}
+	if len(unset) > 0 {
+		res.Warnings = append(res.Warnings, fmt.Sprintf("these variables of the file have no value and are empty: %s. Set them in the variables of the service", strings.Join(unset, ", ")))
+	}
+	if opts.SkipUnsafe {
+		dropUnsafe(doc, &res.Warnings)
+		services, _ = doc["services"].(map[string]any)
+		if len(services) == 0 {
+			return nil, Problems{{Path: "services", Message: "no service is left after the unsafe ones were skipped"}}
+		}
+	}
 	if v := SafetyOfCompose(doc); len(v) > 0 {
 		return nil, &UnsafeError{Violations: v}
 	}
-	res := &ComposeResult{Manifest: &Manifest{Slug: "compose-import", Version: "1.0.0", Name: "Compose import", Services: map[string]ServiceEntry{}}}
 	var ps Problems
 	for k := range doc {
 		if !composeTopKeep[k] && !strings.HasPrefix(k, "x-") {
@@ -62,21 +130,33 @@ func ImportCompose(data []byte) (*ComposeResult, error) {
 	for _, raw := range sortedKeys(services) {
 		svc, _ := services[raw].(map[string]any)
 		path := "services." + raw
-		if _, ok := svc["build"]; ok {
-			ps = append(ps, Problem{Path: path + ".build", Message: "build: is not supported. Create a Git service for this code instead"})
-			continue
+		var git *GitSource
+		if b, ok := svc["build"]; ok {
+			if opts.Repo == nil {
+				ps = append(ps, Problem{Path: path + ".build", Message: "build: is not supported. Import the file from a Git repository, or create a Git service for this code"})
+				continue
+			}
+			g, perr := composeBuild(path+".build", b, opts.Repo)
+			if len(perr) > 0 {
+				ps = append(ps, perr...)
+				continue
+			}
+			git = g
 		}
 		name := names[raw]
 		if name == "" {
 			continue
 		}
-		entry, warns, perr := convertComposeService(path, name, svc, names)
+		entry, warns, perr := convertComposeService(path, name, svc, names, git)
 		ps = append(ps, perr...)
 		res.Warnings = append(res.Warnings, warns...)
 		for k := range svc {
 			if !composeKeys[k] && !composeQuiet[k] && k != "build" && k != "privileged" && k != "cap_add" {
 				res.Warnings = append(res.Warnings, fmt.Sprintf("%s.%s is not supported and is ignored", path, k))
 			}
+		}
+		if git != nil && len(entry.Ports) == 0 && svc["restart"] == nil && svc["entrypoint"] != nil {
+			res.Warnings = append(res.Warnings, fmt.Sprintf("%s looks like a command that runs once (it has an entrypoint, no port and no restart). Delete the service if it should not run all the time", path))
 		}
 		res.Manifest.Services[name] = entry
 	}
@@ -86,17 +166,111 @@ func ImportCompose(data []byte) (*ComposeResult, error) {
 	return res, nil
 }
 
-func convertComposeService(path, name string, svc map[string]any, names map[string]string) (ServiceEntry, []string, Problems) {
+// composeBuild reads the build: key of a service of a file that is in a repository. The context is a folder of
+// the same repository and the Dockerfile is in it.
+func composeBuild(where string, b any, repo *ComposeRepo) (*GitSource, Problems) {
+	ctx, dockerfile := ".", ""
+	args := map[string]string{}
+	switch v := b.(type) {
+	case string:
+		ctx = v
+	case map[string]any:
+		if c, ok := v["context"]; ok {
+			ctx = fmt.Sprint(c)
+		}
+		if d, ok := v["dockerfile"]; ok {
+			dockerfile = fmt.Sprint(d)
+		}
+		switch a := v["args"].(type) {
+		case map[string]any:
+			for k, x := range a {
+				if x == nil {
+					x = ""
+				}
+				args[k] = fmt.Sprint(x)
+			}
+		case []any:
+			for _, item := range a {
+				k, x, _ := strings.Cut(fmt.Sprint(item), "=")
+				args[k] = x
+			}
+		}
+	default:
+		return nil, Problems{{Path: where, Message: "is not valid"}}
+	}
+	if strings.Contains(ctx, "://") || strings.HasPrefix(ctx, "git@") || strings.HasPrefix(ctx, "/") {
+		return nil, Problems{{Path: where + ".context", Message: "must be a folder of the repository (for example ./app)"}}
+	}
+	joined := path.Join(repo.Dir, ctx)
+	if joined == ".." || strings.HasPrefix(joined, "../") {
+		return nil, Problems{{Path: where + ".context", Message: "must stay inside the repository"}}
+	}
+	if strings.HasPrefix(dockerfile, "/") || strings.Contains(dockerfile, "..") {
+		return nil, Problems{{Path: where + ".dockerfile", Message: "must be a file inside the build folder"}}
+	}
+	g := &GitSource{Repo: repo.URL, Branch: repo.Branch, ConnectionID: repo.ConnectionID, Path: "/" + strings.TrimPrefix(joined, "./"), Dockerfile: dockerfile}
+	if joined == "." {
+		g.Path = "/"
+	}
+	if len(args) > 0 {
+		g.BuildArgs = args
+	}
+	return g, nil
+}
+
+// dropUnsafe removes the services that mount the Docker socket or are privileged, and the bind mounts of host
+// folders. Each one is told in a warning.
+func dropUnsafe(doc map[string]any, warns *[]string) {
+	services, _ := doc["services"].(map[string]any)
+	volIndex := regexp.MustCompile(`\.volumes\[(\d+)\]$`)
+	for _, name := range sortedKeys(services) {
+		svc, _ := services[name].(map[string]any)
+		vs := serviceViolations("services."+name, name, svc)
+		if len(vs) == 0 {
+			continue
+		}
+		skipService, reason := false, ""
+		dropVolume := map[int]string{}
+		for _, v := range vs {
+			if m := volIndex.FindStringSubmatch(v.Path); m != nil && strings.HasPrefix(v.Message, "bind mount ") {
+				i, _ := strconv.Atoi(m[1])
+				dropVolume[i] = v.Message
+				continue
+			}
+			skipService, reason = true, v.Message
+		}
+		if skipService {
+			delete(services, name)
+			*warns = append(*warns, fmt.Sprintf("service %s is skipped: %s", name, reason))
+			continue
+		}
+		var kept []any
+		for i, item := range asList(svc["volumes"]) {
+			if msg, drop := dropVolume[i]; drop {
+				*warns = append(*warns, fmt.Sprintf("services.%s.volumes[%d] is skipped: %s", name, i, msg))
+				continue
+			}
+			kept = append(kept, item)
+		}
+		svc["volumes"] = kept
+	}
+}
+
+func convertComposeService(path, name string, svc map[string]any, names map[string]string, git *GitSource) (ServiceEntry, []string, Problems) {
 	var warns []string
 	var ps Problems
 	e := ServiceEntry{Type: "app"}
 	img, _ := svc["image"].(string)
-	if img == "" {
-		ps = append(ps, Problem{Path: path + ".image", Message: "is required (build: is not supported)"})
+	if git != nil {
+		e.Source = &Source{Git: git}
+	} else {
+		if img == "" {
+			ps = append(ps, Problem{Path: path + ".image", Message: "is required (build: is not supported)"})
+		}
+		e.Source = &Source{Image: &struct {
+			Name string `yaml:"name" json:"name"`
+		}{Name: img}}
 	}
-	e.Source = &Source{Image: &struct {
-		Name string `yaml:"name" json:"name"`
-	}{Name: img}}
 	e.Command = composeCommand(svc["command"])
 	e.Entrypoint = composeCommand(svc["entrypoint"])
 	switch env := svc["environment"].(type) {

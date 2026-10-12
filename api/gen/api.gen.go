@@ -866,6 +866,24 @@ type BackupTargetWrite struct {
 // BackupTargetWriteKind defines model for BackupTargetWrite.Kind.
 type BackupTargetWriteKind string
 
+// ComposeGitRequest defines model for ComposeGitRequest.
+type ComposeGitRequest struct {
+	Branch       *string `json:"branch,omitempty"`
+	ConnectionId *string `json:"connection_id,omitempty"`
+
+	// Path The Compose file inside the repository.
+	Path *string `json:"path,omitempty"`
+
+	// Repo A full https URL, or owner/name with a Git connection.
+	Repo string `json:"repo"`
+
+	// SkipUnsafe Drop what is not allowed, with a warning, instead of refusing the file.
+	SkipUnsafe *bool `json:"skip_unsafe,omitempty"`
+
+	// Variables Values of ${NAME} in the file.
+	Variables *map[string]string `json:"variables,omitempty"`
+}
+
 // ConfigPlan defines model for ConfigPlan.
 type ConfigPlan struct {
 	Changes *[]struct {
@@ -1964,6 +1982,14 @@ type UpdateEnvironmentJSONBody struct {
 // ImportComposeParams defines parameters for ImportCompose.
 type ImportComposeParams struct {
 	DryRun *bool `form:"dry_run,omitempty" json:"dry_run,omitempty"`
+
+	// SkipUnsafe Drop the services and the bind mounts that are not allowed, with a warning, instead of refusing the file.
+	SkipUnsafe *bool `form:"skip_unsafe,omitempty" json:"skip_unsafe,omitempty"`
+}
+
+// ImportComposeGitParams defines parameters for ImportComposeGit.
+type ImportComposeGitParams struct {
+	DryRun *bool `form:"dry_run,omitempty" json:"dry_run,omitempty"`
 }
 
 // PromoteEnvironmentParams defines parameters for PromoteEnvironment.
@@ -2367,6 +2393,9 @@ type MoveDomainJSONRequestBody MoveDomainJSONBody
 // UpdateEnvironmentJSONRequestBody defines body for UpdateEnvironment for application/json ContentType.
 type UpdateEnvironmentJSONRequestBody UpdateEnvironmentJSONBody
 
+// ImportComposeGitJSONRequestBody defines body for ImportComposeGit for application/json ContentType.
+type ImportComposeGitJSONRequestBody = ComposeGitRequest
+
 // PromoteEnvironmentJSONRequestBody defines body for PromoteEnvironment for application/json ContentType.
 type PromoteEnvironmentJSONRequestBody = PromoteRequest
 
@@ -2763,6 +2792,11 @@ type ClientInterface interface {
 
 	// ImportComposeWithBody request with any body
 	ImportComposeWithBody(ctx context.Context, environmentId EnvironmentId, params *ImportComposeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ImportComposeGitWithBody request with any body
+	ImportComposeGitWithBody(ctx context.Context, environmentId EnvironmentId, params *ImportComposeGitParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ImportComposeGit(ctx context.Context, environmentId EnvironmentId, params *ImportComposeGitParams, body ImportComposeGitJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PromoteEnvironmentWithBody request with any body
 	PromoteEnvironmentWithBody(ctx context.Context, environmentId EnvironmentId, params *PromoteEnvironmentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4051,6 +4085,30 @@ func (c *Client) UpdateEnvironment(ctx context.Context, environmentId Environmen
 
 func (c *Client) ImportComposeWithBody(ctx context.Context, environmentId EnvironmentId, params *ImportComposeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewImportComposeRequestWithBody(c.Server, environmentId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ImportComposeGitWithBody(ctx context.Context, environmentId EnvironmentId, params *ImportComposeGitParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewImportComposeGitRequestWithBody(c.Server, environmentId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ImportComposeGit(ctx context.Context, environmentId EnvironmentId, params *ImportComposeGitParams, body ImportComposeGitJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewImportComposeGitRequest(c.Server, environmentId, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -8291,6 +8349,91 @@ func NewImportComposeRequestWithBody(server string, environmentId EnvironmentId,
 	}
 
 	operationPath := fmt.Sprintf("/environments/%s/import-compose", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.DryRun != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dry_run", runtime.ParamLocationQuery, *params.DryRun); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SkipUnsafe != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "skip_unsafe", runtime.ParamLocationQuery, *params.SkipUnsafe); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewImportComposeGitRequest calls the generic ImportComposeGit builder with application/json body
+func NewImportComposeGitRequest(server string, environmentId EnvironmentId, params *ImportComposeGitParams, body ImportComposeGitJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewImportComposeGitRequestWithBody(server, environmentId, params, "application/json", bodyReader)
+}
+
+// NewImportComposeGitRequestWithBody generates requests for ImportComposeGit with any type of body
+func NewImportComposeGitRequestWithBody(server string, environmentId EnvironmentId, params *ImportComposeGitParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "environment_id", runtime.ParamLocationPath, environmentId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/environments/%s/import-compose-git", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -13948,6 +14091,11 @@ type ClientWithResponsesInterface interface {
 	// ImportComposeWithBodyWithResponse request with any body
 	ImportComposeWithBodyWithResponse(ctx context.Context, environmentId EnvironmentId, params *ImportComposeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportComposeResponse, error)
 
+	// ImportComposeGitWithBodyWithResponse request with any body
+	ImportComposeGitWithBodyWithResponse(ctx context.Context, environmentId EnvironmentId, params *ImportComposeGitParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportComposeGitResponse, error)
+
+	ImportComposeGitWithResponse(ctx context.Context, environmentId EnvironmentId, params *ImportComposeGitParams, body ImportComposeGitJSONRequestBody, reqEditors ...RequestEditorFn) (*ImportComposeGitResponse, error)
+
 	// PromoteEnvironmentWithBodyWithResponse request with any body
 	PromoteEnvironmentWithBodyWithResponse(ctx context.Context, environmentId EnvironmentId, params *PromoteEnvironmentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PromoteEnvironmentResponse, error)
 
@@ -15598,6 +15746,32 @@ func (r ImportComposeResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ImportComposeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ImportComposeGitResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Services *[]ServiceCreate `json:"services,omitempty"`
+		Warnings *[]string        `json:"warnings,omitempty"`
+	}
+	JSON422 *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ImportComposeGitResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ImportComposeGitResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -18849,6 +19023,23 @@ func (c *ClientWithResponses) ImportComposeWithBodyWithResponse(ctx context.Cont
 	return ParseImportComposeResponse(rsp)
 }
 
+// ImportComposeGitWithBodyWithResponse request with arbitrary body returning *ImportComposeGitResponse
+func (c *ClientWithResponses) ImportComposeGitWithBodyWithResponse(ctx context.Context, environmentId EnvironmentId, params *ImportComposeGitParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportComposeGitResponse, error) {
+	rsp, err := c.ImportComposeGitWithBody(ctx, environmentId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseImportComposeGitResponse(rsp)
+}
+
+func (c *ClientWithResponses) ImportComposeGitWithResponse(ctx context.Context, environmentId EnvironmentId, params *ImportComposeGitParams, body ImportComposeGitJSONRequestBody, reqEditors ...RequestEditorFn) (*ImportComposeGitResponse, error) {
+	rsp, err := c.ImportComposeGit(ctx, environmentId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseImportComposeGitResponse(rsp)
+}
+
 // PromoteEnvironmentWithBodyWithResponse request with arbitrary body returning *PromoteEnvironmentResponse
 func (c *ClientWithResponses) PromoteEnvironmentWithBodyWithResponse(ctx context.Context, environmentId EnvironmentId, params *PromoteEnvironmentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PromoteEnvironmentResponse, error) {
 	rsp, err := c.PromoteEnvironmentWithBody(ctx, environmentId, params, contentType, body, reqEditors...)
@@ -21554,6 +21745,42 @@ func ParseImportComposeResponse(rsp *http.Response) (*ImportComposeResponse, err
 	}
 
 	response := &ImportComposeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Services *[]ServiceCreate `json:"services,omitempty"`
+			Warnings *[]string        `json:"warnings,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseImportComposeGitResponse parses an HTTP response from a ImportComposeGitWithResponse call
+func ParseImportComposeGitResponse(rsp *http.Response) (*ImportComposeGitResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ImportComposeGitResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -24745,6 +24972,9 @@ type ServerInterface interface {
 	// Convert a Docker Compose file to services (safety validated). dry_run returns the result only.
 	// (POST /environments/{environment_id}/import-compose)
 	ImportCompose(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId, params ImportComposeParams)
+	// Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. dry_run returns the result only.
+	// (POST /environments/{environment_id}/import-compose-git)
+	ImportComposeGit(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId, params ImportComposeGitParams)
 	// Promote all services of this environment to another one (batch). Supports dry_run.
 	// (POST /environments/{environment_id}/promote)
 	PromoteEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId, params PromoteEnvironmentParams)
@@ -25420,6 +25650,12 @@ func (_ Unimplemented) UpdateEnvironment(w http.ResponseWriter, r *http.Request,
 // Convert a Docker Compose file to services (safety validated). dry_run returns the result only.
 // (POST /environments/{environment_id}/import-compose)
 func (_ Unimplemented) ImportCompose(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId, params ImportComposeParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. dry_run returns the result only.
+// (POST /environments/{environment_id}/import-compose-git)
+func (_ Unimplemented) ImportComposeGit(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId, params ImportComposeGitParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -27918,8 +28154,60 @@ func (siw *ServerInterfaceWrapper) ImportCompose(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// ------------- Optional query parameter "skip_unsafe" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "skip_unsafe", r.URL.Query(), &params.SkipUnsafe)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "skip_unsafe", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ImportCompose(w, r, environmentId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ImportComposeGit operation middleware
+func (siw *ServerInterfaceWrapper) ImportComposeGit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "environment_id" -------------
+	var environmentId EnvironmentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment_id", chi.URLParam(r, "environment_id"), &environmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerTokenScopes, []string{})
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ImportComposeGitParams
+
+	// ------------- Optional query parameter "dry_run" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "dry_run", r.URL.Query(), &params.DryRun)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dry_run", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportComposeGit(w, r, environmentId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -32440,6 +32728,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/environments/{environment_id}/import-compose", wrapper.ImportCompose)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/environments/{environment_id}/import-compose-git", wrapper.ImportComposeGit)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/environments/{environment_id}/promote", wrapper.PromoteEnvironment)

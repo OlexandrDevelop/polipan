@@ -8,14 +8,34 @@ export interface FailureDetail {
   text: string
   // The fix is a deploy key, so the page can link to the place where it is made.
   needsDeployKey: boolean
+  // The fix is in the build settings (the builder or the folder of the app).
+  needsBuildSettings: boolean
+  // The text of the server when it is long. The page shows it behind a button.
+  raw?: string
 }
 
 export function failureDetail(detail: string | undefined): FailureDetail | undefined {
   if (!detail) return undefined
   if (detail.includes('an ssh URL needs a deploy key')) {
-    return { text: t('deployment.detail.ssh_key'), needsDeployKey: true }
+    return { text: t('deployment.detail.ssh_key'), needsDeployKey: true, needsBuildSettings: false }
   }
-  return { text: detail, needsDeployKey: false }
+  if (detail.includes('could not determine how to build the app')) {
+    return {
+      text: t('deployment.detail.no_app'),
+      needsDeployKey: false,
+      needsBuildSettings: true,
+      raw: detail,
+    }
+  }
+  if (detail.length > 240) {
+    return {
+      text: `${detail.slice(0, 200).trimEnd()}…`,
+      needsDeployKey: false,
+      needsBuildSettings: false,
+      raw: detail,
+    }
+  }
+  return { text: detail, needsDeployKey: false, needsBuildSettings: false }
 }
 
 // The message of a step of a deployment.

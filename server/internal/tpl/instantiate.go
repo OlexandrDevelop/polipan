@@ -263,8 +263,30 @@ func (m *Manifest) planService(name string, s ServiceEntry, path string, expand 
 			cfg["host_port"] = s.DB.ExposeHostPort
 		}
 	} else {
-		img, _ := expand(path+".source.image.name", s.Source.Image.Name)
-		cfg["image"] = img
+		if s.Source.Git != nil {
+			g := s.Source.Git
+			git := map[string]any{"repo": g.Repo, "builder": "dockerfile"}
+			if g.Branch != "" {
+				git["branch"] = g.Branch
+			}
+			if g.Path != "" {
+				git["path"] = g.Path
+			}
+			if g.Dockerfile != "" {
+				git["dockerfile"] = g.Dockerfile
+			}
+			// The arguments of the build are variables of the service that the build can read.
+			for _, k := range sortedKeys(anyMap(g.BuildArgs)) {
+				out.Env = append(out.Env, dbengine.EnvEntry{Name: k, Value: g.BuildArgs[k], BuildTime: true})
+			}
+			if g.ConnectionID != "" {
+				git["connection_id"] = g.ConnectionID
+			}
+			cfg["git"] = git
+		} else {
+			img, _ := expand(path+".source.image.name", s.Source.Image.Name)
+			cfg["image"] = img
+		}
 		cfg["restart_policy"] = "always"
 	}
 	if len(s.Command) > 0 {
@@ -395,6 +417,14 @@ func appendEnv(list []dbengine.EnvEntry, name, value string, secret bool) []dben
 		}
 	}
 	return append(list, dbengine.EnvEntry{Name: name, Value: value, Secret: secret})
+}
+
+func anyMap(in map[string]string) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func strs(in []string) []any {

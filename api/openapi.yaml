@@ -1306,8 +1306,19 @@ paths:
       summary: Convert a Docker Compose file to services (safety validated). dry_run returns the result only.
       tags: [templates]
       x-permission: service:create
-      parameters: [{$ref: '#/components/parameters/EnvironmentId'}, {name: dry_run, in: query, schema: {type: boolean}}]
+      parameters: [{$ref: '#/components/parameters/EnvironmentId'}, {name: dry_run, in: query, schema: {type: boolean}}, {name: skip_unsafe, in: query, description: "Drop the services and the bind mounts that are not allowed, with a warning, instead of refusing the file.", schema: {type: boolean}}]
       requestBody: {required: true, content: {application/yaml: {schema: {type: string}}}}
+      responses:
+        '200': {description: Conversion result, content: {application/json: {schema: {type: object, properties: {services: {type: array, items: {$ref: '#/components/schemas/ServiceCreate'}}, warnings: {type: array, items: {type: string}}}}}}}
+        '422': {$ref: '#/components/responses/Error'}
+  /environments/{environment_id}/import-compose-git:
+    post:
+      operationId: importComposeGit
+      summary: Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. dry_run returns the result only.
+      tags: [templates]
+      x-permission: service:create
+      parameters: [{$ref: '#/components/parameters/EnvironmentId'}, {name: dry_run, in: query, schema: {type: boolean}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ComposeGitRequest'}}}}
       responses:
         '200': {description: Conversion result, content: {application/json: {schema: {type: object, properties: {services: {type: array, items: {$ref: '#/components/schemas/ServiceCreate'}}, warnings: {type: array, items: {type: string}}}}}}}
         '422': {$ref: '#/components/responses/Error'}
@@ -1834,6 +1845,16 @@ components:
     Placement:
       type: object
       properties: {id: {type: string}, node_id: {type: string}, release_id: {type: string}, replica_index: {type: integer}, color: {type: string, enum: [blue, green]}, role: {type: string, enum: [live, candidate, draining, stopped]}, weight: {type: integer}, health: {type: string, enum: [unknown, starting, healthy, unhealthy]}, container_id: {type: string, description: "The Docker container. Empty until the agent reports it."}, ip: {type: string, description: "The address of the container in the mesh."}, created_at: {type: string, format: date-time}}
+    ComposeGitRequest:
+      type: object
+      required: [repo]
+      properties:
+        repo: {type: string, description: "A full https URL, or owner/name with a Git connection."}
+        branch: {type: string, default: main}
+        path: {type: string, default: docker-compose.yml, description: "The Compose file inside the repository."}
+        connection_id: {type: string}
+        skip_unsafe: {type: boolean, description: "Drop what is not allowed, with a warning, instead of refusing the file."}
+        variables: {type: object, additionalProperties: {type: string}, description: "Values of ${NAME} in the file."}
     ServiceCreate:
       type: object
       required: [name, type]

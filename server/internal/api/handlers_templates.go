@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/polipan/polipan/api/gen"
+	"github.com/polipan/polipan/server/internal/cac"
+	"github.com/polipan/polipan/server/internal/git"
 	"github.com/polipan/polipan/server/internal/orchestrator"
 	"github.com/polipan/polipan/server/internal/store"
 	"github.com/polipan/polipan/server/internal/tpl"
@@ -220,18 +223,27 @@ func (h *Handlers) trialPlan(m *tpl.Manifest) (*tpl.Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, err = h.serviceInputs(plan, ids)
+	_, err = h.serviceInputs(nil, false, plan, ids)
 	return plan, err
 }
 
 // serviceInputs checks every planned service like a service made by hand, and returns the store input.
 // A problem is a 422 and nothing is created (AC-TPL-04).
-func (h *Handlers) serviceInputs(plan *tpl.Plan, ids map[string]string) ([]store.ServiceInput, error) {
+func (h *Handlers) serviceInputs(r *http.Request, protected bool, plan *tpl.Plan, ids map[string]string) ([]store.ServiceInput, error) {
 	var ps tpl.Problems
 	var out []store.ServiceInput
 	for _, s := range plan.Services {
 		path := "services." + s.Name
-		raw, err := checkImageConfig(jsonRoundTrip(s.Config))
+		var raw json.RawMessage
+		var err error
+		if gitCfg, isGit := s.Config["git"]; isGit && r != nil {
+			// A service that is built from a Git repository (a Compose file read from a repository).
+			rest := jsonRoundTrip(s.Config)
+			rest["git"] = gitCfg
+			raw, err = h.buildGitConfig(r, protected, rest, nil, nil)
+		} else {
+			raw, err = checkImageConfig(jsonRoundTrip(s.Config))
+		}
 		if err != nil {
 			ps = append(ps, tpl.Problem{Path: path, Message: err.Error()})
 			continue
@@ -324,7 +336,7 @@ func (h *Handlers) InstantiateTemplate(w http.ResponseWriter, r *http.Request, s
 	if templateFailed(w, r, err) || fail(w, r, err) {
 		return
 	}
-	in, err := h.serviceInputs(plan, ids)
+	in, err := h.serviceInputs(r, env.Protected, plan, ids)
 	if templateFailed(w, r, err) || fail(w, r, err) {
 		return
 	}
@@ -367,10 +379,71 @@ func (h *Handlers) ImportCompose(w http.ResponseWriter, r *http.Request, environ
 	if !ok {
 		return
 	}
-	res, err := tpl.ImportCompose(data)
+	res, err := tpl.ImportComposeWith(data, tpl.ComposeOptions{SkipUnsafe: params.SkipUnsafe != nil && *params.SkipUnsafe})
 	if templateFailed(w, r, err) || fail(w, r, err) {
 		return
 	}
+	h.finishComposeImport(w, r, env, res, params.DryRun != nil && *params.DryRun)
+}
+
+// ImportComposeGit reads a Compose file from a Git repository and converts it. A service with build: is built
+// from the same repository.
+func (h *Handlers) ImportComposeGit(w http.ResponseWriter, r *http.Request, environmentID gen.EnvironmentId, params gen.ImportComposeGitParams) {
+	env, err := h.Store.GetEnvironment(r.Context(), h.orgID(r), environmentID)
+	if fail(w, r, err) {
+		return
+	}
+	if denyProtected(w, r, "service:create", env.Protected) {
+		return
+	}
+	var body gen.ComposeGitRequest
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	file, err := cac.FilePath(deref(body.Path))
+	if err != nil {
+		invalid(w, r, "path", err.Error())
+		return
+	}
+	branch := deref(body.Branch)
+	if branch == "" {
+		branch = "main"
+	}
+	src := git.Source{Repo: body.Repo, Branch: branch, ConnectionID: deref(body.ConnectionId), Builder: "dockerfile"}
+	if err := src.Normalize(); err != nil {
+		invalid(w, r, "repo", err.Error())
+		return
+	}
+	data, err := h.fetchConfig(r.Context(), h.orgID(r), cac.ConfigSource{ConnectionID: src.ConnectionID, Repo: src.Repo, Branch: src.Branch, Path: file}, "")
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "an ssh URL needs a deploy key") {
+			msg = "an ssh address needs a deploy key, and the service does not exist yet. Use an https address or a Git connection"
+		}
+		invalid(w, r, "repo", msg)
+		return
+	}
+	vars := map[string]string{}
+	if body.Variables != nil {
+		vars = *body.Variables
+	}
+	dir := path.Dir(file)
+	if dir == "." {
+		dir = ""
+	}
+	res, err := tpl.ImportComposeWith(data, tpl.ComposeOptions{
+		Repo:       &tpl.ComposeRepo{URL: src.Repo, Branch: src.Branch, ConnectionID: src.ConnectionID, Dir: dir},
+		SkipUnsafe: body.SkipUnsafe != nil && *body.SkipUnsafe,
+		Vars:       vars,
+	})
+	if templateFailed(w, r, err) || fail(w, r, err) {
+		return
+	}
+	h.finishComposeImport(w, r, env, res, params.DryRun != nil && *params.DryRun)
+}
+
+// finishComposeImport turns the converted file into services: a dry run only answers, a real one creates them.
+func (h *Handlers) finishComposeImport(w http.ResponseWriter, r *http.Request, env *store.Environment, res *tpl.ComposeResult, dryRun bool) {
 	ids := map[string]string{}
 	for name := range res.Manifest.Services {
 		ids[name] = store.NewID("svc")
@@ -379,7 +452,7 @@ func (h *Handlers) ImportCompose(w http.ResponseWriter, r *http.Request, environ
 	if templateFailed(w, r, err) || fail(w, r, err) {
 		return
 	}
-	in, err := h.serviceInputs(plan, ids)
+	in, err := h.serviceInputs(r, env.Protected, plan, ids)
 	if templateFailed(w, r, err) || fail(w, r, err) {
 		return
 	}
@@ -387,7 +460,7 @@ func (h *Handlers) ImportCompose(w http.ResponseWriter, r *http.Request, environ
 	if warnings == nil {
 		warnings = []string{}
 	}
-	if params.DryRun != nil && *params.DryRun {
+	if dryRun {
 		list := make([]gen.ServiceCreate, 0, len(in))
 		for _, s := range in {
 			var cfg gen.ServiceConfig
