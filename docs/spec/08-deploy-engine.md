@@ -81,7 +81,7 @@ Rules for states:
 
 ### Disk admission
 
-A full disk must stop a new release before it fills the disk, not after (REQ-DEPLOY-112). The check is an admission
+A full disk must stop a new release before it fills the disk, not after (REQ-DEPLOY-114). The check is an admission
 guard: it does not promise that the image fits.
 
 - **What is checked.** Free bytes and free inodes of:
