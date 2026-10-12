@@ -250,6 +250,7 @@ message Mount {
   bytes content = 5;                 // kind file: the file content (up to 1 MiB)
   bool secret = 6;                   // kind file: content is a secret, write it on tmpfs and never log it
   uint64 size_limit_bytes = 7;       // volume, tmpfs: quota or alert threshold, 0 = none
+  bool shared = 8;                   // volume, bind: access_mode shared, more than one container may write it. false = single writer
 }
 
 message PortSpec {

@@ -103,6 +103,8 @@ type Engine struct {
 	suppressed map[string]bool
 	pulled     map[string]bool
 	noRestart  map[string]bool    // container ids that already have the restart policy "no" (kept old containers)
+	refused    map[string]refusal // placements that the volume guard did not start
+	repaired   bool               // the restart policies of the old containers were fixed after the agent start
 	hs         map[string]*hstate // health state by placement
 	ingMu      sync.Mutex         // one ingress load at a time
 	ingSpec    [32]byte
@@ -120,7 +122,7 @@ func New(d docker.Client, store *state.Store, network string, log *slog.Logger) 
 		log = slog.Default()
 	}
 	return &Engine{Docker: d, Store: store, Network: network, Log: log, hold: true,
-		suppressed: map[string]bool{}, pulled: map[string]bool{}, noRestart: map[string]bool{}, inflight: map[string]bool{},
+		suppressed: map[string]bool{}, pulled: map[string]bool{}, noRestart: map[string]bool{}, refused: map[string]refusal{}, inflight: map[string]bool{},
 		execs: map[string]*execSession{}, hs: map[string]*hstate{}, quotas: map[string]uint64{}, trigger: make(chan struct{}, 1)}
 }
 
@@ -206,6 +208,9 @@ func (e *Engine) Run(ctx context.Context) {
 	if iv == 0 {
 		iv = 30 * time.Second
 	}
+	e.runMu.Lock()
+	e.repairPolicies(ctx)
+	e.runMu.Unlock()
 	t := time.NewTicker(iv)
 	defer t.Stop()
 	go e.healthLoop(ctx)
@@ -229,6 +234,7 @@ func hashSpec(s *agentv1.IngressSpec) [32]byte {
 func (e *Engine) Reconcile(ctx context.Context) {
 	e.runMu.Lock()
 	defer e.runMu.Unlock()
+	e.repairPolicies(ctx)
 	e.mu.Lock()
 	ds, hold := e.desired, e.hold
 	e.mu.Unlock()
@@ -264,7 +270,7 @@ func (e *Engine) Reconcile(ctx context.Context) {
 		byName[c.Name] = c
 	}
 	wanted := map[string]bool{}
-	for _, w := range ds.Workloads {
+	for _, w := range stoppedFirst(ds.Workloads) {
 		wanted[w.ContainerName] = true
 		e.mu.Lock()
 		skip := e.suppressed[w.PlacementId]
@@ -282,6 +288,13 @@ func (e *Engine) Reconcile(ctx context.Context) {
 			errs = append(errs, fmt.Sprintf("%s: placement %s: %s", codeFor(err, "container_start_failed"), w.PlacementId, msg))
 		}
 	}
+	e.mu.Lock()
+	for p := range e.refused {
+		if !inDesired(ds, p) {
+			delete(e.refused, p)
+		}
+	}
+	e.mu.Unlock()
 	for _, c := range managed {
 		if wanted[c.Name] || c.Labels[LabelPlacement] == "" {
 			continue
@@ -519,6 +532,9 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 		if err != nil {
 			return err
 		}
+		if err := e.guard(ctx, w, ""); err != nil {
+			return err
+		}
 		sp := e.containerSpec(w)
 		sp.Mounts = mounts
 		if _, err := e.Docker.CreateAndStart(ctx, sp); err != nil {
@@ -532,6 +548,9 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 	}
 	// The file mounts are written again: /run is empty after a reboot.
 	if _, err := e.prepareMounts(ctx, w); err != nil {
+		return err
+	}
+	if err := e.guard(ctx, w, ex.ID); err != nil {
 		return err
 	}
 	// A container that was kept stopped has the policy "no": give it back its own policy.
@@ -551,6 +570,119 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 	return nil
 }
 
+// refusal is a start that the volume guard refused, for the health check of the placement.
+type refusal struct {
+	msg   string
+	since time.Time
+}
+
+// refusalHold is how long a refusal must last before the health check fails with it: an old
+// container may still be stopping.
+const refusalHold = 15 * time.Second
+
+// guard runs the volume guard and keeps its refusal for the health check of the placement.
+func (e *Engine) guard(ctx context.Context, w *agentv1.WorkloadSpec, self string) error {
+	err := e.guardMounts(ctx, w, self)
+	var vu *volumeInUseErr
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if errors.As(err, &vu) {
+		if r, ok := e.refused[w.PlacementId]; ok {
+			e.refused[w.PlacementId] = refusal{msg: err.Error(), since: r.since}
+		} else {
+			e.refused[w.PlacementId] = refusal{msg: err.Error(), since: time.Now()}
+		}
+	} else {
+		delete(e.refused, w.PlacementId)
+	}
+	return err
+}
+
+// refusedFor returns the refusal of a placement that lasts longer than refusalHold.
+func (e *Engine) refusedFor(placement string) (string, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	r, ok := e.refused[placement]
+	if !ok || time.Since(r.since) < refusalHold {
+		return "", false
+	}
+	return r.msg, true
+}
+
+func inDesired(ds *agentv1.DesiredState, placement string) bool {
+	for _, w := range ds.Workloads {
+		if w.PlacementId == placement {
+			return true
+		}
+	}
+	return false
+}
+
+// stoppedFirst puts the workloads with the role stopped first: an old container is stopped before a
+// new one that uses the same volume starts.
+func stoppedFirst(ws []*agentv1.WorkloadSpec) []*agentv1.WorkloadSpec {
+	out := make([]*agentv1.WorkloadSpec, 0, len(ws))
+	for _, w := range ws {
+		if w.Role == "stopped" {
+			out = append(out, w)
+		}
+	}
+	for _, w := range ws {
+		if w.Role != "stopped" {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// repairPolicies runs once after the agent start, before the first reconcile, also while the agent
+// waits for the server. Every Polipan container that must not run (role stopped in the saved desired
+// state, or not in it) gets the restart policy "no", so Docker never starts an old release next to the
+// live one at the next boot. A running one with the role stopped is stopped too. Containers that
+// Polipan does not manage are not touched. On a Docker error it runs again on the next reconcile.
+// Without a saved desired state it waits for the first one from the server.
+func (e *Engine) repairPolicies(ctx context.Context) {
+	e.mu.Lock()
+	ds, done := e.desired, e.repaired
+	e.mu.Unlock()
+	if done || ds == nil {
+		return // without a desired state nothing is known: it runs when the first one arrives
+	}
+	byName := map[string]*agentv1.WorkloadSpec{}
+	for _, w := range ds.Workloads {
+		byName[w.ContainerName] = w
+	}
+	managed, err := e.Docker.List(ctx, map[string]string{LabelManaged: "true"})
+	if err != nil {
+		e.Log.Warn("restart policies not checked", "error", err)
+		return
+	}
+	fixed := 0
+	for _, c := range managed {
+		if c.Labels[LabelPlacement] == "" {
+			continue
+		}
+		w, ok := byName[c.Name]
+		if ok && w.Role != "stopped" {
+			continue
+		}
+		grace := 0
+		if ok {
+			grace = int(w.StopGraceSeconds)
+		}
+		running := ok && (c.State == "running" || c.State == "restarting" || c.State == "paused")
+		if err := e.retire(ctx, c.ID, c.Labels[LabelPlacement], running, grace); err != nil {
+			e.Log.Warn("restart policy not fixed", "container", c.Name, "error", err)
+			return
+		}
+		fixed++
+	}
+	e.Log.Info("restart policies of old containers fixed", "containers", fixed)
+	e.mu.Lock()
+	e.repaired = true
+	e.mu.Unlock()
+}
+
 type codedErr struct {
 	code string
 	err  error
@@ -562,7 +694,10 @@ func (c *codedErr) Unwrap() error { return c.err }
 // codeFor maps an error to an agent error code (09-multi-server, section 4).
 func codeFor(err error, def string) string {
 	var ce *codedErr
+	var vu *volumeInUseErr
 	switch {
+	case errors.As(err, &vu):
+		return "volume_in_use"
 	case errors.Is(err, docker.ErrUnavailable):
 		return "docker_unavailable"
 	case strings.Contains(err.Error(), "port is already allocated") || strings.Contains(err.Error(), "address already in use"):

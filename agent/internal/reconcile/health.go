@@ -400,6 +400,9 @@ func (e *Engine) checkHealth(ctx context.Context, ch *agentv1.CheckHealth) ([]by
 			health, lastErr, status, body = s.health, s.lastErr, s.lastStatus, s.lastBody
 		}
 		e.mu.Unlock()
+		if msg, ok := e.refusedFor(ch.PlacementId); ok {
+			return nil, "volume_in_use", msg // waiting longer does not help: another container holds the data
+		}
 		if w := e.workload(ch.PlacementId); w != nil && w.Health == nil {
 			if cs, err := e.byPlacement(ctx, ch.PlacementId); err == nil && len(cs) > 0 && cs[0].State == "running" {
 				return []byte("{}"), "", ""

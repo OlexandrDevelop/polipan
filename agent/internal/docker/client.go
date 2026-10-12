@@ -29,7 +29,10 @@ type HTTPClient struct {
 	IPNetwork string
 }
 
-var _ Client = (*HTTPClient)(nil)
+var (
+	_ Client      = (*HTTPClient)(nil)
+	_ MountLister = (*HTTPClient)(nil)
+)
 
 // New creates a client for the given unix socket, for example /var/run/docker.sock.
 func New(socket string) *HTTPClient {
@@ -464,6 +467,43 @@ func (c *HTTPClient) List(ctx context.Context, labels map[string]string) ([]Cont
 	return out, nil
 }
 
+// MountedContainers returns every container of the host (all states, with or without Polipan labels)
+// with its volume and bind mounts. tmpfs and other kinds hold no data and are left out.
+func (c *HTTPClient) MountedContainers(ctx context.Context) ([]MountedContainer, error) {
+	var items []struct {
+		ID     string            `json:"Id"`
+		Names  []string          `json:"Names"`
+		State  string            `json:"State"`
+		Labels map[string]string `json:"Labels"`
+		Mounts []struct {
+			Type   string `json:"Type"`
+			Name   string `json:"Name"`
+			Source string `json:"Source"`
+			RW     bool   `json:"RW"`
+		} `json:"Mounts"`
+	}
+	if err := c.getJSON(ctx, "/containers/json", url.Values{"all": {"1"}}, &items); err != nil {
+		return nil, err
+	}
+	out := make([]MountedContainer, 0, len(items))
+	for _, it := range items {
+		mc := MountedContainer{ID: it.ID, State: it.State, Labels: it.Labels}
+		if len(it.Names) > 0 {
+			mc.Name = strings.TrimPrefix(it.Names[0], "/")
+		}
+		for _, m := range it.Mounts {
+			if m.Type != "volume" && m.Type != "bind" {
+				continue
+			}
+			mc.Mounts = append(mc.Mounts, MountUse{Type: m.Type, Name: m.Name, Source: m.Source, RW: m.RW})
+		}
+		if len(mc.Mounts) > 0 {
+			out = append(out, mc)
+		}
+	}
+	return out, nil
+}
+
 // Inspect returns one container. A missing one gives ErrNotFound.
 func (c *HTTPClient) Inspect(ctx context.Context, idOrName string) (*Container, error) {
 	var r struct {
@@ -483,6 +523,11 @@ func (c *HTTPClient) Inspect(ctx context.Context, idOrName string) (*Container, 
 			Image  string            `json:"Image"`
 			Labels map[string]string `json:"Labels"`
 		} `json:"Config"`
+		HostConfig struct {
+			RestartPolicy struct {
+				Name string `json:"Name"`
+			} `json:"RestartPolicy"`
+		} `json:"HostConfig"`
 		NetworkSettings netSettings `json:"NetworkSettings"`
 	}
 	if err := c.getJSON(ctx, "/containers/"+url.PathEscape(idOrName)+"/json", nil, &r); err != nil {
@@ -490,7 +535,7 @@ func (c *HTTPClient) Inspect(ctx context.Context, idOrName string) (*Container, 
 	}
 	ct := &Container{ID: r.ID, Name: strings.TrimPrefix(r.Name, "/"), Image: r.Config.Image, ImageID: r.Image,
 		State: r.State.Status, ExitCode: r.State.ExitCode, Labels: r.Config.Labels, IP: c.ipOf(r.NetworkSettings),
-		RestartCount: r.RestartCount}
+		RestartCount: r.RestartCount, RestartPolicy: r.HostConfig.RestartPolicy.Name}
 	if t, err := time.Parse(time.RFC3339Nano, r.State.StartedAt); err == nil && t.Year() > 1 {
 		ct.StartedAt = t
 	}

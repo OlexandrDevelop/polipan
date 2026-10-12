@@ -110,6 +110,19 @@ Why this is "pointing to another image address": the Release's `image_ref` is an
 2. Health check as in section 4.6. If it fails: stop the new, start the old (blue) again from retained containers, state `rolled_back`.
 3. There is downtime from the stop of old until health passes. The UI shows "downtime expected" before the user confirms. No zero-downtime promise.
 
+## 7a. Volume guard (one writer per volume)
+
+The agent never starts a container next to another container that writes the same data.
+
+1. Before it creates or starts a live or candidate container (deploy, rollback, fast rollback, manual start, offline reconcile, several candidates at once), the agent lists **all** Docker containers of the host: also exited ones and the ones that Polipan does not manage. It compares the Docker mounts: the volume name, and the host path of the volume or bind (a bind of a parent folder counts too).
+2. A guarded source is a `volume` or `bind` mount of the workload that is writable and has `access_mode = single_writer` (`Mount.shared = false`). A `read_only` mount and a `shared` volume are not guarded. A holder counts only when its own mount is writable (Docker `RW`).
+3. A holder blocks the start when it is `running`, `restarting` or `paused`, or when it is stopped with a restart policy other than `no` (Docker may start it at the next boot).
+4. A Polipan container of an old release (its role is `stopped`, or it is not in the desired state) gets the restart policy `no` and is stopped; then the start goes on. Any other holder — another live or candidate placement, or a container that Polipan does not manage — is **never stopped**: the start is refused (fail closed).
+5. The refusal has the agent error code `volume_in_use`. The message is the error contract `{"code":"volume_in_use","source":"<volume name or bind:<sub path>>","conflicting_container_id":"<12 chars>","placement_id":"<id>"}`. It never shows a host path. A refused start appears in `ActualState.errors`, in the `StartWorkload` ack, and in the `CheckHealth` ack when it lasts 15 s; the Deployment then fails with `container_start_failed` and the detail `volume_in_use: ...`.
+6. Workloads with the role `stopped` are reconciled before the others, so an old container stops before its successor starts.
+7. At agent start, before the first reconcile and also while it waits for the server, every Polipan container whose role in the saved desired state is `stopped`, or that is not in it, gets the restart policy `no`; a running one with the role `stopped` is stopped. Containers that Polipan does not manage are not touched. Without a saved desired state this runs when the first desired state arrives, before it is reconciled.
+8. One-off containers (`pre_deploy`, `post_deploy`) are not guarded: they run with the restart policy `no` and are removed when they end. The server still forces `recreate` for single-writer volumes (section 3), so the guard is a second line of defence.
+
 ## 8. Workers and cron
 
 - `worker` (no ingress): `recreate` by default. `blue_green` is allowed if the worker is safe to run twice for `drain_seconds` (the user sets `allow_overlap: true`). Health check type `command` or `tcp` is optional.
@@ -161,3 +174,5 @@ SSE stream `GET /api/v1/deployments/{id}/events` sends each state change, health
 - **REQ-DEPLOY-109** (MUST) `pre_deploy` runs once, before green starts, and a failure stops the Deployment.
 - **REQ-DEPLOY-110** (SHOULD) A post-switch check of 15 s runs and triggers an automatic rollback on failure (section 5.4).
 - **REQ-DEPLOY-111** (MUST) Deploy progress is available as an SSE stream.
+- **REQ-DEPLOY-112** (MUST) The agent refuses with `volume_in_use` to start a container while another container (managed or not; running, restarting, paused, or stopped with a restart policy other than `no`) holds the same writable single-writer volume or bind. It never stops a container that Polipan does not manage (section 7a).
+- **REQ-DEPLOY-113** (MUST) At agent start, before the first reconcile, every Polipan container that must not run gets the restart policy `no` (section 7a.7).

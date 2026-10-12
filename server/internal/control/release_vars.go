@@ -167,7 +167,8 @@ func (c *Control) fillWorkload(ctx context.Context, q dbq, nodeID string, w *pb.
 	w.Env, w.SecretEnvKeys = env, secretKeys
 
 	for _, v := range cfg.Volumes {
-		m := &pb.Mount{Kind: v.Kind, Target: v.MountPath}
+		// The agent refuses a second writer of a volume that is not shared (volume_in_use, 08 section 7a).
+		m := &pb.Mount{Kind: v.Kind, Target: v.MountPath, Shared: v.AccessMode == "shared"}
 		if v.SizeLimitBytes != nil && *v.SizeLimitBytes > 0 {
 			m.SizeLimitBytes = uint64(*v.SizeLimitBytes)
 		}

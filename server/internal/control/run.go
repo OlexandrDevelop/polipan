@@ -573,6 +573,8 @@ func (r *run) waitHealthy(ctx context.Context) *deployErr {
 			e = fail(ReasonNodeUnavailable, "health command: %v", res.err)
 		case !res.ack.GetOk() && res.ack.GetErrorCode() == "container_start_failed":
 			e = fail(ReasonContainerStartFailed, "%s", res.ack.GetErrorMessage())
+		case !res.ack.GetOk() && res.ack.GetErrorCode() == "volume_in_use":
+			e = fail(ReasonContainerStartFailed, "volume_in_use: another container holds the volume: %s", res.ack.GetErrorMessage())
 		case !res.ack.GetOk() && (res.ack.GetErrorCode() == "health_timeout" || res.ack.GetErrorCode() == "deadline_exceeded"):
 			e = fail(ReasonHealthTimeout, "%s", res.ack.GetErrorMessage())
 		case !res.ack.GetOk():

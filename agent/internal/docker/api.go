@@ -95,6 +95,31 @@ type Container struct {
 	Health    string // Docker health state, empty if no health check
 	// RestartCount is how often Docker restarted the container (set by Inspect only).
 	RestartCount int
+	// RestartPolicy is the Docker restart policy: always | unless-stopped | on-failure | no (set by Inspect only).
+	RestartPolicy string
+}
+
+// MountUse is one persistent mount (volume or bind) of a container, as Docker reports it.
+type MountUse struct {
+	Type   string // volume | bind
+	Name   string // volume name, empty for a bind
+	Source string // host path of the data
+	RW     bool   // false = the container cannot write it
+}
+
+// MountedContainer is a container with its persistent mounts.
+type MountedContainer struct {
+	ID     string
+	Name   string
+	State  string
+	Labels map[string]string
+	Mounts []MountUse
+}
+
+// MountLister lists the persistent mounts of every container on the host: also stopped ones and
+// the ones that Polipan does not manage (the volume guard, 08 section 7a).
+type MountLister interface {
+	MountedContainers(ctx context.Context) ([]MountedContainer, error)
 }
 
 // Event is a container event from Docker.
