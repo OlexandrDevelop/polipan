@@ -46,7 +46,8 @@ type Cleaner struct {
 	last time.Time
 }
 
-// Result is what one run removed.
+// Result is what one run removed. Bytes is the sum of the image sizes: layers that images share are counted
+// once per image, so the disk gets back less than this.
 type Result struct {
 	Images int
 	Bytes  int64
@@ -94,7 +95,7 @@ func (c *Cleaner) Run(ctx context.Context) {
 			}
 			continue
 		}
-		c.log().Info("cleanup done", "reason", reason, "dangling_images", res.Images, "freed_bytes", res.Bytes)
+		c.log().Info("cleanup done", "reason", reason, "dangling_images", res.Images, "images_size_bytes", res.Bytes)
 	}
 }
 

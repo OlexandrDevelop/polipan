@@ -68,6 +68,9 @@ services:
       POLIPAN_BUILDKIT_HOST: 172.31.250.2
       POLIPAN_BUILDKIT_CERTS: /var/lib/polipan/buildkit-certs
       POLIPAN_BUILD_DIR: /var/lib/polipan/build
+      # BuildKit cache policy: unused cache older than KEEP goes, then the oldest cache above MAX_MB megabytes.
+      POLIPAN_BUILD_CACHE_KEEP: ${POLIPAN_BUILD_CACHE_KEEP:-168h}
+      POLIPAN_BUILD_CACHE_MAX_MB: ${POLIPAN_BUILD_CACHE_MAX_MB:-5120}
       # M8: metrics and logs. Only the server talks to the two stores (internal network, basic auth).
       POLIPAN_VM_URL: http://172.31.251.20:8428
       POLIPAN_VL_URL: http://172.31.251.21:9428

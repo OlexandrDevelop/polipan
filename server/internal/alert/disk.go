@@ -72,7 +72,7 @@ func (e *Engine) upgradeDiskRules(ctx context.Context, org string) error {
 }
 
 // evalDisk checks every file system of a node (polipan_node_fs_*). ok is false when the node sends no such series
-// (an older agent): the caller then uses polipan_node_disk_* of the root.
+// (an older agent) or none of them covers the window yet: the caller then uses polipan_node_disk_* of the root.
 func (e *Engine) evalDisk(ctx context.Context, n nodeRow, threshold float64, forS int, win string, minSamples float64) (out []finding, ok bool, err error) {
 	sel := "{node=" + strconv.Quote(n.id) + "}"
 	used, avail, size := "polipan_node_fs_used_bytes"+sel, "polipan_node_fs_avail_bytes"+sel, "polipan_node_fs_size_bytes"+sel
@@ -85,6 +85,11 @@ func (e *Engine) evalDisk(ctx context.Context, n nodeRow, threshold float64, for
 		if c.Value >= minSamples {
 			enough[c.Labels["mountpoint"]] = true
 		}
+	}
+	if len(enough) == 0 {
+		// The series are new (the agent was just updated): the root disk series covers the window, so a firing
+		// alert does not resolve and fire again.
+		return nil, false, nil
 	}
 	// The used share like df shows it: the root reserve is not free space for the services.
 	pct, err := e.Backends.Query(ctx, fmt.Sprintf("min_over_time((%s / (%s + %s) * 100)[%s:15s])", used, used, avail, win), e.now())
