@@ -93,9 +93,10 @@ guard: it does not promise that the image fits.
 - **Reserve.** Bytes: the greater of `disk_reserve_bytes` (server config, env `POLIPAN_DISK_RESERVE_BYTES`, default
   2 GiB, at least 1) and 5 % of the filesystem size. Inodes: 5 % of the inodes. A filesystem without a fixed inode
   count (it reports 0 inodes, for example btrfs) has no inode reserve.
-- **When.** Before the build, after the build, before the pull and before the green containers start.
+- **When.** Before the build, after the build, before the pull and before the green containers start. For a Git
+  build the nodes are chosen before the build, so their Docker data-roots are checked before the build too.
 - **Result.** Free bytes or inodes below the reserve, or a size that is not known (statfs error, no Docker data-root,
-  an agent without the `disk` field) → `failed` / `disk_low`. `failure_detail` names the place and the numbers, for
+  an agent without the `disk` field, no answer to the self-check) → `failed` / `disk_low`. `failure_detail` names the place and the numbers, for
   example `before pull: node nod_1 filesystem=/var/lib/docker free_bytes=1073741824 required_bytes=2147483648
   free_inodes=600000 required_inodes=32768`. When the size is not known, it is `free_bytes=unknown` and the reason.
 - **Not checked.** A rollback, a move and a failover (they run a Release the node had before), and running workloads.

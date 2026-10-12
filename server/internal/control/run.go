@@ -211,7 +211,17 @@ func (r *run) prepare(ctx context.Context) *deployErr {
 	if d.trigger == "move" || d.trigger == "failover" {
 		return r.prepareSameRelease(ctx)
 	}
+	placed := false
 	if r.svc.sourceType == "git" {
+		// The nodes are chosen before the build, so their Docker data-roots are checked before it too.
+		// The schedule needs only the service config, not the image.
+		if e := r.placeReplicas(ctx); e != nil {
+			return e
+		}
+		placed = true
+		if e := r.checkNodeDisk(ctx, "before build"); e != nil {
+			return e
+		}
 		if e := r.checkBuildDisk("before build"); e != nil {
 			return e
 		}
@@ -238,8 +248,10 @@ func (r *run) prepare(ctx context.Context) *deployErr {
 		// Only a build of this service may use it: an image service must not pull built images of others.
 		return fail(ReasonInvalidConfig, "an image service cannot use an image of the built-in registry")
 	}
-	if e := r.placeReplicas(ctx); e != nil {
-		return e
+	if !placed {
+		if e := r.placeReplicas(ctx); e != nil {
+			return e
+		}
 	}
 	// Variables, secret versions and volumes of the release (M2). A missing reference fails here, before the pull.
 	snap, derr := c.resolveRelease(ctx, d.serviceID, r.node)
@@ -474,13 +486,16 @@ func (r *run) checkNodeDisk(ctx context.Context, when string) *deployErr {
 	c := r.c
 	for _, n := range distinct(r.nodes) {
 		ack, err := c.sendCmd(ctx, n, r.d.id, "disk-"+when+"-"+n, &pb.Command{Body: &pb.Command_SelfCheck{SelfCheck: &pb.SelfCheck{}}}, 30*time.Second)
-		if err != nil {
-			return fail(ReasonNodeUnavailable, "disk check: %v", err)
+		if err != nil && ctx.Err() != nil {
+			return fail(ReasonInternal, "stopped: %v", ctx.Err()) // a server stop or a user cancel, not a disk answer
 		}
 		var res struct {
 			Disk build.DiskSpace `json:"disk"`
 		}
-		if !ack.GetOk() {
+		if err != nil {
+			// No answer (timeout, lost node): the free space is not known, so the release is refused.
+			res.Disk.Error = "self-check: " + err.Error()
+		} else if !ack.GetOk() {
 			res.Disk.Error = "self-check: " + ack.GetErrorCode() + ": " + ack.GetErrorMessage()
 		} else if err := json.Unmarshal(ack.GetResultJson(), &res); err != nil {
 			res.Disk.Error = "self-check: " + err.Error()
