@@ -7,6 +7,7 @@ import type { FormEvent } from 'react'
 import type { components } from '@api/schema'
 import { api, postYaml } from '@/api/client'
 import { unwrap } from '@/api/errors'
+import { CodeBlock } from '@/components/Copy'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Stepper } from '@/components/Stepper'
 import {
@@ -24,7 +25,7 @@ import {
   TextAreaField,
   TextField,
 } from '@/components/ui'
-import { composeProblems } from '@/composeProblems'
+import { composeProblems, groupLosses, lossLabel } from '@/composeProblems'
 import { t } from '@/i18n'
 import {
   initialValues,
@@ -390,6 +391,8 @@ function TemplateWizard({ base, environment }: { base: Base; environment: Enviro
 interface ComposeResult {
   services?: components['schemas']['ServiceCreate'][] | Service[]
   warnings?: string[]
+  losses?: components['schemas']['ComposeLoss'][]
+  replacement_yaml?: string
 }
 
 // The variables of the file as NAME=value lines.
@@ -435,6 +438,51 @@ function ComposeOutcome({ error, result }: { error: unknown; result: ComposeResu
               ))}
             </ul>
           </Card>
+          {(result.losses ?? []).length > 0 && (
+            <Card className="space-y-3">
+              <div>
+                <p className="font-semibold">{t('compose.losses_title')}</p>
+                <p className="text-sm text-muted">{t('compose.losses_hint')}</p>
+              </div>
+              {groupLosses(result.losses).map((group) => (
+                <div key={group.service} className="space-y-2">
+                  {group.service && <p className="font-term font-semibold">{group.service}</p>}
+                  <ul className="space-y-2 text-sm">
+                    {group.losses.map((loss) => (
+                      <li key={`${loss.path}-${loss.lost}`} className="space-y-1">
+                        <p>
+                          <span className="font-term">{loss.key}</span>{' '}
+                          <span className="text-muted">({lossLabel(loss.disposition)})</span>:{' '}
+                          {loss.lost}
+                        </p>
+                        {loss.replacement && (
+                          <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-sm border border-border bg-surface p-2 font-mono text-xs">
+                            {loss.replacement}
+                          </pre>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </Card>
+          )}
+          {result.replacement_yaml && (
+            <Card className="space-y-2">
+              <details>
+                <summary className="cursor-pointer font-semibold">
+                  {t('compose.replacement_title')}
+                </summary>
+                <div className="mt-2 space-y-2">
+                  <p className="text-sm text-muted">{t('compose.replacement_hint')}</p>
+                  <CodeBlock
+                    text={result.replacement_yaml}
+                    label={t('compose.replacement_title')}
+                  />
+                </div>
+              </details>
+            </Card>
+          )}
           {(result.warnings ?? []).length > 0 && (
             <Banner variant="warning" title={t('compose.warnings')}>
               <ul className="list-disc pl-5">
