@@ -45,9 +45,12 @@ import { ServiceStorage } from '@/routes/ServiceStorage'
 import { ServiceVariables } from '@/routes/ServiceVariables'
 import { useNodes, useScope } from '@/scope'
 import type { Service } from '@/scope'
+import type { components } from '@api/schema'
 import { failureDetail } from '@/deploymentText'
 import { deploymentTone, isDeploymentActive, serviceTone } from '@/status'
 import type { Tone } from '@/status'
+
+type ServiceFailure = components['schemas']['ServiceFailure']
 
 const ServiceLogs = lazyNamed(() => import('@/routes/ServiceLogs'), 'ServiceLogs')
 const MetricsPanel = lazyNamed(() => import('@/components/MetricsPanel'), 'MetricsPanel')
@@ -108,16 +111,17 @@ function sourceText(service: Service): string {
   return typeof config.image === 'string' ? config.image : '-'
 }
 
-// The last deployment failed. One short line with the reason, and a button for the fix. The long text of the
-// build is on the page of the deployment.
+// The service failed: the last deployment failed or a container is unhealthy. One short line with the
+// reason, the probable cause on the node when an incident links it, the last log lines and a link to the
+// full logs. The long text of the build is on the page of the deployment.
 function FailedBanner({
-  latest,
+  failure,
   base,
 }: {
-  latest: { id?: string; failure_reason?: string; failure_detail?: string }
+  failure: ServiceFailure
   base: { org: string; project: string; env: string; service: string }
 }) {
-  const detail = failureDetail(latest.failure_detail)
+  const detail = failureDetail(failure.detail)
   const link =
     'inline-flex min-h-8 items-center border px-3 py-1 hover:bg-raised coarse:min-h-11 border-border-strong'
   const fix = detail?.needsDeployKey
@@ -125,10 +129,12 @@ function FailedBanner({
     : detail?.needsBuildSettings
       ? 'source'
       : undefined
+  const deploymentId = failure.deployment_id
+  const lines = failure.log_excerpt ?? []
   return (
     <Banner
       variant="danger"
-      title={t('deployment.failed_title')}
+      title={deploymentId ? t('deployment.failed_title') : t('service.unhealthy_title')}
       action={
         <span className="flex flex-wrap gap-2">
           {fix && (
@@ -143,20 +149,49 @@ function FailedBanner({
                 : t('deployment.open_deploy_key')}
             </Link>
           )}
-          <Link
-            to="/o/$org/p/$project/e/$env/s/$service/deployments/$deployment"
-            params={{ ...base, deployment: latest.id ?? '' }}
-            className={link}
-          >
-            {t('service.open_deployment')}
-          </Link>
+          {deploymentId ? (
+            <Link
+              to="/o/$org/p/$project/e/$env/s/$service/deployments/$deployment"
+              params={{ ...base, deployment: deploymentId }}
+              className={link}
+            >
+              {t('service.show_logs')}
+            </Link>
+          ) : (
+            <Link
+              to="/o/$org/p/$project/e/$env/s/$service/$tab"
+              params={{ ...base, tab: 'logs' }}
+              className={link}
+            >
+              {t('service.show_logs')}
+            </Link>
+          )}
         </span>
       }
     >
-      <p>
-        {detail && !detail.raw ? detail.text : tState('deployment.reason', latest.failure_reason)}
-      </p>
+      {deploymentId && (
+        <p>{detail && !detail.raw ? detail.text : tState('deployment.reason', failure.reason)}</p>
+      )}
       {detail?.raw && <p className="text-muted">{detail.needsBuildSettings ? detail.text : ''}</p>}
+      {failure.root_cause && (
+        <p className="text-text">
+          {t('service.failure_cause', {
+            node: failure.node_name ?? failure.node_id ?? '-',
+            cause: failure.root_cause,
+          })}{' '}
+          <Link to="/o/$org/alerts" params={{ org: base.org }} className="text-primary underline">
+            {t('service.open_alerts')}
+          </Link>
+        </p>
+      )}
+      {lines.length > 0 && (
+        <div className="pt-1">
+          <p className="text-sm">{t('service.failure_logs')}</p>
+          <pre className="max-h-64 max-w-full overflow-auto whitespace-pre-wrap break-all border border-border bg-raised p-2 font-mono text-xs text-text">
+            {lines.join('\n')}
+          </pre>
+        </div>
+      )}
     </Banner>
   )
 }
@@ -181,6 +216,16 @@ function Overview({
       ),
   })
   const latest = deployments.data?.items?.[0]
+  // The list of services has no failure context: until the service is read, the last deployment tells it.
+  const failure: ServiceFailure | undefined =
+    service.last_failure ??
+    (latest?.state === 'failed'
+      ? {
+          reason: latest.failure_reason,
+          detail: latest.failure_detail,
+          deployment_id: latest.id,
+        }
+      : undefined)
   const liveRelease = releases.data?.items?.find((r) => r.id === service.live_release_id)
   const nodeName = (id?: string) => nodes.data?.find((n) => n.id === id)?.name ?? id ?? '-'
   const config = service.config ?? {}
@@ -208,7 +253,9 @@ function Overview({
           </div>
         </Banner>
       )}
-      {latest?.state === 'failed' && <FailedBanner latest={latest} base={base} />}
+      {failure && !(latest && isDeploymentActive(latest.state)) && (
+        <FailedBanner failure={failure} base={base} />
+      )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Panel
           title={service.source_type === 'git' ? t('service.source_git') : t('service.source')}

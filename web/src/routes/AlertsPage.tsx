@@ -2,20 +2,23 @@
 
 import { Link, useParams } from '@tanstack/react-router'
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { MuteDialog } from '@/components/MuteDialog'
 import { DataList } from '@/components/DataList'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { PageHeader } from '@/components/PageHeader'
 import { Time } from '@/components/Time'
-import { Banner, Button, EmptyState, Skeleton, StatusBadge } from '@/components/ui'
+import { Banner, Button, EmptyState, Panel, Skeleton, StatusBadge } from '@/components/ui'
 import {
   failingChannels,
+  groupByIncident,
   rulesWithoutChannel,
   scopeOf,
   severityTone,
   useAlertChannels,
   useAlertInstances,
   useAlertRules,
+  useIncident,
 } from '@/alerts'
 import type { AlertInstance, AlertRule } from '@/alerts'
 import { t, tState } from '@/i18n'
@@ -42,6 +45,72 @@ export function AlertBadges({ alert }: { alert: AlertInstance }) {
   )
 }
 
+type Column = {
+  header: string
+  primary?: boolean
+  cell: (a: AlertInstance) => ReactNode
+}
+
+// The alerts that fired close together on one node: one card, the probable cause first. Until the
+// incident is read, the firing alerts of the list are shown.
+function IncidentPanel({
+  id,
+  firing,
+  columns,
+  actions,
+}: {
+  id: string
+  firing: AlertInstance[]
+  columns: Column[]
+  actions: (a: AlertInstance) => ReactNode
+}) {
+  const incident = useIncident(id)
+  const alerts = incident.data?.alerts ?? firing
+  const rootId = incident.data?.root_instance_id
+  const cause = incident.data?.root_cause ?? firing[0]?.root_cause
+  return (
+    <Panel
+      title={t('alerts.incident_title', {
+        node: incident.data?.node_name || incident.data?.node_id || '-',
+      })}
+      hint={t('alerts.incident_count', { count: alerts.length })}
+      className="space-y-2"
+    >
+      {cause && <p className="font-semibold">{t('alerts.incident_cause', { cause })}</p>}
+      {incident.isError && (
+        <ErrorBanner error={incident.error} onRetry={() => void incident.refetch()} />
+      )}
+      <DataList
+        caption={t('alerts.incident_title', { node: incident.data?.node_name ?? '' })}
+        rows={alerts}
+        rowKey={(a) => a.id ?? ''}
+        columns={[
+          {
+            ...columns[0],
+            cell: (a: AlertInstance) => (
+              <span>
+                {columns[0].cell(a)}
+                {a.id === rootId && (
+                  <span className="mt-1 block">
+                    <StatusBadge tone="danger" label={t('alerts.root_cause')} />
+                  </span>
+                )}
+              </span>
+            ),
+          },
+          ...columns.slice(1),
+          {
+            header: t('alerts.col_state'),
+            cell: (a: AlertInstance) => tState('alerts.state', a.state),
+          },
+        ]}
+        actionsHeader={t('common.actions')}
+        actions={actions}
+      />
+    </Panel>
+  )
+}
+
 // UI-22: firing and resolved alerts, the rules and mute.
 export function AlertsPage() {
   const { org } = useParams({ from: '/o/$org/alerts' })
@@ -53,6 +122,10 @@ export function AlertsPage() {
 
   const firing = (instances.data ?? []).filter((a) => a.state === 'firing')
   const resolved = (instances.data ?? []).filter((a) => a.state === 'resolved')
+  // Alerts of one incident are one card, the probable cause first (12-observability section 5.1).
+  const groups = groupByIncident(firing)
+  const incidents = groups.filter((g) => g[0].incident_id && g[0].related_count)
+  const single = groups.filter((g) => !(g[0].incident_id && g[0].related_count)).flat()
   const noChannel = rulesWithoutChannel(rules.data)
   const failing = failingChannels(channels.data)
   const channelName = (id: string) => channels.data?.find((c) => c.id === id)?.name ?? id
@@ -64,7 +137,7 @@ export function AlertsPage() {
       </Button>
     ) : null
 
-  const instanceColumns = [
+  const instanceColumns: Column[] = [
     {
       header: t('alerts.col_alert'),
       primary: true,
@@ -146,10 +219,19 @@ export function AlertsPage() {
         {instances.data && firing.length === 0 && (
           <EmptyState title={t('alerts.quiet_title')} text={t('alerts.quiet_text')} />
         )}
-        {firing.length > 0 && (
+        {incidents.map((group) => (
+          <IncidentPanel
+            key={group[0].incident_id}
+            id={group[0].incident_id ?? ''}
+            firing={group}
+            columns={instanceColumns}
+            actions={(a) => muteButton(a.rule_id, a.rule_name)}
+          />
+        ))}
+        {single.length > 0 && (
           <DataList
             caption={t('alerts.firing')}
-            rows={firing}
+            rows={single}
             rowKey={(a) => a.id ?? ''}
             columns={instanceColumns}
             actionsHeader={t('common.actions')}

@@ -7,6 +7,7 @@ import { unwrap } from '@/api/errors'
 import type { Tone } from '@/status'
 
 export type AlertInstance = components['schemas']['AlertInstance']
+export type Incident = components['schemas']['Incident']
 export type AlertRule = components['schemas']['AlertRule']
 export type AlertChannel = components['schemas']['AlertChannel']
 
@@ -62,6 +63,35 @@ export function useAlertInstances() {
       [],
     refetchInterval: 15_000,
   })
+}
+
+// One incident of a node with its alerts, the probable cause first.
+export function useIncident(id: string) {
+  return useQuery({
+    queryKey: ['incident', id],
+    queryFn: () =>
+      unwrap(api.GET('/incidents/{incident_id}', { params: { path: { incident_id: id } } })),
+    refetchInterval: 15_000,
+  })
+}
+
+// The firing alerts in groups: the alerts of one incident together, the others alone, in the order of
+// the list.
+export function groupByIncident(list: AlertInstance[]): AlertInstance[][] {
+  const groups: AlertInstance[][] = []
+  const byIncident = new Map<string, AlertInstance[]>()
+  for (const a of list) {
+    const id = a.related_count ? a.incident_id : undefined
+    const group = id ? byIncident.get(id) : undefined
+    if (group) {
+      group.push(a)
+      continue
+    }
+    const fresh = [a]
+    groups.push(fresh)
+    if (id) byIncident.set(id, fresh)
+  }
+  return groups
 }
 
 export function useAlertRules() {
