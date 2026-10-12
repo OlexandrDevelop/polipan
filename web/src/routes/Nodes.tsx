@@ -13,7 +13,15 @@ import { Modal } from '@/components/Modal'
 import { NodeBars } from '@/components/NodeBars'
 import { PageHeader } from '@/components/PageHeader'
 import { Time } from '@/components/Time'
-import { Banner, Button, EmptyState, Skeleton, StatusBadge, TextField } from '@/components/ui'
+import {
+  Banner,
+  Button,
+  EmptyState,
+  Optional,
+  Skeleton,
+  StatusBadge,
+  TextField,
+} from '@/components/ui'
 import { formatRelative, t, tState } from '@/i18n'
 import { useAccess } from '@/permissions'
 import { useNodes } from '@/scope'
@@ -154,24 +162,26 @@ export function AddNodeDialog({ onClose }: { onClose: () => void }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          <div className="space-y-1">
-            <label htmlFor="node-labels" className="block text-sm font-medium">
-              {t('nodes.labels')}
-            </label>
-            <textarea
-              id="node-labels"
-              rows={3}
-              spellCheck={false}
-              aria-describedby="node-labels-hint"
-              aria-invalid={submitted && !labels ? true : undefined}
-              className="block w-full rounded-sm border border-border-strong bg-bg px-3 py-2 font-mono text-base text-text aria-[invalid=true]:border-danger"
-              value={labelText}
-              onChange={(e) => setLabelText(e.target.value)}
-            />
-            <p id="node-labels-hint" className="text-sm text-muted">
-              {submitted && !labels ? t('nodes.labels_invalid') : t('nodes.labels_hint')}
-            </p>
-          </div>
+          <Optional filled={labelText !== '' || Boolean(submitted && !labels)}>
+            <div className="space-y-1">
+              <label htmlFor="node-labels" className="block text-sm font-medium">
+                {t('nodes.labels')}
+              </label>
+              <textarea
+                id="node-labels"
+                rows={3}
+                spellCheck={false}
+                aria-describedby="node-labels-hint"
+                aria-invalid={submitted && !labels ? true : undefined}
+                className="block w-full rounded-sm border border-border-strong bg-bg px-3 py-2 font-mono text-base text-text aria-[invalid=true]:border-danger"
+                value={labelText}
+                onChange={(e) => setLabelText(e.target.value)}
+              />
+              <p id="node-labels-hint" className="text-sm text-muted">
+                {submitted && !labels ? t('nodes.labels_invalid') : t('nodes.labels_hint')}
+              </p>
+            </div>
+          </Optional>
           <div className="flex flex-wrap justify-end gap-2">
             <Button onClick={onClose}>{t('common.cancel')}</Button>
             <Button type="submit" variant="primary" loading={create.isPending}>

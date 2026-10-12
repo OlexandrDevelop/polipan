@@ -16,6 +16,7 @@ import {
   Banner,
   Button,
   CheckboxField,
+  Optional,
   EmptyState,
   Skeleton,
   StatusBadge,
@@ -158,21 +159,25 @@ function AddDomainDialog({ service, onClose }: { service: Service; onClose: () =
           value={host}
           onChange={(e) => setHost(e.target.value)}
         />
-        <TextField
-          label={t('domains.port')}
-          hint={t('domains.port_hint')}
-          type="number"
-          inputMode="numeric"
-          error={submitted ? portError : null}
-          value={port}
-          onChange={(e) => setPort(e.target.value)}
-        />
-        <CheckboxField
-          label={t('domains.https')}
-          hint={t('domains.https_hint')}
-          checked={https}
-          onChange={(e) => setHttps(e.target.checked)}
-        />
+        <Optional filled={port !== defaultPort || !https || Boolean(submitted && portError)}>
+          <div className="space-y-4">
+            <TextField
+              label={t('domains.port')}
+              hint={t('domains.port_hint')}
+              type="number"
+              inputMode="numeric"
+              error={submitted ? portError : null}
+              value={port}
+              onChange={(e) => setPort(e.target.value)}
+            />
+            <CheckboxField
+              label={t('domains.https')}
+              hint={t('domains.https_hint')}
+              checked={https}
+              onChange={(e) => setHttps(e.target.checked)}
+            />
+          </div>
+        </Optional>
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button type="submit" variant="primary" loading={create.isPending}>

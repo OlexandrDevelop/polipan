@@ -16,6 +16,7 @@ import {
   Banner,
   Button,
   CheckboxField,
+  Optional,
   EmptyState,
   SelectField,
   Skeleton,
@@ -98,26 +99,30 @@ function CreateDialog({ onClose }: { onClose: () => void }) {
             ))}
             {scopes.length === 0 && <p className="text-sm text-danger">{t('tokens.scope_none')}</p>}
           </fieldset>
-          <SelectField
-            label={t('tokens.project')}
-            hint={t('tokens.project_hint')}
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-          >
-            <option value="">{t('tokens.all_projects')}</option>
-            {(projects.data ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </SelectField>
-          <TextField
-            label={t('tokens.expires')}
-            hint={t('tokens.expires_hint')}
-            type="date"
-            value={expires}
-            onChange={(e) => setExpires(e.target.value)}
-          />
+          <Optional filled={projectId !== '' || expires !== ''}>
+            <div className="space-y-4">
+              <SelectField
+                label={t('tokens.project')}
+                hint={t('tokens.project_hint')}
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+              >
+                <option value="">{t('tokens.all_projects')}</option>
+                {(projects.data ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </SelectField>
+              <TextField
+                label={t('tokens.expires')}
+                hint={t('tokens.expires_hint')}
+                type="date"
+                value={expires}
+                onChange={(e) => setExpires(e.target.value)}
+              />
+            </div>
+          </Optional>
           <div className="flex flex-wrap justify-end gap-2">
             <Button onClick={onClose}>{t('common.cancel')}</Button>
             <Button type="submit" variant="primary" loading={create.isPending}>

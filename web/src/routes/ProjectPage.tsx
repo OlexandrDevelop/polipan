@@ -14,6 +14,7 @@ import {
   Button,
   Card,
   CheckboxField,
+  Optional,
   EmptyState,
   EnvironmentBadges,
   SelectField,
@@ -89,37 +90,41 @@ function CreateEnvironmentDialog({
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <SelectField
-          label={t('env.kind')}
-          value={kind}
-          onChange={(e) => setKind(e.target.value as typeof kind)}
-        >
-          <option value="staging">{t('env.kind.staging')}</option>
-          <option value="production">{t('env.kind.production')}</option>
-          <option value="custom">{t('env.kind.custom')}</option>
-        </SelectField>
-        {environments.length > 0 && (
-          <SelectField
-            label={t('env.copy_from')}
-            value={copyFrom}
-            onChange={(e) => setCopyFrom(e.target.value)}
-          >
-            <option value="">{t('env.copy_none')}</option>
-            {environments.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </SelectField>
-        )}
-        {isAdmin && (
-          <CheckboxField
-            label={t('env.protected_label')}
-            hint={t('env.protected_hint')}
-            checked={isProtected}
-            onChange={(e) => setProtected(e.target.checked)}
-          />
-        )}
+        <Optional filled={kind !== 'staging' || copyFrom !== '' || isProtected}>
+          <div className="space-y-4">
+            <SelectField
+              label={t('env.kind')}
+              value={kind}
+              onChange={(e) => setKind(e.target.value as typeof kind)}
+            >
+              <option value="staging">{t('env.kind.staging')}</option>
+              <option value="production">{t('env.kind.production')}</option>
+              <option value="custom">{t('env.kind.custom')}</option>
+            </SelectField>
+            {environments.length > 0 && (
+              <SelectField
+                label={t('env.copy_from')}
+                value={copyFrom}
+                onChange={(e) => setCopyFrom(e.target.value)}
+              >
+                <option value="">{t('env.copy_none')}</option>
+                {environments.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </SelectField>
+            )}
+            {isAdmin && (
+              <CheckboxField
+                label={t('env.protected_label')}
+                hint={t('env.protected_hint')}
+                checked={isProtected}
+                onChange={(e) => setProtected(e.target.checked)}
+              />
+            )}
+          </div>
+        </Optional>
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button type="submit" variant="primary" loading={create.isPending}>

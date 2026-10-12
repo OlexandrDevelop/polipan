@@ -14,6 +14,7 @@ import {
   Banner,
   Button,
   CheckboxField,
+  Optional,
   Card,
   SectionTabs,
   Skeleton,
@@ -267,33 +268,39 @@ function GeneralForm({ org }: { org: Org }) {
           error={submitted ? nameError : null}
           onChange={(e) => setName(e.target.value)}
         />
-        <TextField
-          label={t('org.domain_suffix')}
-          hint={t('org.domain_suffix_hint')}
-          value={suffix}
-          disabled={!allowed}
-          autoComplete="off"
-          autoCapitalize="none"
-          spellCheck={false}
-          error={submitted ? suffixError : null}
-          onChange={(e) => setSuffix(e.target.value)}
-        />
-        <TextField
-          label={t('org.acme_email')}
-          hint={t('org.acme_email_hint')}
-          type="email"
-          value={email}
-          disabled={!allowed}
-          autoComplete="off"
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <CheckboxField
-          label={t('org.require_2fa')}
-          hint={t('org.require_2fa_hint')}
-          checked={require2fa}
-          disabled={!allowed}
-          onChange={(e) => setRequire2fa(e.target.checked)}
-        />
+        <Optional
+          filled={suffix !== '' || email !== '' || require2fa || Boolean(submitted && suffixError)}
+        >
+          <div className="space-y-4">
+            <TextField
+              label={t('org.domain_suffix')}
+              hint={t('org.domain_suffix_hint')}
+              value={suffix}
+              disabled={!allowed}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              error={submitted ? suffixError : null}
+              onChange={(e) => setSuffix(e.target.value)}
+            />
+            <TextField
+              label={t('org.acme_email')}
+              hint={t('org.acme_email_hint')}
+              type="email"
+              value={email}
+              disabled={!allowed}
+              autoComplete="off"
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            <CheckboxField
+              label={t('org.require_2fa')}
+              hint={t('org.require_2fa_hint')}
+              checked={require2fa}
+              disabled={!allowed}
+              onChange={(e) => setRequire2fa(e.target.checked)}
+            />
+          </div>
+        </Optional>
         {saved && <Banner variant="info">{t('org.saved')}</Banner>}
         {save.error && <ErrorBanner error={save.error} title={t('org.save_failed')} />}
         {allowed && (

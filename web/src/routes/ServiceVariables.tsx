@@ -15,6 +15,7 @@ import {
   Banner,
   Button,
   CheckboxField,
+  Optional,
   EmptyState,
   SecretField,
   SelectField,
@@ -288,30 +289,34 @@ function ItemDialog({
             onChange={(e) => setValue(e.target.value)}
           />
         )}
-        {!existing && (
-          <SelectField
-            label={t('variables.scope')}
-            hint={t('variables.scope_hint')}
-            value={scope}
-            onChange={(e) => setScope(e.target.value as ScopeName)}
-          >
-            <option value="service">{t('variables.scope.service')}</option>
-            <option value="environment">{t('variables.scope.environment')}</option>
-            <option value="project">{t('variables.scope.project')}</option>
-          </SelectField>
-        )}
-        <CheckboxField
-          label={t('variables.build_time')}
-          hint={t('variables.build_time_hint')}
-          checked={buildTime}
-          onChange={(e) => setBuildTime(e.target.checked)}
-        />
-        <CheckboxField
-          label={t('variables.preview')}
-          hint={t('variables.preview_hint')}
-          checked={preview}
-          onChange={(e) => setPreview(e.target.checked)}
-        />
+        <Optional filled={Boolean(existing) || buildTime || preview || scope !== 'service'}>
+          <div className="space-y-4">
+            {!existing && (
+              <SelectField
+                label={t('variables.scope')}
+                hint={t('variables.scope_hint')}
+                value={scope}
+                onChange={(e) => setScope(e.target.value as ScopeName)}
+              >
+                <option value="service">{t('variables.scope.service')}</option>
+                <option value="environment">{t('variables.scope.environment')}</option>
+                <option value="project">{t('variables.scope.project')}</option>
+              </SelectField>
+            )}
+            <CheckboxField
+              label={t('variables.build_time')}
+              hint={t('variables.build_time_hint')}
+              checked={buildTime}
+              onChange={(e) => setBuildTime(e.target.checked)}
+            />
+            <CheckboxField
+              label={t('variables.preview')}
+              hint={t('variables.preview_hint')}
+              checked={preview}
+              onChange={(e) => setPreview(e.target.checked)}
+            />
+          </div>
+        </Optional>
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button type="submit" variant="primary" loading={save.isPending}>

@@ -19,6 +19,7 @@ import {
   Button,
   Card,
   CheckboxField,
+  Optional,
   SecretField,
   SelectField,
   Skeleton,
@@ -373,44 +374,46 @@ function ImageSourceStep({
         value={draft.image}
         onChange={(e) => set({ image: e.target.value })}
       />
-      <CheckboxField
-        label={t('wizard.registry_login')}
-        hint={t('wizard.registry_login_hint')}
-        checked={draft.registryLogin}
-        onChange={(e) => set({ registryLogin: e.target.checked })}
-      />
-      {draft.registryLogin && (
-        <div className="space-y-4 border-l-4 border-border pl-4">
-          <TextField
-            label={t('wizard.registry_host')}
-            hint={t('wizard.registry_host_hint')}
-            required
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            error={errors.registryHost}
-            value={draft.registryHost}
-            onChange={(e) => set({ registryHost: e.target.value })}
-          />
-          <TextField
-            label={t('wizard.registry_user')}
-            required
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            error={errors.registryUser}
-            value={draft.registryUser}
-            onChange={(e) => set({ registryUser: e.target.value })}
-          />
-          <SecretField
-            label={t('wizard.registry_password')}
-            required
-            error={errors.registryPassword}
-            value={draft.registryPassword}
-            onValue={(registryPassword) => set({ registryPassword })}
-          />
-        </div>
-      )}
+      <Optional filled={draft.registryLogin}>
+        <CheckboxField
+          label={t('wizard.registry_login')}
+          hint={t('wizard.registry_login_hint')}
+          checked={draft.registryLogin}
+          onChange={(e) => set({ registryLogin: e.target.checked })}
+        />
+        {draft.registryLogin && (
+          <div className="space-y-4 border-l-4 border-border pl-4">
+            <TextField
+              label={t('wizard.registry_host')}
+              hint={t('wizard.registry_host_hint')}
+              required
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              error={errors.registryHost}
+              value={draft.registryHost}
+              onChange={(e) => set({ registryHost: e.target.value })}
+            />
+            <TextField
+              label={t('wizard.registry_user')}
+              required
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              error={errors.registryUser}
+              value={draft.registryUser}
+              onChange={(e) => set({ registryUser: e.target.value })}
+            />
+            <SecretField
+              label={t('wizard.registry_password')}
+              required
+              error={errors.registryPassword}
+              value={draft.registryPassword}
+              onValue={(registryPassword) => set({ registryPassword })}
+            />
+          </div>
+        )}
+      </Optional>
     </div>
   )
 }
@@ -438,81 +441,92 @@ function BuildRunStep({
         value={draft.name}
         onChange={(e) => set({ name: e.target.value })}
       />
-      {source === 'git' && (
-        <>
-          <SelectField
-            label={t('settings.builder')}
-            hint={t('settings.builder_hint')}
-            value={draft.builder}
-            onChange={(e) => set({ builder: e.target.value as Draft['builder'] })}
-          >
-            <option value="railpack">{t('settings.builder.railpack')}</option>
-            <option value="dockerfile">{t('settings.builder.dockerfile')}</option>
-          </SelectField>
-          {draft.builder === 'dockerfile' && (
-            <TextField
-              label={t('settings.dockerfile')}
-              autoComplete="off"
-              spellCheck={false}
-              value={draft.dockerfile}
-              onChange={(e) => set({ dockerfile: e.target.value })}
-            />
+      <Optional
+        filled={
+          (source === 'git' &&
+            (draft.builder !== 'railpack' || (draft.path !== '/' && draft.path !== ''))) ||
+          draft.port !== '' ||
+          draft.command !== '' ||
+          draft.replicas !== '1' ||
+          draft.cpu !== '' ||
+          draft.memory !== '' ||
+          Boolean(errors.port || errors.replicas || errors.cpu || errors.memory)
+        }
+      >
+        <div className="space-y-4">
+          {source === 'git' && (
+            <>
+              <SelectField
+                label={t('settings.builder')}
+                hint={t('settings.builder_hint')}
+                value={draft.builder}
+                onChange={(e) => set({ builder: e.target.value as Draft['builder'] })}
+              >
+                <option value="railpack">{t('settings.builder.railpack')}</option>
+                <option value="dockerfile">{t('settings.builder.dockerfile')}</option>
+              </SelectField>
+              {draft.builder === 'dockerfile' && (
+                <TextField
+                  label={t('settings.dockerfile')}
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={draft.dockerfile}
+                  onChange={(e) => set({ dockerfile: e.target.value })}
+                />
+              )}
+              <TextField
+                label={t('settings.build_path')}
+                hint={t('settings.build_path_hint')}
+                autoComplete="off"
+                spellCheck={false}
+                value={draft.path}
+                onChange={(e) => set({ path: e.target.value })}
+              />
+            </>
           )}
           <TextField
-            label={t('settings.build_path')}
-            hint={t('settings.build_path_hint')}
+            label={t('service.port')}
+            hint={t('service.port_hint')}
+            type="number"
+            inputMode="numeric"
+            error={errors.port}
+            value={draft.port}
+            onChange={(e) => set({ port: e.target.value })}
+          />
+          <TextField
+            label={t('settings.command')}
+            hint={t('settings.command_hint')}
             autoComplete="off"
             spellCheck={false}
-            value={draft.path}
-            onChange={(e) => set({ path: e.target.value })}
+            value={draft.command}
+            onChange={(e) => set({ command: e.target.value })}
           />
-        </>
-      )}
-      <TextField
-        label={t('service.port')}
-        hint={t('service.port_hint')}
-        type="number"
-        inputMode="numeric"
-        error={errors.port}
-        value={draft.port}
-        onChange={(e) => set({ port: e.target.value })}
-      />
-      <TextField
-        label={t('settings.command')}
-        hint={t('settings.command_hint')}
-        autoComplete="off"
-        spellCheck={false}
-        value={draft.command}
-        onChange={(e) => set({ command: e.target.value })}
-      />
-      <p className="text-sm text-muted sm:hidden">{t('wizard.advanced_phone')}</p>
-      <fieldset className="hidden space-y-4 rounded-md border border-border p-4 sm:block">
-        <legend className="px-1 text-sm font-semibold">{t('wizard.advanced')}</legend>
-        <TextField
-          label={t('settings.replicas')}
-          type="number"
-          inputMode="numeric"
-          error={errors.replicas}
-          value={draft.replicas}
-          onChange={(e) => set({ replicas: e.target.value })}
-        />
-        <TextField
-          label={t('settings.cpu')}
-          hint={t('settings.cpu_hint')}
-          autoComplete="off"
-          error={errors.cpu}
-          value={draft.cpu}
-          onChange={(e) => set({ cpu: e.target.value })}
-        />
-        <TextField
-          label={t('settings.memory')}
-          hint={t('settings.memory_hint')}
-          autoComplete="off"
-          error={errors.memory}
-          value={draft.memory}
-          onChange={(e) => set({ memory: e.target.value })}
-        />
-      </fieldset>
+          <TextField
+            label={t('settings.replicas')}
+            type="number"
+            inputMode="numeric"
+            error={errors.replicas}
+            value={draft.replicas}
+            onChange={(e) => set({ replicas: e.target.value })}
+          />
+          <TextField
+            label={t('settings.cpu')}
+            hint={t('settings.cpu_hint')}
+            autoComplete="off"
+            error={errors.cpu}
+            value={draft.cpu}
+            onChange={(e) => set({ cpu: e.target.value })}
+          />
+          <TextField
+            label={t('settings.memory')}
+            hint={t('settings.memory_hint')}
+            autoComplete="off"
+            error={errors.memory}
+            value={draft.memory}
+            onChange={(e) => set({ memory: e.target.value })}
+          />
+        </div>
+      </Optional>
     </div>
   )
 }
@@ -529,38 +543,42 @@ function DomainEnvStep({
   showErrors: boolean
 }) {
   return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <TextField
-          label={t('wizard.domain')}
-          hint={t('wizard.domain_hint')}
-          type="text"
-          inputMode="url"
-          autoComplete="off"
-          autoCapitalize="none"
-          spellCheck={false}
-          error={errors.domain}
-          value={draft.domain}
-          onChange={(e) => set({ domain: e.target.value })}
-        />
-        {draft.domain.trim() !== '' && (
-          <CheckboxField
-            label={t('domains.https')}
-            hint={t('domains.https_hint')}
-            checked={draft.https}
-            onChange={(e) => set({ https: e.target.checked })}
+    <div className="space-y-4">
+      <Optional label={t('wizard.domain')} filled={draft.domain !== '' || Boolean(errors.domain)}>
+        <div className="space-y-4">
+          <TextField
+            label={t('wizard.domain')}
+            hint={t('wizard.domain_hint')}
+            type="text"
+            inputMode="url"
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            error={errors.domain}
+            value={draft.domain}
+            onChange={(e) => set({ domain: e.target.value })}
           />
-        )}
-      </div>
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">{t('wizard.variables')}</legend>
-        <p className="text-sm text-muted">{t('wizard.variables_hint')}</p>
-        <KeyValueEditor
-          rows={draft.vars}
-          onChange={(vars) => set({ vars })}
-          showErrors={showErrors}
-        />
-      </fieldset>
+          {draft.domain.trim() !== '' && (
+            <CheckboxField
+              label={t('domains.https')}
+              hint={t('domains.https_hint')}
+              checked={draft.https}
+              onChange={(e) => set({ https: e.target.checked })}
+            />
+          )}
+        </div>
+      </Optional>
+      <Optional label={t('wizard.variables')} filled={filledRows(draft.vars).length > 0}>
+        <fieldset className="space-y-2">
+          <legend className="sr-only">{t('wizard.variables')}</legend>
+          <p className="text-muted">{t('wizard.variables_hint')}</p>
+          <KeyValueEditor
+            rows={draft.vars}
+            onChange={(vars) => set({ vars })}
+            showErrors={showErrors}
+          />
+        </fieldset>
+      </Optional>
     </div>
   )
 }

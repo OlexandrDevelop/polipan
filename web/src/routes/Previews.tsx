@@ -17,6 +17,7 @@ import {
   Button,
   Card,
   CheckboxField,
+  Optional,
   EmptyState,
   SelectField,
   Skeleton,
@@ -292,7 +293,7 @@ function PreviewSettingsForm({
           disabled={!allowed}
           onChange={(e) => setEnabled(e.target.checked)}
         />
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="max-w-md">
           <SelectField
             label={t('previews.base')}
             hint={t('previews.base_hint')}
@@ -307,73 +308,90 @@ function PreviewSettingsForm({
               </option>
             ))}
           </SelectField>
-          <SelectField
-            label={t('promote.strategy')}
-            value={strategy}
-            disabled={!allowed}
-            onChange={(e) => setStrategy(e.target.value)}
-          >
-            <option value="">{t('promote.strategy_default')}</option>
-            <option value="recreate">{tState('deploy.strategy_value', 'recreate')}</option>
-            <option value="blue_green">{tState('deploy.strategy_value', 'blue_green')}</option>
-          </SelectField>
-          <TextField
-            label={t('previews.max_active')}
-            type="number"
-            min={1}
-            value={maxActive}
-            disabled={!allowed}
-            error={maxOk ? null : t('previews.number_invalid')}
-            onChange={(e) => setMaxActive(e.target.value)}
-          />
-          <TextField
-            label={t('previews.ttl_days')}
-            hint={t('previews.ttl_hint')}
-            type="number"
-            min={1}
-            value={ttl}
-            disabled={!allowed}
-            error={ttlOk ? null : t('previews.number_invalid')}
-            onChange={(e) => setTtl(e.target.value)}
-          />
-          <TextField
-            label={t('previews.grace_minutes')}
-            hint={t('previews.grace_hint')}
-            type="number"
-            min={0}
-            value={grace}
-            disabled={!allowed}
-            error={graceOk ? null : t('previews.number_invalid')}
-            onChange={(e) => setGrace(e.target.value)}
-          />
         </div>
-        <CheckboxField
-          label={t('previews.from_forks')}
-          hint={isAdmin ? t('previews.from_forks_hint') : t('previews.from_forks_admin')}
-          checked={forks}
-          disabled={!allowed || !isAdmin}
-          onChange={(e) => setForks(e.target.checked)}
-        />
-        <TextAreaField
-          label={t('previews.node_selector')}
-          hint={t('previews.node_selector_hint')}
-          value={selector}
-          disabled={!allowed}
-          error={selectorOk ? null : t('previews.selector_invalid')}
-          autoCapitalize="none"
-          spellCheck={false}
-          onChange={(e) => setSelector(e.target.value)}
-        />
-        <TextField
-          label={t('previews.seed_command')}
-          hint={t('previews.seed_hint')}
-          value={seed}
-          disabled={!allowed}
-          autoComplete="off"
-          autoCapitalize="none"
-          spellCheck={false}
-          onChange={(e) => setSeed(e.target.value)}
-        />
+        <Optional
+          filled={
+            !maxOk ||
+            !ttlOk ||
+            !graceOk ||
+            !selectorOk ||
+            strategy !== '' ||
+            forks ||
+            selector !== '' ||
+            seed !== ''
+          }
+        >
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SelectField
+                label={t('promote.strategy')}
+                value={strategy}
+                disabled={!allowed}
+                onChange={(e) => setStrategy(e.target.value)}
+              >
+                <option value="">{t('promote.strategy_default')}</option>
+                <option value="recreate">{tState('deploy.strategy_value', 'recreate')}</option>
+                <option value="blue_green">{tState('deploy.strategy_value', 'blue_green')}</option>
+              </SelectField>
+              <TextField
+                label={t('previews.max_active')}
+                type="number"
+                min={1}
+                value={maxActive}
+                disabled={!allowed}
+                error={maxOk ? null : t('previews.number_invalid')}
+                onChange={(e) => setMaxActive(e.target.value)}
+              />
+              <TextField
+                label={t('previews.ttl_days')}
+                hint={t('previews.ttl_hint')}
+                type="number"
+                min={1}
+                value={ttl}
+                disabled={!allowed}
+                error={ttlOk ? null : t('previews.number_invalid')}
+                onChange={(e) => setTtl(e.target.value)}
+              />
+              <TextField
+                label={t('previews.grace_minutes')}
+                hint={t('previews.grace_hint')}
+                type="number"
+                min={0}
+                value={grace}
+                disabled={!allowed}
+                error={graceOk ? null : t('previews.number_invalid')}
+                onChange={(e) => setGrace(e.target.value)}
+              />
+            </div>
+            <CheckboxField
+              label={t('previews.from_forks')}
+              hint={isAdmin ? t('previews.from_forks_hint') : t('previews.from_forks_admin')}
+              checked={forks}
+              disabled={!allowed || !isAdmin}
+              onChange={(e) => setForks(e.target.checked)}
+            />
+            <TextAreaField
+              label={t('previews.node_selector')}
+              hint={t('previews.node_selector_hint')}
+              value={selector}
+              disabled={!allowed}
+              error={selectorOk ? null : t('previews.selector_invalid')}
+              autoCapitalize="none"
+              spellCheck={false}
+              onChange={(e) => setSelector(e.target.value)}
+            />
+            <TextField
+              label={t('previews.seed_command')}
+              hint={t('previews.seed_hint')}
+              value={seed}
+              disabled={!allowed}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              onChange={(e) => setSeed(e.target.value)}
+            />
+          </div>
+        </Optional>
         {saved && <Banner>{t('previews.saved')}</Banner>}
         {save.error && <ErrorBanner error={save.error} title={t('previews.save_failed')} />}
         {allowed ? (

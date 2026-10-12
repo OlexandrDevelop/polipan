@@ -17,6 +17,7 @@ import {
   Button,
   Card,
   CheckboxField,
+  Optional,
   EmptyState,
   SecretField,
   SelectField,
@@ -361,50 +362,62 @@ function ProviderForm({
           value={form.client_secret}
           onValue={(v) => set('client_secret', v)}
         />
-        <TextField
-          label={t('sso.scopes')}
-          hint={t('sso.scopes_hint')}
-          value={form.scopes}
-          onChange={(e) => set('scopes', e.target.value)}
-        />
-        {form.kind === 'oidc' && (
-          <TextField
-            label={t('sso.groups_claim')}
-            hint={t('sso.groups_claim_hint')}
-            value={form.groups_claim}
-            onChange={(e) => set('groups_claim', e.target.value)}
-          />
-        )}
-        <TextField
-          label={t('sso.domains')}
-          hint={form.kind === 'google' ? t('sso.domains_hint_google') : t('sso.domains_hint')}
-          value={form.allowed_domains}
-          onChange={(e) => set('allowed_domains', e.target.value)}
-        />
-        <SelectField
-          label={t('sso.default_role')}
-          hint={t('sso.default_role_hint')}
-          value={form.default_role}
-          onChange={(e) => set('default_role', e.target.value)}
+        <Optional
+          filled={
+            id !== undefined ||
+            form.scopes !== '' ||
+            form.groups_claim !== '' ||
+            form.allowed_domains !== '' ||
+            form.default_role !== ''
+          }
         >
-          <option value="">{t('sso.no_default_role')}</option>
-          {['admin', 'developer', 'viewer'].map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </SelectField>
-        <CheckboxField
-          label={t('sso.auto_create')}
-          hint={t('sso.auto_create_hint')}
-          checked={form.auto_create_users}
-          onChange={(e) => set('auto_create_users', e.target.checked)}
-        />
-        <CheckboxField
-          label={t('sso.enabled')}
-          checked={form.enabled}
-          onChange={(e) => set('enabled', e.target.checked)}
-        />
+          <div className="space-y-4">
+            <TextField
+              label={t('sso.scopes')}
+              hint={t('sso.scopes_hint')}
+              value={form.scopes}
+              onChange={(e) => set('scopes', e.target.value)}
+            />
+            {form.kind === 'oidc' && (
+              <TextField
+                label={t('sso.groups_claim')}
+                hint={t('sso.groups_claim_hint')}
+                value={form.groups_claim}
+                onChange={(e) => set('groups_claim', e.target.value)}
+              />
+            )}
+            <TextField
+              label={t('sso.domains')}
+              hint={form.kind === 'google' ? t('sso.domains_hint_google') : t('sso.domains_hint')}
+              value={form.allowed_domains}
+              onChange={(e) => set('allowed_domains', e.target.value)}
+            />
+            <SelectField
+              label={t('sso.default_role')}
+              hint={t('sso.default_role_hint')}
+              value={form.default_role}
+              onChange={(e) => set('default_role', e.target.value)}
+            >
+              <option value="">{t('sso.no_default_role')}</option>
+              {['admin', 'developer', 'viewer'].map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </SelectField>
+            <CheckboxField
+              label={t('sso.auto_create')}
+              hint={t('sso.auto_create_hint')}
+              checked={form.auto_create_users}
+              onChange={(e) => set('auto_create_users', e.target.checked)}
+            />
+            <CheckboxField
+              label={t('sso.enabled')}
+              checked={form.enabled}
+              onChange={(e) => set('enabled', e.target.checked)}
+            />
+          </div>
+        </Optional>
         <div className="flex flex-wrap justify-end gap-2">
           {id && (
             <Button variant="destructive" onClick={() => setDeleting(true)}>

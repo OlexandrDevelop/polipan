@@ -9,7 +9,7 @@ import { unwrap } from '@/api/errors'
 import { CodeBlock } from '@/components/Copy'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Modal } from '@/components/Modal'
-import { Banner, Button, SecretField, SelectField, TextField } from '@/components/ui'
+import { Banner, Button, Optional, SecretField, SelectField, TextField } from '@/components/ui'
 import { t } from '@/i18n'
 
 type GitConnection = components['schemas']['GitConnection']
@@ -110,36 +110,52 @@ export function AddGitConnectionDialog({
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        {provider !== 'github' && (
-          <TextField
-            label={t('git.base_url')}
-            hint={t('git.base_url_hint')}
-            type="url"
-            inputMode="url"
-            autoComplete="off"
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-          />
-        )}
-        {provider === 'github' ? (
-          <>
-            <TextField
-              label={t('git.app_id')}
-              autoComplete="off"
-              value={appId}
-              onChange={(e) => setAppId(e.target.value)}
-            />
-            <TextField
-              label={t('git.installation_id')}
-              autoComplete="off"
-              value={installationId}
-              onChange={(e) => setInstallationId(e.target.value)}
-            />
-            <SecretField label={t('git.private_key')} value={privateKey} onValue={setPrivateKey} />
-          </>
-        ) : (
-          <SecretField label={t('git.token')} value={token} onValue={setToken} />
-        )}
+        <Optional
+          filled={
+            baseUrl !== '' ||
+            appId !== '' ||
+            installationId !== '' ||
+            privateKey !== '' ||
+            token !== ''
+          }
+        >
+          <div className="space-y-4">
+            {provider !== 'github' && (
+              <TextField
+                label={t('git.base_url')}
+                hint={t('git.base_url_hint')}
+                type="url"
+                inputMode="url"
+                autoComplete="off"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+              />
+            )}
+            {provider === 'github' ? (
+              <>
+                <TextField
+                  label={t('git.app_id')}
+                  autoComplete="off"
+                  value={appId}
+                  onChange={(e) => setAppId(e.target.value)}
+                />
+                <TextField
+                  label={t('git.installation_id')}
+                  autoComplete="off"
+                  value={installationId}
+                  onChange={(e) => setInstallationId(e.target.value)}
+                />
+                <SecretField
+                  label={t('git.private_key')}
+                  value={privateKey}
+                  onValue={setPrivateKey}
+                />
+              </>
+            ) : (
+              <SecretField label={t('git.token')} value={token} onValue={setToken} />
+            )}
+          </div>
+        </Optional>
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button type="submit" variant="primary" loading={create.isPending}>

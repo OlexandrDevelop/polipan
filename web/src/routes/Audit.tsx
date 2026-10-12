@@ -11,7 +11,15 @@ import { ErrorBanner } from '@/components/ErrorBanner'
 import { Modal } from '@/components/Modal'
 import { PageHeader } from '@/components/PageHeader'
 import { Time } from '@/components/Time'
-import { Banner, Button, EmptyState, SelectField, Skeleton, TextField } from '@/components/ui'
+import {
+  Banner,
+  Button,
+  EmptyState,
+  Optional,
+  SelectField,
+  Skeleton,
+  TextField,
+} from '@/components/ui'
 import { t } from '@/i18n'
 import { useAccess } from '@/permissions'
 import { useProjects } from '@/scope'
@@ -71,38 +79,12 @@ function FilterForm({ initial, onApply }: { initial: Filters; onApply: (f: Filte
       className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
     >
       <TextField
-        label={t('audit.actor')}
-        autoComplete="off"
-        value={draft.actor_id}
-        onChange={set('actor_id')}
-      />
-      <TextField
         label={t('audit.action')}
         autoComplete="off"
         hint={t('audit.action_hint')}
         value={draft.action}
         onChange={set('action')}
       />
-      <TextField
-        label={t('audit.target_type')}
-        autoComplete="off"
-        value={draft.target_type}
-        onChange={set('target_type')}
-      />
-      <TextField
-        label={t('audit.target_id')}
-        autoComplete="off"
-        value={draft.target_id}
-        onChange={set('target_id')}
-      />
-      <SelectField label={t('audit.project')} value={draft.project_id} onChange={set('project_id')}>
-        <option value="">{t('audit.any_project')}</option>
-        {(projects.data ?? []).map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </SelectField>
       <TextField
         label={t('audit.from')}
         type="datetime-local"
@@ -115,6 +97,47 @@ function FilterForm({ initial, onApply }: { initial: Filters; onApply: (f: Filte
         value={draft.to}
         onChange={set('to')}
       />
+      <Optional
+        filled={
+          draft.actor_id !== '' ||
+          draft.target_type !== '' ||
+          draft.target_id !== '' ||
+          draft.project_id !== ''
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <TextField
+            label={t('audit.actor')}
+            autoComplete="off"
+            value={draft.actor_id}
+            onChange={set('actor_id')}
+          />
+          <TextField
+            label={t('audit.target_type')}
+            autoComplete="off"
+            value={draft.target_type}
+            onChange={set('target_type')}
+          />
+          <TextField
+            label={t('audit.target_id')}
+            autoComplete="off"
+            value={draft.target_id}
+            onChange={set('target_id')}
+          />
+          <SelectField
+            label={t('audit.project')}
+            value={draft.project_id}
+            onChange={set('project_id')}
+          >
+            <option value="">{t('audit.any_project')}</option>
+            {(projects.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </SelectField>
+        </div>
+      </Optional>
       <div className="flex items-end gap-2">
         <Button type="submit" variant="primary">
           {t('audit.search')}

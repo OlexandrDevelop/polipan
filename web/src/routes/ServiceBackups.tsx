@@ -18,6 +18,7 @@ import {
   Card,
   CheckboxField,
   EmptyState,
+  Optional,
   SelectField,
   Skeleton,
   StatusBadge,
@@ -270,83 +271,91 @@ function PolicyDialog({
           ))}
           {submitted && errors.targets && <p className="text-sm text-danger">{errors.targets}</p>}
         </fieldset>
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">{t('backup.retention')}</legend>
-          <div className="grid grid-cols-3 gap-3">
-            <TextField
-              label={t('backup.keep_daily')}
-              type="number"
-              inputMode="numeric"
-              min={0}
-              value={daily}
-              onChange={(e) => setDaily(e.target.value)}
+        <Optional
+          filled={
+            Boolean(policy) || Boolean(submitted && (errors.retention || errors.checkSchedule))
+          }
+        >
+          <div className="space-y-4">
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">{t('backup.retention')}</legend>
+              <div className="grid grid-cols-3 gap-3">
+                <TextField
+                  label={t('backup.keep_daily')}
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={daily}
+                  onChange={(e) => setDaily(e.target.value)}
+                />
+                <TextField
+                  label={t('backup.keep_weekly')}
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={weekly}
+                  onChange={(e) => setWeekly(e.target.value)}
+                />
+                <TextField
+                  label={t('backup.keep_monthly')}
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={monthly}
+                  onChange={(e) => setMonthly(e.target.value)}
+                />
+              </div>
+              <p className="text-sm text-muted">{t('backup.retention_hint')}</p>
+              {submitted && errors.retention && (
+                <p className="text-sm text-danger">{errors.retention}</p>
+              )}
+            </fieldset>
+            <CheckboxField
+              label={t('backup.check_enabled')}
+              hint={t('backup.check_enabled_hint')}
+              checked={check}
+              onChange={(e) => setCheck(e.target.checked)}
             />
-            <TextField
-              label={t('backup.keep_weekly')}
-              type="number"
-              inputMode="numeric"
-              min={0}
-              value={weekly}
-              onChange={(e) => setWeekly(e.target.value)}
-            />
-            <TextField
-              label={t('backup.keep_monthly')}
-              type="number"
-              inputMode="numeric"
-              min={0}
-              value={monthly}
-              onChange={(e) => setMonthly(e.target.value)}
-            />
+            {check && (
+              <>
+                <TextField
+                  label={t('backup.check_schedule')}
+                  hint={t('backup.schedule_hint')}
+                  autoComplete="off"
+                  spellCheck={false}
+                  error={submitted ? errors.checkSchedule : null}
+                  value={checkSchedule}
+                  onChange={(e) => setCheckSchedule(e.target.value)}
+                />
+                <SelectField
+                  label={t('backup.check_mode')}
+                  hint={t('backup.check_mode_hint')}
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value as 'full' | 'sample')}
+                >
+                  <option value="full">{t('backup.check_mode.full')}</option>
+                  <option value="sample">{t('backup.check_mode.sample')}</option>
+                </SelectField>
+              </>
+            )}
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium">{t('backup.hooks')}</h3>
+              <div className="space-y-3">
+                <TextAreaField
+                  label={t('backup.pre_hook')}
+                  hint={t('backup.hook_hint')}
+                  value={pre}
+                  onChange={(e) => setPre(e.target.value)}
+                />
+                <TextAreaField
+                  label={t('backup.post_hook')}
+                  value={post}
+                  onChange={(e) => setPost(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
-          <p className="text-sm text-muted">{t('backup.retention_hint')}</p>
-          {submitted && errors.retention && (
-            <p className="text-sm text-danger">{errors.retention}</p>
-          )}
-        </fieldset>
-        <CheckboxField
-          label={t('backup.check_enabled')}
-          hint={t('backup.check_enabled_hint')}
-          checked={check}
-          onChange={(e) => setCheck(e.target.checked)}
-        />
-        {check && (
-          <>
-            <TextField
-              label={t('backup.check_schedule')}
-              hint={t('backup.schedule_hint')}
-              autoComplete="off"
-              spellCheck={false}
-              error={submitted ? errors.checkSchedule : null}
-              value={checkSchedule}
-              onChange={(e) => setCheckSchedule(e.target.value)}
-            />
-            <SelectField
-              label={t('backup.check_mode')}
-              hint={t('backup.check_mode_hint')}
-              value={mode}
-              onChange={(e) => setMode(e.target.value as 'full' | 'sample')}
-            >
-              <option value="full">{t('backup.check_mode.full')}</option>
-              <option value="sample">{t('backup.check_mode.sample')}</option>
-            </SelectField>
-          </>
-        )}
-        <details>
-          <summary className="cursor-pointer text-sm font-medium">{t('backup.hooks')}</summary>
-          <div className="mt-3 space-y-3">
-            <TextAreaField
-              label={t('backup.pre_hook')}
-              hint={t('backup.hook_hint')}
-              value={pre}
-              onChange={(e) => setPre(e.target.value)}
-            />
-            <TextAreaField
-              label={t('backup.post_hook')}
-              value={post}
-              onChange={(e) => setPost(e.target.value)}
-            />
-          </div>
-        </details>
+        </Optional>
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button type="submit" variant="primary" loading={save.isPending}>

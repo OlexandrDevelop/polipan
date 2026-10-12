@@ -14,6 +14,7 @@ import {
   Banner,
   Button,
   CheckboxField,
+  Optional,
   SecretField,
   SelectField,
   Skeleton,
@@ -201,12 +202,6 @@ function ChannelDialog({ channel, onClose }: { channel?: AlertChannel; onClose: 
               onChange={(e) => setPort(e.target.value)}
             />
             <TextField
-              label={t('alerts.smtp_user')}
-              value={user}
-              autoComplete="off"
-              onChange={(e) => setUser(e.target.value)}
-            />
-            <TextField
               label={t('alerts.from')}
               required
               type="email"
@@ -222,12 +217,22 @@ function ChannelDialog({ channel, onClose }: { channel?: AlertChannel; onClose: 
               error={show(errors.recipients)}
               onChange={(e) => setRecipients(e.target.value)}
             />
-            <SecretField
-              label={t('alerts.smtp_password')}
-              value={secret}
-              onValue={setSecret}
-              error={show(errors.secret)}
-            />
+            <Optional filled={user !== '' || secret !== ''}>
+              <div className="space-y-4">
+                <TextField
+                  label={t('alerts.smtp_user')}
+                  value={user}
+                  autoComplete="off"
+                  onChange={(e) => setUser(e.target.value)}
+                />
+                <SecretField
+                  label={t('alerts.smtp_password')}
+                  value={secret}
+                  onValue={setSecret}
+                  error={show(errors.secret)}
+                />
+              </div>
+            </Optional>
           </>
         )}
         {kind === 'webhook' && (
@@ -240,14 +245,18 @@ function ChannelDialog({ channel, onClose }: { channel?: AlertChannel; onClose: 
               error={show(errors.url)}
               onChange={(e) => setUrl(e.target.value)}
             />
-            <SecretField label={t('alerts.hmac')} value={secret} onValue={setSecret} />
+            <Optional filled={secret !== ''}>
+              <SecretField label={t('alerts.hmac')} value={secret} onValue={setSecret} />
+            </Optional>
           </>
         )}
-        <CheckboxField
-          label={t('alerts.enabled_label')}
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-        />
+        {editing && (
+          <CheckboxField
+            label={t('alerts.enabled_label')}
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+          />
+        )}
         {save.error && <ErrorBanner error={save.error} title={t('alerts.save_failed')} />}
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{t('common.cancel')}</Button>
@@ -468,43 +477,6 @@ function RuleDialog({
             ))}
           </SelectField>
         )}
-        <SelectField
-          label={t('alerts.col_severity')}
-          value={severity}
-          onChange={(e) => setSeverity(e.target.value as typeof severity)}
-        >
-          {(['info', 'warning', 'critical'] as const).map((s) => (
-            <option key={s} value={s}>
-              {tState('alerts.severity', s)}
-            </option>
-          ))}
-        </SelectField>
-        {threshold_rule && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <TextField
-              label={t('alerts.threshold')}
-              type="number"
-              value={threshold}
-              error={show(errors.threshold)}
-              onChange={(e) => setThreshold(e.target.value)}
-            />
-            <TextField
-              label={t('alerts.for_seconds')}
-              type="number"
-              value={forSeconds}
-              error={show(errors.forSeconds)}
-              onChange={(e) => setForSeconds(e.target.value)}
-            />
-          </div>
-        )}
-        <TextField
-          label={t('alerts.repeat')}
-          type="number"
-          hint={t('alerts.repeat_hint')}
-          value={repeat}
-          error={show(errors.repeat)}
-          onChange={(e) => setRepeat(e.target.value)}
-        />
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">{t('alerts.col_channels')}</legend>
           {channels.length === 0 && <p className="text-sm text-muted">{t('alerts.no_channels')}</p>}
@@ -526,11 +498,52 @@ function RuleDialog({
             <p className="text-sm text-warning">{t('alerts.no_channel_warning')}</p>
           )}
         </fieldset>
-        <CheckboxField
-          label={t('alerts.enabled_label')}
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-        />
+        <Optional filled={editing}>
+          <div className="space-y-4">
+            <SelectField
+              label={t('alerts.col_severity')}
+              value={severity}
+              onChange={(e) => setSeverity(e.target.value as typeof severity)}
+            >
+              {(['info', 'warning', 'critical'] as const).map((s) => (
+                <option key={s} value={s}>
+                  {tState('alerts.severity', s)}
+                </option>
+              ))}
+            </SelectField>
+            {threshold_rule && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField
+                  label={t('alerts.threshold')}
+                  type="number"
+                  value={threshold}
+                  error={show(errors.threshold)}
+                  onChange={(e) => setThreshold(e.target.value)}
+                />
+                <TextField
+                  label={t('alerts.for_seconds')}
+                  type="number"
+                  value={forSeconds}
+                  error={show(errors.forSeconds)}
+                  onChange={(e) => setForSeconds(e.target.value)}
+                />
+              </div>
+            )}
+            <TextField
+              label={t('alerts.repeat')}
+              type="number"
+              hint={t('alerts.repeat_hint')}
+              value={repeat}
+              error={show(errors.repeat)}
+              onChange={(e) => setRepeat(e.target.value)}
+            />
+            <CheckboxField
+              label={t('alerts.enabled_label')}
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+            />
+          </div>
+        </Optional>
         {save.error && <ErrorBanner error={save.error} title={t('alerts.save_failed')} />}
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{t('common.cancel')}</Button>

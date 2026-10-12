@@ -16,6 +16,7 @@ import {
   Banner,
   Button,
   EmptyState,
+  Optional,
   SecretField,
   SelectField,
   Skeleton,
@@ -185,6 +186,51 @@ function TargetDialog({ target, onClose }: { target?: Target; onClose: () => voi
     if (valid) save.mutate()
   }
 
+  const renderField = (f: (typeof fields)[number]) => {
+    const common = {
+      label: f.label,
+      hint: f.hint,
+      required: f.required && !(editing && f.secret),
+      error: submitted ? problem(f) : null,
+    }
+    if (f.secret && f.multiline) {
+      return (
+        <TextAreaField
+          key={`${kind}-${f.key}`}
+          {...common}
+          hint={editing ? t('target.secret_keep') : t('secret.write_only')}
+          autoComplete="off"
+          spellCheck={false}
+          data-secret-input=""
+          value={values[f.key] ?? ''}
+          onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+        />
+      )
+    }
+    if (f.secret) {
+      return (
+        <SecretField
+          key={`${kind}-${f.key}`}
+          {...common}
+          value={values[f.key] ?? ''}
+          onValue={(v) => setValues((s) => ({ ...s, [f.key]: v }))}
+        />
+      )
+    }
+    return (
+      <TextField
+        key={`${kind}-${f.key}`}
+        {...common}
+        autoComplete="off"
+        autoCapitalize="none"
+        spellCheck={false}
+        value={values[f.key] ?? ''}
+        onChange={(e) => setValues((s) => ({ ...s, [f.key]: e.target.value }))}
+      />
+    )
+  }
+  const optionalFields = fields.filter((f) => !f.required)
+
   return (
     <Modal title={editing ? t('target.edit_title') : t('target.add_title')} onClose={onClose}>
       <form onSubmit={submit} noValidate className="space-y-4">
@@ -212,49 +258,12 @@ function TargetDialog({ target, onClose }: { target?: Target; onClose: () => voi
             </option>
           ))}
         </SelectField>
-        {fields.map((f) => {
-          const common = {
-            label: f.label,
-            hint: f.hint,
-            required: f.required && !(editing && f.secret),
-            error: submitted ? problem(f) : null,
-          }
-          if (f.secret && f.multiline) {
-            return (
-              <TextAreaField
-                key={`${kind}-${f.key}`}
-                {...common}
-                hint={editing ? t('target.secret_keep') : t('secret.write_only')}
-                autoComplete="off"
-                spellCheck={false}
-                data-secret-input=""
-                value={values[f.key] ?? ''}
-                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-              />
-            )
-          }
-          if (f.secret) {
-            return (
-              <SecretField
-                key={`${kind}-${f.key}`}
-                {...common}
-                value={values[f.key] ?? ''}
-                onValue={(v) => setValues((s) => ({ ...s, [f.key]: v }))}
-              />
-            )
-          }
-          return (
-            <TextField
-              key={`${kind}-${f.key}`}
-              {...common}
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              value={values[f.key] ?? ''}
-              onChange={(e) => setValues((s) => ({ ...s, [f.key]: e.target.value }))}
-            />
-          )
-        })}
+        {fields.filter((f) => f.required).map(renderField)}
+        {optionalFields.length > 0 && (
+          <Optional filled={editing || optionalFields.some((f) => (values[f.key] ?? '') !== '')}>
+            <div className="space-y-4">{optionalFields.map(renderField)}</div>
+          </Optional>
+        )}
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button type="submit" variant="primary" loading={save.isPending}>

@@ -15,6 +15,7 @@ import {
   Button,
   CheckboxField,
   FieldGrid,
+  Optional,
   Pane,
   Panel,
   SectionNav,
@@ -268,38 +269,52 @@ export function ServiceHealth({
                     />
                   </div>
                 ) : (
-                  <TextField
-                    label={t('service.port')}
-                    hint={t('health.port_hint')}
-                    readOnly={readOnly || managed}
-                    type="number"
-                    inputMode="numeric"
-                    error={errors.port}
-                    value={form.port}
-                    onChange={(e) => set({ port: e.target.value })}
-                  />
+                  <Optional filled={form.port !== '' || form.restart || Boolean(errors.port)}>
+                    <FieldGrid>
+                      <TextField
+                        label={t('service.port')}
+                        hint={t('health.port_hint')}
+                        readOnly={readOnly || managed}
+                        type="number"
+                        inputMode="numeric"
+                        error={errors.port}
+                        value={form.port}
+                        onChange={(e) => set({ port: e.target.value })}
+                      />
+                      <div className="sm:col-span-2">
+                        <CheckboxField
+                          label={t('health.restart')}
+                          hint={t('health.restart_hint')}
+                          disabled={readOnly || managed}
+                          checked={form.restart}
+                          onChange={(e) => set({ restart: e.target.checked })}
+                        />
+                      </div>
+                    </FieldGrid>
+                  </Optional>
                 )}
-                <div className="sm:col-span-2">
-                  <CheckboxField
-                    label={t('health.restart')}
-                    hint={t('health.restart_hint')}
-                    disabled={readOnly || managed}
-                    checked={form.restart}
-                    onChange={(e) => set({ restart: e.target.checked })}
-                  />
-                </div>
               </FieldGrid>
             </Panel>
           </Pane>
           <Pane id="timing" active={section === 'timing'}>
             <Panel title={t('health.timing')}>
               <FieldGrid>
-                {numberField('interval', t('health.interval'))}
-                {numberField('timeout', t('health.timeout'))}
-                {numberField('healthy_threshold', t('health.healthy_threshold'))}
-                {numberField('unhealthy_threshold', t('health.unhealthy_threshold'))}
-                {numberField('start_period', t('health.start_period'))}
-                {numberField('deploy_timeout', t('health.deploy_timeout'))}
+                <Optional
+                  label={t('settings.limits')}
+                  filled={
+                    NUMBER_FIELDS.some((k) => form[k] !== '') ||
+                    NUMBER_FIELDS.some((k) => Boolean(errors[k]))
+                  }
+                >
+                  <FieldGrid>
+                    {numberField('interval', t('health.interval'))}
+                    {numberField('timeout', t('health.timeout'))}
+                    {numberField('healthy_threshold', t('health.healthy_threshold'))}
+                    {numberField('unhealthy_threshold', t('health.unhealthy_threshold'))}
+                    {numberField('start_period', t('health.start_period'))}
+                    {numberField('deploy_timeout', t('health.deploy_timeout'))}
+                  </FieldGrid>
+                </Optional>
               </FieldGrid>
             </Panel>
           </Pane>

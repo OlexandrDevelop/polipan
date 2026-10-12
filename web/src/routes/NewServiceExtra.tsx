@@ -13,6 +13,7 @@ import {
   Banner,
   Button,
   Card,
+  Optional,
   EmptyState,
   SelectField,
   Skeleton,
@@ -219,14 +220,16 @@ function DatabaseWizard({ base, environment }: { base: Base; environment: Enviro
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-            <TextField
-              label={t('database.memory')}
-              hint={t('database.memory_hint')}
-              autoComplete="off"
-              error={tried ? errors.memory : null}
-              value={memory}
-              onChange={(e) => setMemory(e.target.value)}
-            />
+            <Optional filled={memory !== '' || Boolean(tried && errors.memory)}>
+              <TextField
+                label={t('database.memory')}
+                hint={t('database.memory_hint')}
+                autoComplete="off"
+                error={tried ? errors.memory : null}
+                value={memory}
+                onChange={(e) => setMemory(e.target.value)}
+              />
+            </Optional>
           </>
         )}
         {step === 2 && (

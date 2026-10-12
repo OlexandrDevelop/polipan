@@ -9,7 +9,7 @@ import { DataList } from '@/components/DataList'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { PageHeader } from '@/components/PageHeader'
 import { Time } from '@/components/Time'
-import { EmptyState, SelectField, Skeleton, StatusBadge } from '@/components/ui'
+import { EmptyState, Optional, SelectField, Skeleton, StatusBadge } from '@/components/ui'
 import { t, tState } from '@/i18n'
 import { useEnvironments, useProjects } from '@/scope'
 import type { Environment, Service } from '@/scope'
@@ -108,55 +108,63 @@ export function DeploymentsPage() {
       )}
       {project && (
         <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <SelectField
-            label={t('deployments.project')}
-            value={project.slug}
-            onChange={(e) =>
-              setSearch({ project: e.target.value, env: undefined, service: undefined })
-            }
-          >
-            {projects.data?.map((p) => (
-              <option key={p.id} value={p.slug}>
-                {p.name}
-              </option>
-            ))}
-          </SelectField>
-          <SelectField
-            label={t('deployments.environment')}
-            value={search.env ?? ''}
-            onChange={(e) => setSearch({ env: e.target.value || undefined, service: undefined })}
-          >
-            <option value="">{t('deployments.all')}</option>
-            {environments.data?.map((e) => (
-              <option key={e.id} value={e.slug}>
-                {e.name}
-              </option>
-            ))}
-          </SelectField>
-          <SelectField
-            label={t('deployments.service')}
-            value={search.service ?? ''}
-            onChange={(e) => setSearch({ service: e.target.value || undefined })}
-          >
-            <option value="">{t('deployments.all')}</option>
-            {services.map((s) => (
-              <option key={s.id} value={s.name}>
-                {s.name}
-              </option>
-            ))}
-          </SelectField>
-          <SelectField
-            label={t('deployment.state')}
-            value={search.state ?? ''}
-            onChange={(e) => setSearch({ state: e.target.value || undefined })}
-          >
-            <option value="">{t('deployments.all')}</option>
-            {STATES.map((s) => (
-              <option key={s} value={s}>
-                {tState('status.deployment', s)}
-              </option>
-            ))}
-          </SelectField>
+          {(projects.data?.length ?? 0) > 1 && (
+            <SelectField
+              label={t('deployments.project')}
+              value={project.slug}
+              onChange={(e) =>
+                setSearch({ project: e.target.value, env: undefined, service: undefined })
+              }
+            >
+              {projects.data?.map((p) => (
+                <option key={p.id} value={p.slug}>
+                  {p.name}
+                </option>
+              ))}
+            </SelectField>
+          )}
+          <Optional filled={Boolean(search.env || search.service || search.state)}>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <SelectField
+                label={t('deployments.environment')}
+                value={search.env ?? ''}
+                onChange={(e) =>
+                  setSearch({ env: e.target.value || undefined, service: undefined })
+                }
+              >
+                <option value="">{t('deployments.all')}</option>
+                {environments.data?.map((e) => (
+                  <option key={e.id} value={e.slug}>
+                    {e.name}
+                  </option>
+                ))}
+              </SelectField>
+              <SelectField
+                label={t('deployments.service')}
+                value={search.service ?? ''}
+                onChange={(e) => setSearch({ service: e.target.value || undefined })}
+              >
+                <option value="">{t('deployments.all')}</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.name}
+                  </option>
+                ))}
+              </SelectField>
+              <SelectField
+                label={t('deployment.state')}
+                value={search.state ?? ''}
+                onChange={(e) => setSearch({ state: e.target.value || undefined })}
+              >
+                <option value="">{t('deployments.all')}</option>
+                {STATES.map((s) => (
+                  <option key={s} value={s}>
+                    {tState('status.deployment', s)}
+                  </option>
+                ))}
+              </SelectField>
+            </div>
+          </Optional>
         </div>
       )}
       {failed && <ErrorBanner error={failed.error} onRetry={retry} />}

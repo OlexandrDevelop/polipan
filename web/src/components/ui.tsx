@@ -429,6 +429,44 @@ export function FieldGrid({ children }: { children: ReactNode }) {
   return <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">{children}</div>
 }
 
+// Fields that nobody has to fill in. They are hidden behind one line, and they open with a fade. A group
+// that already has a value, or an error, is open from the start, so nothing is hidden that matters.
+export function Optional({
+  label,
+  filled = false,
+  children,
+}: {
+  label?: string
+  filled?: boolean
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(filled)
+  const id = useId()
+  // A value or an error that appears later opens the group.
+  useEffect(() => {
+    if (filled) setOpen(true)
+  }, [filled])
+  return (
+    <div className="sm:col-span-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen(!open)}
+        className="font-term inline-flex min-h-8 items-center gap-2 text-muted transition-colors duration-[200ms] hover:text-text coarse:min-h-11"
+      >
+        <span aria-hidden="true">{open ? '▾' : '▸'}</span>
+        {label ?? t('common.more_options')}
+      </button>
+      {open && (
+        <div id={id} className="enter pt-4">
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export interface SectionItem {
   id: string
   label: string

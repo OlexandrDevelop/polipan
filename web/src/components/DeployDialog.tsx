@@ -8,7 +8,15 @@ import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Modal } from '@/components/Modal'
-import { Banner, Button, CheckboxField, SelectField, Skeleton, TextField } from '@/components/ui'
+import {
+  Banner,
+  Button,
+  CheckboxField,
+  Optional,
+  SelectField,
+  Skeleton,
+  TextField,
+} from '@/components/ui'
 import { hasKey, t, tState } from '@/i18n'
 import { useNodes } from '@/scope'
 import type { Environment, Service } from '@/scope'
@@ -186,51 +194,6 @@ export function DeployDialog({
             )}
           </dl>
         )}
-        <SelectField
-          label={t('deploy.strategy_choice')}
-          value={strategy}
-          onChange={(e) => setStrategy(e.target.value as Strategy | '')}
-        >
-          <option value="">{t('deploy.strategy_default')}</option>
-          <option value="blue_green">{t('deploy.strategy_value.blue_green')}</option>
-          <option value="recreate">{t('deploy.strategy_value.recreate')}</option>
-          <option value="canary">{t('deploy.strategy_value.canary')}</option>
-        </SelectField>
-        {strategy === 'canary' && (
-          <fieldset className="space-y-3">
-            <legend className="text-sm font-medium">{t('canary.options')}</legend>
-            <p className="text-sm text-muted">{t('canary.options_hint')}</p>
-            <TextField
-              label={t('canary.steps_label')}
-              value={stepsText}
-              error={canaryErrors.steps}
-              onChange={(e) => setStepsText(e.target.value)}
-            />
-            <TextField
-              label={t('canary.interval_label')}
-              type="number"
-              value={interval}
-              error={canaryErrors.interval}
-              onChange={(e) => setIntervalText(e.target.value)}
-            />
-            <TextField
-              label={t('canary.max_5xx_label')}
-              type="number"
-              step="0.1"
-              value={max5xx}
-              error={canaryErrors.max5xx}
-              onChange={(e) => setMax5xx(e.target.value)}
-            />
-            <TextField
-              label={t('canary.p95_ratio_label')}
-              type="number"
-              step="0.1"
-              value={p95Ratio}
-              error={canaryErrors.ratio}
-              onChange={(e) => setP95Ratio(e.target.value)}
-            />
-          </fieldset>
-        )}
         {(p?.warnings ?? [])
           .filter((w) => w !== forcedWarning)
           .map((w, i) => (
@@ -238,14 +201,63 @@ export function DeployDialog({
               {warningText(w)}
             </Banner>
           ))}
-        {p && git && (
-          <CheckboxField
-            label={t('deploy.no_cache')}
-            hint={t('deploy.no_cache_hint')}
-            checked={noCache}
-            onChange={(e) => setNoCache(e.target.checked)}
-          />
-        )}
+        <Optional filled={strategy !== '' || noCache}>
+          <div className="space-y-4">
+            <SelectField
+              label={t('deploy.strategy_choice')}
+              value={strategy}
+              onChange={(e) => setStrategy(e.target.value as Strategy | '')}
+            >
+              <option value="">{t('deploy.strategy_default')}</option>
+              <option value="blue_green">{t('deploy.strategy_value.blue_green')}</option>
+              <option value="recreate">{t('deploy.strategy_value.recreate')}</option>
+              <option value="canary">{t('deploy.strategy_value.canary')}</option>
+            </SelectField>
+            {strategy === 'canary' && (
+              <fieldset className="space-y-3">
+                <legend className="text-sm font-medium">{t('canary.options')}</legend>
+                <p className="text-sm text-muted">{t('canary.options_hint')}</p>
+                <TextField
+                  label={t('canary.steps_label')}
+                  value={stepsText}
+                  error={canaryErrors.steps}
+                  onChange={(e) => setStepsText(e.target.value)}
+                />
+                <TextField
+                  label={t('canary.interval_label')}
+                  type="number"
+                  value={interval}
+                  error={canaryErrors.interval}
+                  onChange={(e) => setIntervalText(e.target.value)}
+                />
+                <TextField
+                  label={t('canary.max_5xx_label')}
+                  type="number"
+                  step="0.1"
+                  value={max5xx}
+                  error={canaryErrors.max5xx}
+                  onChange={(e) => setMax5xx(e.target.value)}
+                />
+                <TextField
+                  label={t('canary.p95_ratio_label')}
+                  type="number"
+                  step="0.1"
+                  value={p95Ratio}
+                  error={canaryErrors.ratio}
+                  onChange={(e) => setP95Ratio(e.target.value)}
+                />
+              </fieldset>
+            )}
+            {git && (
+              <CheckboxField
+                label={t('deploy.no_cache')}
+                hint={t('deploy.no_cache_hint')}
+                checked={noCache}
+                onChange={(e) => setNoCache(e.target.checked)}
+              />
+            )}
+          </div>
+        </Optional>
         {deploy.error && <ErrorBanner error={deploy.error} title={t('deploy.failed')} />}
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{t('common.cancel')}</Button>

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { LogViewer } from '@/components/LogViewer'
-import { Banner, SelectField, Skeleton, TextField } from '@/components/ui'
+import { Banner, Optional, SelectField, Skeleton, TextField } from '@/components/ui'
 import { t } from '@/i18n'
 import { LEVELS, LOG_RANGES, useLogSearch, toEntry } from '@/logsData'
 import type { LogRange, SearchParams } from '@/logsData'
@@ -48,27 +48,6 @@ export function CommonFieldsForm({
         spellCheck={false}
       />
       <SelectField
-        label={t('logsearch.level')}
-        value={value.level}
-        onChange={(e) => set({ level: e.target.value })}
-      >
-        <option value="">{t('logsearch.any')}</option>
-        {LEVELS.map((l) => (
-          <option key={l} value={l}>
-            {t(`logs.level.${l}`)}
-          </option>
-        ))}
-      </SelectField>
-      <SelectField
-        label={t('logsearch.stream')}
-        value={value.stream}
-        onChange={(e) => set({ stream: e.target.value })}
-      >
-        <option value="">{t('logsearch.any')}</option>
-        <option value="stdout">stdout</option>
-        <option value="stderr">stderr</option>
-      </SelectField>
-      <SelectField
         label={t('logsearch.range')}
         value={value.range}
         onChange={(e) => set({ range: e.target.value as LogRange })}
@@ -98,15 +77,40 @@ export function CommonFieldsForm({
           />
         </>
       )}
-      <TextField
-        type="number"
-        min={0}
-        max={20}
-        label={t('logsearch.context')}
-        hint={t('logsearch.context_hint')}
-        value={value.context}
-        onChange={(e) => set({ context: e.target.value })}
-      />
+      <Optional filled={value.level !== '' || value.stream !== '' || value.context !== '0'}>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <SelectField
+            label={t('logsearch.level')}
+            value={value.level}
+            onChange={(e) => set({ level: e.target.value })}
+          >
+            <option value="">{t('logsearch.any')}</option>
+            {LEVELS.map((l) => (
+              <option key={l} value={l}>
+                {t(`logs.level.${l}`)}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label={t('logsearch.stream')}
+            value={value.stream}
+            onChange={(e) => set({ stream: e.target.value })}
+          >
+            <option value="">{t('logsearch.any')}</option>
+            <option value="stdout">stdout</option>
+            <option value="stderr">stderr</option>
+          </SelectField>
+          <TextField
+            type="number"
+            min={0}
+            max={20}
+            label={t('logsearch.context')}
+            hint={t('logsearch.context_hint')}
+            value={value.context}
+            onChange={(e) => set({ context: e.target.value })}
+          />
+        </div>
+      </Optional>
     </>
   )
 }

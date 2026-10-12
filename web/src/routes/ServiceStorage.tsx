@@ -15,6 +15,7 @@ import {
   Banner,
   Button,
   CheckboxField,
+  Optional,
   EmptyState,
   SelectField,
   Skeleton,
@@ -136,18 +137,6 @@ function VolumeDialog({
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        {!volume && (
-          <SelectField
-            label={t('storage.kind')}
-            hint={t(`storage.kind.${kind}_hint`)}
-            value={kind}
-            onChange={(e) => setKind(e.target.value as typeof kind)}
-          >
-            <option value="volume">{t('storage.kind.volume')}</option>
-            <option value="bind">{t('storage.kind.bind')}</option>
-            <option value="tmpfs">{t('storage.kind.tmpfs')}</option>
-          </SelectField>
-        )}
         <TextField
           label={t('storage.path')}
           hint={t('storage.path_hint')}
@@ -159,24 +148,48 @@ function VolumeDialog({
           value={path}
           onChange={(e) => setPath(e.target.value)}
         />
-        <SelectField
-          label={t('storage.access_mode')}
-          hint={t('storage.access_mode_hint')}
-          value={mode}
-          onChange={(e) => setMode(e.target.value as typeof mode)}
+        <Optional
+          filled={
+            Boolean(volume) ||
+            size !== '' ||
+            kind !== 'volume' ||
+            mode !== 'single_writer' ||
+            Boolean(submitted && errors.size)
+          }
         >
-          <option value="single_writer">{t('storage.mode.single_writer')}</option>
-          <option value="shared">{t('storage.mode.shared')}</option>
-        </SelectField>
-        <TextField
-          label={t('storage.size')}
-          hint={t('storage.size_hint')}
-          type="number"
-          inputMode="decimal"
-          error={submitted ? errors.size : null}
-          value={size}
-          onChange={(e) => setSize(e.target.value)}
-        />
+          <div className="space-y-4">
+            {!volume && (
+              <SelectField
+                label={t('storage.kind')}
+                hint={t(`storage.kind.${kind}_hint`)}
+                value={kind}
+                onChange={(e) => setKind(e.target.value as typeof kind)}
+              >
+                <option value="volume">{t('storage.kind.volume')}</option>
+                <option value="bind">{t('storage.kind.bind')}</option>
+                <option value="tmpfs">{t('storage.kind.tmpfs')}</option>
+              </SelectField>
+            )}
+            <SelectField
+              label={t('storage.access_mode')}
+              hint={t('storage.access_mode_hint')}
+              value={mode}
+              onChange={(e) => setMode(e.target.value as typeof mode)}
+            >
+              <option value="single_writer">{t('storage.mode.single_writer')}</option>
+              <option value="shared">{t('storage.mode.shared')}</option>
+            </SelectField>
+            <TextField
+              label={t('storage.size')}
+              hint={t('storage.size_hint')}
+              type="number"
+              inputMode="decimal"
+              error={submitted ? errors.size : null}
+              value={size}
+              onChange={(e) => setSize(e.target.value)}
+            />
+          </div>
+        </Optional>
         <p className="text-sm text-muted">{t('storage.applies_next_deploy')}</p>
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{t('common.cancel')}</Button>

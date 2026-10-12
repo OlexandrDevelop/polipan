@@ -15,6 +15,7 @@ import {
   Button,
   Card,
   CheckboxField,
+  Optional,
   EmptyState,
   SecretField,
   SelectField,
@@ -91,47 +92,55 @@ export function TemplateInputs({
 }) {
   const inputs = inputsOf(template)
   if (inputs.length === 0) return <p className="text-muted">{t('template.no_inputs')}</p>
+  const renderInput = (i: (typeof inputs)[number]) => {
+    const label = i.label || i.name
+    const common = { label, required: i.required, error: errors[i.name] ?? null }
+    if (i.type === 'secret') {
+      return (
+        <div key={i.name} className="space-y-1">
+          <SecretField
+            {...common}
+            value={values[i.name] ?? ''}
+            onValue={(v) => onChange(i.name, v)}
+          />
+          {i.generate && <p className="text-sm text-muted">{t('template.secret_generated')}</p>}
+        </div>
+      )
+    }
+    if (i.type === 'bool') {
+      return (
+        <CheckboxField
+          key={i.name}
+          label={label}
+          checked={values[i.name] === 'true'}
+          onChange={(e) => onChange(i.name, e.target.checked ? 'true' : 'false')}
+        />
+      )
+    }
+    return (
+      <TextField
+        key={i.name}
+        {...common}
+        type={i.type === 'number' ? 'number' : 'text'}
+        autoComplete="off"
+        autoCapitalize="none"
+        spellCheck={false}
+        hint={i.type === 'domain' ? t('template.domain_hint') : undefined}
+        value={values[i.name] ?? ''}
+        onChange={(e) => onChange(i.name, e.target.value)}
+      />
+    )
+  }
+  const optionalInputs = inputs.filter((i) => !i.required)
+
   return (
     <div className="space-y-4">
-      {inputs.map((i) => {
-        const label = i.label || i.name
-        const common = { label, required: i.required, error: errors[i.name] ?? null }
-        if (i.type === 'secret') {
-          return (
-            <div key={i.name} className="space-y-1">
-              <SecretField
-                {...common}
-                value={values[i.name] ?? ''}
-                onValue={(v) => onChange(i.name, v)}
-              />
-              {i.generate && <p className="text-sm text-muted">{t('template.secret_generated')}</p>}
-            </div>
-          )
-        }
-        if (i.type === 'bool') {
-          return (
-            <CheckboxField
-              key={i.name}
-              label={label}
-              checked={values[i.name] === 'true'}
-              onChange={(e) => onChange(i.name, e.target.checked ? 'true' : 'false')}
-            />
-          )
-        }
-        return (
-          <TextField
-            key={i.name}
-            {...common}
-            type={i.type === 'number' ? 'number' : 'text'}
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            hint={i.type === 'domain' ? t('template.domain_hint') : undefined}
-            value={values[i.name] ?? ''}
-            onChange={(e) => onChange(i.name, e.target.value)}
-          />
-        )
-      })}
+      {inputs.filter((i) => i.required).map(renderInput)}
+      {optionalInputs.length > 0 && (
+        <Optional filled={optionalInputs.some((i) => Boolean(errors[i.name]))}>
+          <div className="space-y-4">{optionalInputs.map(renderInput)}</div>
+        </Optional>
+      )}
     </div>
   )
 }

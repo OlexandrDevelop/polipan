@@ -5,7 +5,6 @@ import { useMe } from '@/auth'
 import { NotificationsBell } from '@/components/NotificationsBell'
 import { EnvironmentBadges } from '@/components/ui'
 import { readContext } from '@/context'
-import { useCalm, useFx } from '@/display'
 import { t } from '@/i18n'
 import { LanguageSelect } from '@/language'
 import type { MessageKey } from '@/i18n'
@@ -56,8 +55,6 @@ export function StatusBar({
 }: StatusBarProps) {
   const me = useMe()
   const theme = useTheme()
-  const { calm, byOs, toggle: toggleCalm } = useCalm()
-  const { fx, cycle: cycleFx } = useFx()
   const nodes = useNodes()
   const projects = useProjects()
   const last = readContext(me.data?.user?.id)
@@ -68,8 +65,6 @@ export function StatusBar({
   const ready = nodes.data?.filter((n) => n.state === 'ready').length ?? 0
   const order = ['system', 'light', 'dark'] as const
   const nextTheme = order[(order.indexOf(theme.choice) + 1) % order.length]
-  const nextFx =
-    fx === 'off' ? 'scanlines' : fx === 'scanlines' ? 'glow' : fx === 'glow' ? 'curve' : 'off'
   const themeWord = t(`theme.${theme.choice}` as MessageKey)
   const name = me.data?.user?.name ?? me.data?.user?.email ?? ''
   return (
@@ -129,28 +124,6 @@ export function StatusBar({
           [{t('statusbar.theme', { value: theme.choice })}]
         </button>
         <LanguageSelect className="hidden lg:inline-block" />
-        <button
-          type="button"
-          className={bracket}
-          aria-pressed={calm}
-          aria-label={t('statusbar.calm_label')}
-          title={byOs ? t('statusbar.calm_os') : undefined}
-          onClick={toggleCalm}
-        >
-          [{t('statusbar.calm', { value: calm ? 'on' : 'off' })}]
-        </button>
-        <button
-          type="button"
-          className={bracket}
-          aria-label={t('statusbar.fx_label', {
-            value: t(`fx.${fx}` as MessageKey),
-            next: t(`fx.${nextFx}` as MessageKey),
-          })}
-          disabled={calm}
-          onClick={cycleFx}
-        >
-          [{t('statusbar.fx', { value: fx })}]
-        </button>
         <button
           type="button"
           className={`${bracket} max-sm:hidden`}

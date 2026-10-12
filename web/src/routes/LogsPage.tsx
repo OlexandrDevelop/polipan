@@ -9,7 +9,7 @@ import { unwrap } from '@/api/errors'
 import { CommonFieldsForm, LogSearchResults } from '@/components/LogSearch'
 import type { CommonFields } from '@/components/LogSearch'
 import { PageHeader } from '@/components/PageHeader'
-import { Banner, Button, SelectField } from '@/components/ui'
+import { Banner, Button, Optional, SelectField } from '@/components/ui'
 import { t } from '@/i18n'
 import { rangeWindow } from '@/logsData'
 import type { LogRange, SearchParams } from '@/logsData'
@@ -130,87 +130,91 @@ export function LogsPage() {
       <PageHeader title={t('logsearch.title')} />
       <form onSubmit={submit} className="mb-4 space-y-3">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <SelectField
-            label={t('logsearch.project')}
-            value={project}
-            onChange={(e) => {
-              setProject(e.target.value)
-              setEnv('')
-              setService('')
-              setRelease('')
-            }}
-          >
-            <option value="">{t('logsearch.any')}</option>
-            {(projects.data ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </SelectField>
-          <SelectField
-            label={t('logsearch.environment')}
-            value={env}
-            disabled={!project}
-            onChange={(e) => {
-              setEnv(e.target.value)
-              setService('')
-              setRelease('')
-            }}
-          >
-            <option value="">{t('logsearch.any')}</option>
-            {(environments.data ?? []).map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </SelectField>
-          <SelectField
-            label={t('logsearch.service')}
-            value={service}
-            disabled={!env}
-            onChange={(e) => {
-              setService(e.target.value)
-              setRelease('')
-            }}
-          >
-            <option value="">{t('logsearch.any')}</option>
-            {(services.data ?? []).map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </SelectField>
-          <SelectField
-            label={t('logsearch.release')}
-            value={release}
-            disabled={!service}
-            onChange={(e) => setRelease(e.target.value)}
-          >
-            <option value="">{t('logsearch.any')}</option>
-            {(releases.data?.items ?? []).map((r) => (
-              <option key={r.id} value={r.id}>
-                v{r.number}
-              </option>
-            ))}
-          </SelectField>
-          <SelectField
-            label={t('logsearch.node')}
-            value={node}
-            onChange={(e) => setNode(e.target.value)}
-          >
-            <option value="">{t('logsearch.any')}</option>
-            {(nodes.data ?? []).map((n) => (
-              <option key={n.id} value={n.id}>
-                {n.name}
-              </option>
-            ))}
-          </SelectField>
           <CommonFieldsForm
             value={common}
             onChange={setCommon}
             retentionDays={retentionDays}
             searchId="logs-search-text"
           />
+          <Optional filled={project !== '' || node !== ''}>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <SelectField
+                label={t('logsearch.project')}
+                value={project}
+                onChange={(e) => {
+                  setProject(e.target.value)
+                  setEnv('')
+                  setService('')
+                  setRelease('')
+                }}
+              >
+                <option value="">{t('logsearch.any')}</option>
+                {(projects.data ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </SelectField>
+              <SelectField
+                label={t('logsearch.environment')}
+                value={env}
+                disabled={!project}
+                onChange={(e) => {
+                  setEnv(e.target.value)
+                  setService('')
+                  setRelease('')
+                }}
+              >
+                <option value="">{t('logsearch.any')}</option>
+                {(environments.data ?? []).map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </SelectField>
+              <SelectField
+                label={t('logsearch.service')}
+                value={service}
+                disabled={!env}
+                onChange={(e) => {
+                  setService(e.target.value)
+                  setRelease('')
+                }}
+              >
+                <option value="">{t('logsearch.any')}</option>
+                {(services.data ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </SelectField>
+              <SelectField
+                label={t('logsearch.release')}
+                value={release}
+                disabled={!service}
+                onChange={(e) => setRelease(e.target.value)}
+              >
+                <option value="">{t('logsearch.any')}</option>
+                {(releases.data?.items ?? []).map((r) => (
+                  <option key={r.id} value={r.id}>
+                    v{r.number}
+                  </option>
+                ))}
+              </SelectField>
+              <SelectField
+                label={t('logsearch.node')}
+                value={node}
+                onChange={(e) => setNode(e.target.value)}
+              >
+                <option value="">{t('logsearch.any')}</option>
+                {(nodes.data ?? []).map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.name}
+                  </option>
+                ))}
+              </SelectField>
+            </div>
+          </Optional>
         </div>
         <Button type="submit" variant="primary">
           {t('logsearch.submit')}

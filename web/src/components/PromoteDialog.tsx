@@ -14,6 +14,7 @@ import {
   Button,
   CheckboxField,
   EnvironmentBadges,
+  Optional,
   SelectField,
   Skeleton,
   StatusBadge,
@@ -287,6 +288,10 @@ export function PromoteDialog({
                 </option>
               ))}
             </SelectField>
+          </div>
+        )}
+        <Optional filled={strategy !== '' || includeDatabases}>
+          <div className="space-y-4">
             <SelectField
               label={t('promote.strategy')}
               value={strategy}
@@ -297,16 +302,16 @@ export function PromoteDialog({
               <option value="blue_green">{tState('deploy.strategy_value', 'blue_green')}</option>
               <option value="canary">{tState('deploy.strategy_value', 'canary')}</option>
             </SelectField>
+            {source.kind === 'environment' && (
+              <CheckboxField
+                label={t('promote.include_databases')}
+                hint={t('promote.include_databases_hint')}
+                checked={includeDatabases}
+                onChange={(e) => setIncludeDatabases(e.target.checked)}
+              />
+            )}
           </div>
-        )}
-        {source.kind === 'environment' && (
-          <CheckboxField
-            label={t('promote.include_databases')}
-            hint={t('promote.include_databases_hint')}
-            checked={includeDatabases}
-            onChange={(e) => setIncludeDatabases(e.target.checked)}
-          />
-        )}
+        </Optional>
         {plan.isFetching && !planData && <Skeleton />}
         {plan.isError && <ErrorBanner error={plan.error} onRetry={() => void plan.refetch()} />}
         {planData && (
