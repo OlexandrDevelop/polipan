@@ -16,8 +16,15 @@ import (
 
 // ComposeResult is a Compose file converted to services (REQ-TPL-006).
 type ComposeResult struct {
-	Manifest *Manifest // a manifest without inputs. Expand it to get the plan.
+	Manifest *Manifest // a manifest. Expand it with Inputs to get the plan.
 	Warnings []string
+	// Losses are the parts of the file that are not imported as they are, each with its replacement.
+	Losses []Loss
+	// Inputs are the values of the secret inputs of Manifest: the variables that look like secrets. They are
+	// stored as secrets and are never in a message.
+	Inputs map[string]any
+	// ReplacementYAML is the import as a polipan.yaml, with the replacements of the dropped parts. No secret value is in it.
+	ReplacementYAML string
 }
 
 // supported keys of a Compose service, and the ones that are dropped without a warning.
@@ -28,6 +35,9 @@ var (
 )
 
 var composeName = regexp.MustCompile(`[^a-z0-9-]+`)
+
+// hostPathRe finds the host path in the message of a dropped bind mount, so that a warning does not show it.
+var hostPathRe = regexp.MustCompile(`bind mount [/~]\S*`)
 
 // ComposeRepo tells where a Compose file was read from. A service with build: is then built from the same
 // repository, from the folder that build.context names.
@@ -47,6 +57,11 @@ type ComposeOptions struct {
 	SkipUnsafe bool
 	// Vars are the values of ${NAME} in the file. A name that is not here is empty, with a warning.
 	Vars map[string]string
+	// EnvFiles are the env files of the services read from the repository, by path inside it (ComposeEnvFiles).
+	// A file that is not here is not in the repository.
+	EnvFiles map[string][]byte
+	// Project is the project slug for the replacement polipan.yaml.
+	Project string
 }
 
 // ImportCompose converts a Compose file. A file with unsafe settings gives *UnsafeError. A build:
@@ -102,8 +117,9 @@ func ImportComposeWith(data []byte, opts ComposeOptions) (*ComposeResult, error)
 	if len(unset) > 0 {
 		res.Warnings = append(res.Warnings, fmt.Sprintf("these variables of the file have no value and are empty: %s. Set them in the variables of the service", strings.Join(unset, ", ")))
 	}
+	extras := map[string]*composeExtra{} // by compose name
 	if opts.SkipUnsafe {
-		dropUnsafe(doc, &res.Warnings)
+		dropUnsafe(doc, res, extras)
 		services, _ = doc["services"].(map[string]any)
 		if len(services) == 0 {
 			return nil, Problems{{Path: "services", Message: "no service is left after the unsafe ones were skipped"}}
@@ -116,9 +132,12 @@ func ImportComposeWith(data []byte, opts ComposeOptions) (*ComposeResult, error)
 	for k := range doc {
 		if !composeTopKeep[k] && !strings.HasPrefix(k, "x-") {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("top-level key %q is ignored", k))
+			res.Losses = append(res.Losses, Loss{Path: k, Key: k, Disposition: LossIgnored, Lost: "the top-level setting " + k,
+				Replacement: "Polipan has no setting for " + k + ". Remove it, or set what it does on each service."})
 		}
 	}
-	names := map[string]string{} // compose name -> service name
+	names := map[string]string{}        // compose name -> service name
+	secretVars := map[string][]string{} // service name -> the names of its secret variables
 	for _, raw := range sortedKeys(services) {
 		n := strings.Trim(composeName.ReplaceAllString(strings.ToLower(raw), "-"), "-")
 		if n == "" || len(n) > 40 {
@@ -133,27 +152,50 @@ func ImportComposeWith(data []byte, opts ComposeOptions) (*ComposeResult, error)
 		var git *GitSource
 		if b, ok := svc["build"]; ok {
 			if opts.Repo == nil {
-				ps = append(ps, Problem{Path: path + ".build", Message: "build: is not supported. Import the file from a Git repository, or create a Git service for this code"})
-				continue
+				img, _ := svc["image"].(string)
+				loss := buildLoss(path+".build", b, img)
+				res.Losses = append(res.Losses, loss)
+				if img == "" {
+					ps = append(ps, Problem{Path: path + ".build", Message: "build: is not supported. Import the file from a Git repository, add image:, or create a Git service for this code (path " + buildPath(b) + ", builder dockerfile)"})
+					continue
+				}
+				res.Warnings = append(res.Warnings, fmt.Sprintf("%s.build is not supported: the image %s is pulled instead", path, img))
+			} else {
+				g, perr := composeBuild(path+".build", b, opts.Repo)
+				if len(perr) > 0 {
+					ps = append(ps, perr...)
+					continue
+				}
+				git = g
 			}
-			g, perr := composeBuild(path+".build", b, opts.Repo)
-			if len(perr) > 0 {
-				ps = append(ps, perr...)
-				continue
-			}
-			git = g
 		}
 		name := names[raw]
 		if name == "" {
 			continue
 		}
-		entry, warns, perr := convertComposeService(path, name, svc, names, git)
+		entry, warns, losses, perr := convertComposeService(path, name, svc, names, git)
 		ps = append(ps, perr...)
 		res.Warnings = append(res.Warnings, warns...)
-		for k := range svc {
-			if !composeKeys[k] && !composeQuiet[k] && k != "build" && k != "privileged" && k != "cap_add" {
+		res.Losses = append(res.Losses, losses...)
+		for _, k := range sortedKeys(svc) {
+			switch {
+			case k == "env_file":
+				if entry.Env == nil {
+					entry.Env = map[string]any{}
+				}
+				res.Losses = append(res.Losses, envFileLoss(path+".env_file", envFilesOf(svc[k], repoDir(opts.Repo)), opts.EnvFiles, opts.Repo != nil, entry.Env)...)
+				if len(entry.Env) == 0 {
+					entry.Env = nil
+				}
+			case !composeKeys[k] && !composeQuiet[k] && k != "build" && k != "privileged" && k != "cap_add":
 				res.Warnings = append(res.Warnings, fmt.Sprintf("%s.%s is not supported and is ignored", path, k))
+				res.Losses = append(res.Losses, keyLoss(path, k))
+			case composeQuiet[k]:
+				res.Losses = append(res.Losses, keyLoss(path, k))
 			}
+		}
+		if names := secretEnv(name, &entry, res); len(names) > 0 {
+			secretVars[name] = names
 		}
 		if git != nil && len(entry.Ports) == 0 && svc["restart"] == nil && svc["entrypoint"] != nil {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("%s looks like a command that runs once (it has an entrypoint, no port and no restart). Delete the service if it should not run all the time", path))
@@ -163,7 +205,47 @@ func ImportComposeWith(data []byte, opts ComposeOptions) (*ComposeResult, error)
 	if len(ps) > 0 {
 		return nil, ps
 	}
+	byName := map[string]*composeExtra{}
+	for raw, x := range extras {
+		if n := names[raw]; n != "" {
+			byName[n] = x
+		}
+	}
+	y, err := replacementYAML(res.Manifest, secretVars, byName, opts.Project)
+	if err != nil {
+		return nil, err
+	}
+	res.ReplacementYAML = y
+	sortLosses(res.Losses)
 	return res, nil
+}
+
+func repoDir(r *ComposeRepo) string {
+	if r == nil {
+		return ""
+	}
+	return r.Dir
+}
+
+// secretEnv keeps the variables that look like secrets (IsSecretName) as secret inputs of the import: the
+// variable reads the input, and the value goes to res.Inputs. It returns the names of these variables.
+func secretEnv(service string, e *ServiceEntry, res *ComposeResult) []string {
+	var out []string
+	for _, k := range sortedKeys(e.Env) {
+		v := fmt.Sprint(e.Env[k])
+		if v == "" || !IsSecretName(k) {
+			continue
+		}
+		in := "s_" + strings.ReplaceAll(service, "-", "_") + "__" + strings.ToLower(k)
+		res.Manifest.Inputs = append(res.Manifest.Inputs, Input{Name: in, Type: "secret"})
+		if res.Inputs == nil {
+			res.Inputs = map[string]any{}
+		}
+		res.Inputs[in] = v
+		e.Env[k] = "${{inputs." + in + "}}"
+		out = append(out, k)
+	}
+	return out
 }
 
 // composeBuild reads the build: key of a service of a file that is in a repository. The context is a folder of
@@ -219,8 +301,9 @@ func composeBuild(where string, b any, repo *ComposeRepo) (*GitSource, Problems)
 }
 
 // dropUnsafe removes the services that mount the Docker socket or are privileged, and the bind mounts of host
-// folders. Each one is told in a warning.
-func dropUnsafe(doc map[string]any, warns *[]string) {
+// folders. Each one is told in a warning and in a loss with its replacement.
+func dropUnsafe(doc map[string]any, res *ComposeResult, extras map[string]*composeExtra) {
+	warns := &res.Warnings
 	services, _ := doc["services"].(map[string]any)
 	volIndex := regexp.MustCompile(`\.volumes\[(\d+)\]$`)
 	for _, name := range sortedKeys(services) {
@@ -242,12 +325,19 @@ func dropUnsafe(doc map[string]any, warns *[]string) {
 		if skipService {
 			delete(services, name)
 			*warns = append(*warns, fmt.Sprintf("service %s is skipped: %s", name, reason))
+			res.Losses = append(res.Losses, Loss{Path: "services." + name, Key: "services", Disposition: LossDropped,
+				Lost:        "the whole service: " + reason,
+				Replacement: "Polipan does not run services with access to the host (privileged, the Docker socket, host network, devices). Run this tool on the host outside Polipan, or use a version of it that needs no such access."})
 			continue
 		}
 		var kept []any
 		for i, item := range asList(svc["volumes"]) {
 			if msg, drop := dropVolume[i]; drop {
-				*warns = append(*warns, fmt.Sprintf("services.%s.volumes[%d] is skipped: %s", name, i, msg))
+				*warns = append(*warns, fmt.Sprintf("services.%s.volumes[%d] is skipped: %s", name, i, hostPathRe.ReplaceAllString(msg, "bind mount of a folder of the host")))
+				if extras[name] == nil {
+					extras[name] = &composeExtra{}
+				}
+				res.Losses = append(res.Losses, bindLoss(fmt.Sprintf("services.%s.volumes[%d]", name, i), item, extras[name]))
 				continue
 			}
 			kept = append(kept, item)
@@ -256,8 +346,9 @@ func dropUnsafe(doc map[string]any, warns *[]string) {
 	}
 }
 
-func convertComposeService(path, name string, svc map[string]any, names map[string]string, git *GitSource) (ServiceEntry, []string, Problems) {
+func convertComposeService(path, name string, svc map[string]any, names map[string]string, git *GitSource) (ServiceEntry, []string, []Loss, Problems) {
 	var warns []string
+	var losses []Loss
 	var ps Problems
 	e := ServiceEntry{Type: "app"}
 	img, _ := svc["image"].(string)
@@ -297,6 +388,9 @@ func convertComposeService(path, name string, svc map[string]any, names map[stri
 		}
 		if host != 0 {
 			warns = append(warns, fmt.Sprintf("%s.ports: the host port %d is ignored. Use a domain, or set a host port on the service", path, host))
+			losses = append(losses, Loss{Path: fmt.Sprintf("%s.ports[%d]", path, i), Key: "ports", Disposition: LossIgnored,
+				Lost:        fmt.Sprintf("the host port %d (the container port %d is kept)", host, port),
+				Replacement: fmt.Sprintf("domains:\n  - host: <your domain>\n    port: %d\n# Or, to open the port on the node:\nports:\n  - container: %d\n    host: %d", port, port, host)})
 		}
 		e.Ports = append(e.Ports, Port{Container: port})
 	}
@@ -304,6 +398,8 @@ func convertComposeService(path, name string, svc map[string]any, names map[stri
 		vol, ok, warn := composeVolume(name, v)
 		if warn != "" {
 			warns = append(warns, fmt.Sprintf("%s.volumes[%d]: %s", path, i, warn))
+			losses = append(losses, Loss{Path: fmt.Sprintf("%s.volumes[%d]", path, i), Key: "volumes", Disposition: LossIgnored, Lost: warn,
+				Replacement: "volumes:\n  - name: <name>\n    path: <path in the container>"})
 		}
 		if ok {
 			e.Volumes = append(e.Volumes, vol)
@@ -336,6 +432,8 @@ func convertComposeService(path, name string, svc map[string]any, names map[stri
 				e.Restart = "on-failure"
 			} else {
 				warns = append(warns, fmt.Sprintf("%s.restart %q is ignored", path, r))
+				losses = append(losses, Loss{Path: path + ".restart", Key: "restart", Disposition: LossIgnored, Lost: "the restart policy " + r,
+					Replacement: "restart_policy: always  # or on-failure, or no"})
 			}
 		}
 	}
@@ -344,12 +442,24 @@ func convertComposeService(path, name string, svc map[string]any, names map[stri
 		e.Healthcheck = h
 		if w != "" {
 			warns = append(warns, path+".healthcheck: "+w)
+			losses = append(losses, Loss{Path: path + ".healthcheck", Key: "healthcheck", Disposition: LossIgnored, Lost: "the health check (" + w + ")",
+				Replacement: "healthcheck:\n  type: http  # or tcp, or command\n  path: /\n  port: <port>"})
 		}
 	}
 	if d, ok := svc["deploy"].(map[string]any); ok {
 		for k := range d {
 			if k != "resources" {
 				warns = append(warns, fmt.Sprintf("%s.deploy.%s is ignored", path, k))
+				repl := "Polipan has no setting for deploy." + k + "."
+				switch k {
+				case "replicas":
+					repl = fmt.Sprintf("replicas: %v", d[k])
+				case "restart_policy":
+					repl = "restart_policy: always  # or on-failure, or no"
+				case "update_config", "rollback_config":
+					repl = "deploy:\n  strategy: blue_green  # or recreate, or canary"
+				}
+				losses = append(losses, Loss{Path: path + ".deploy." + k, Key: "deploy", Disposition: LossIgnored, Lost: "the setting deploy." + k, Replacement: repl})
 			}
 		}
 		if res, ok := d["resources"].(map[string]any); ok {
@@ -371,10 +481,12 @@ func convertComposeService(path, name string, svc map[string]any, names map[stri
 			}
 			if _, ok := res["reservations"]; ok {
 				warns = append(warns, path+".deploy.resources.reservations is ignored")
+				losses = append(losses, Loss{Path: path + ".deploy.resources.reservations", Key: "deploy", Disposition: LossIgnored,
+					Lost: "the reserved CPU and memory", Replacement: "Polipan sets limits only:\nresources:\n  cpu: <cores>\n  memory: <size, for example 512Mi>"})
 			}
 		}
 	}
-	return e, warns, ps
+	return e, warns, losses, ps
 }
 
 func asList(v any) []any {

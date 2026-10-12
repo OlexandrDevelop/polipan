@@ -1748,7 +1748,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. dry_run returns the result only. */
+        /** Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. The env_file files that are in the repository are imported as variables, and the ones that look like secrets as secrets. dry_run returns the result only. */
         post: operations["importComposeGit"];
         delete?: never;
         options?: never;
@@ -2602,6 +2602,26 @@ export interface components {
             ip?: string;
             /** Format: date-time */
             created_at?: string;
+        };
+        ComposeImportResult: {
+            services: components["schemas"]["ServiceCreate"][];
+            warnings: string[];
+            /** @description The parts of the file that are not imported as they are, each with its replacement. */
+            losses: components["schemas"]["ComposeLoss"][];
+            /** @description The import as a polipan.yaml with the replacements of the dropped parts. Secrets are only named, never with a value. No host path is in it. */
+            replacement_yaml: string;
+        };
+        ComposeLoss: {
+            /** @description Where in the Compose file, for example services.app.env_file. */
+            path: string;
+            /** @description The Compose key, for example env_file, volumes, build, ports. */
+            key: string;
+            /** @description One of imported, replaced, ignored, dropped, manual. imported: the content is imported in another form. replaced: Polipan does it in its own way. ignored: not imported. dropped: removed because it is not allowed. manual: a step for the user. */
+            disposition: string;
+            /** @description What is lost. Never a variable value or a host path. */
+            lost: string;
+            /** @description A polipan.yaml part, or one manual step. */
+            replacement: string;
         };
         ComposeGitRequest: {
             /** @description A full https URL, or owner/name with a Git connection. */
@@ -6701,10 +6721,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        services?: components["schemas"]["ServiceCreate"][];
-                        warnings?: string[];
-                    };
+                    "application/json": components["schemas"]["ComposeImportResult"];
                 };
             };
             422: components["responses"]["Error"];
@@ -6733,10 +6750,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        services?: components["schemas"]["ServiceCreate"][];
-                        warnings?: string[];
-                    };
+                    "application/json": components["schemas"]["ComposeImportResult"];
                 };
             };
             422: components["responses"]["Error"];

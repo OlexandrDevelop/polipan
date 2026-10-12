@@ -78,39 +78,62 @@ func (h *Handlers) connectionProvider(ctx context.Context, orgID, connectionID s
 
 // fetchConfig reads the config file of a project at a commit with a shallow clone (REQ-CAC-003).
 func (h *Handlers) fetchConfig(ctx context.Context, orgID string, src cac.ConfigSource, commit string) ([]byte, error) {
-	if h.Git == nil || h.Git.Keys == nil {
-		return nil, errors.New("git is not set up on this server")
-	}
 	path, err := cac.FilePath(src.Path)
 	if err != nil {
 		return nil, err
+	}
+	var data []byte
+	err = h.withConfigClone(ctx, orgID, src, commit, func(root string) error {
+		var rerr error
+		data, rerr = readRepoFile(root, path, false)
+		return rerr
+	})
+	return data, err
+}
+
+// withConfigClone clones the repository of src into a temporary folder, runs fn on it and removes the folder.
+func (h *Handlers) withConfigClone(ctx context.Context, orgID string, src cac.ConfigSource, commit string, fn func(root string) error) error {
+	if h.Git == nil || h.Git.Keys == nil {
+		return errors.New("git is not set up on this server")
 	}
 	req := git.CloneRequest{URL: src.Repo, Branch: src.Branch, Commit: commit, Policy: h.policy(ctx, orgID)}
 	if src.ConnectionID != "" {
 		prov, err := h.connectionProvider(ctx, orgID, src.ConnectionID)
 		if err != nil {
-			return nil, fmt.Errorf("git connection: %w", err)
+			return fmt.Errorf("git connection: %w", err)
 		}
 		req.URL = prov.CloneURL(src.Repo)
 		if req.Username, req.Password, err = prov.CloneAuth(ctx); err != nil {
-			return nil, fmt.Errorf("git connection: %w", err)
+			return fmt.Errorf("git connection: %w", err)
 		}
 	}
 	dir, err := os.MkdirTemp("", "pp-config-")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 	req.Dir = filepath.Join(dir, "src")
 	if err := os.MkdirAll(req.Dir, 0o700); err != nil {
-		return nil, err
+		return err
 	}
 	cctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	if _, err := h.cloner().Clone(cctx, req); err != nil {
-		return nil, err
+		return err
 	}
-	file, err := build.ResolveInside(req.Dir, path)
+	return fn(req.Dir)
+}
+
+// readRepoFile reads a file of a cloned repository. It must stay inside the repository. With noLink a symbolic
+// link is refused too.
+func readRepoFile(root, path string, noLink bool) ([]byte, error) {
+	if noLink {
+		fi, err := os.Lstat(filepath.Join(root, filepath.FromSlash(path)))
+		if err != nil || !fi.Mode().IsRegular() {
+			return nil, fmt.Errorf("the file %s is not in the repository", path)
+		}
+	}
+	file, err := build.ResolveInside(root, path)
 	if err != nil {
 		return nil, fmt.Errorf("the file %s is not in the repository", path)
 	}

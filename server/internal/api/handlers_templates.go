@@ -379,7 +379,7 @@ func (h *Handlers) ImportCompose(w http.ResponseWriter, r *http.Request, environ
 	if !ok {
 		return
 	}
-	res, err := tpl.ImportComposeWith(data, tpl.ComposeOptions{SkipUnsafe: params.SkipUnsafe != nil && *params.SkipUnsafe})
+	res, err := tpl.ImportComposeWith(data, tpl.ComposeOptions{SkipUnsafe: params.SkipUnsafe != nil && *params.SkipUnsafe, Project: h.projectSlug(r, env)})
 	if templateFailed(w, r, err) || fail(w, r, err) {
 		return
 	}
@@ -414,15 +414,6 @@ func (h *Handlers) ImportComposeGit(w http.ResponseWriter, r *http.Request, envi
 		invalid(w, r, "repo", err.Error())
 		return
 	}
-	data, err := h.fetchConfig(r.Context(), h.orgID(r), cac.ConfigSource{ConnectionID: src.ConnectionID, Repo: src.Repo, Branch: src.Branch, Path: file}, "")
-	if err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "an ssh URL needs a deploy key") {
-			msg = "an ssh address needs a deploy key, and the service does not exist yet. Use an https address or a Git connection"
-		}
-		invalid(w, r, "repo", msg)
-		return
-	}
 	vars := map[string]string{}
 	if body.Variables != nil {
 		vars = *body.Variables
@@ -431,10 +422,36 @@ func (h *Handlers) ImportComposeGit(w http.ResponseWriter, r *http.Request, envi
 	if dir == "." {
 		dir = ""
 	}
+	// One clone reads the Compose file and its env_file files. An env file is read only from inside the
+	// repository, and not through a symbolic link.
+	var data []byte
+	envFiles := map[string][]byte{}
+	err = h.withConfigClone(r.Context(), h.orgID(r), cac.ConfigSource{ConnectionID: src.ConnectionID, Repo: src.Repo, Branch: src.Branch}, "", func(root string) error {
+		var rerr error
+		if data, rerr = readRepoFile(root, file, false); rerr != nil {
+			return rerr
+		}
+		for _, p := range tpl.ComposeEnvFiles(data, vars, dir) {
+			if b, err := readRepoFile(root, p, true); err == nil {
+				envFiles[p] = b
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "an ssh URL needs a deploy key") {
+			msg = "an ssh address needs a deploy key, and the service does not exist yet. Use an https address or a Git connection"
+		}
+		invalid(w, r, "repo", msg)
+		return
+	}
 	res, err := tpl.ImportComposeWith(data, tpl.ComposeOptions{
 		Repo:       &tpl.ComposeRepo{URL: src.Repo, Branch: src.Branch, ConnectionID: src.ConnectionID, Dir: dir},
 		SkipUnsafe: body.SkipUnsafe != nil && *body.SkipUnsafe,
 		Vars:       vars,
+		EnvFiles:   envFiles,
+		Project:    h.projectSlug(r, env),
 	})
 	if templateFailed(w, r, err) || fail(w, r, err) {
 		return
@@ -448,7 +465,8 @@ func (h *Handlers) finishComposeImport(w http.ResponseWriter, r *http.Request, e
 	for name := range res.Manifest.Services {
 		ids[name] = store.NewID("svc")
 	}
-	plan, err := res.Manifest.Expand(nil, tpl.Options{ServiceIDs: ids, NormalizeHost: normalizeHost})
+	// The secret variables of the file are secret inputs: Expand stores them as secrets.
+	plan, err := res.Manifest.Expand(res.Inputs, tpl.Options{ServiceIDs: ids, NormalizeHost: normalizeHost})
 	if templateFailed(w, r, err) || fail(w, r, err) {
 		return
 	}
@@ -460,6 +478,10 @@ func (h *Handlers) finishComposeImport(w http.ResponseWriter, r *http.Request, e
 	if warnings == nil {
 		warnings = []string{}
 	}
+	losses := res.Losses
+	if losses == nil {
+		losses = []tpl.Loss{}
+	}
 	if dryRun {
 		list := make([]gen.ServiceCreate, 0, len(in))
 		for _, s := range in {
@@ -467,7 +489,7 @@ func (h *Handlers) finishComposeImport(w http.ResponseWriter, r *http.Request, e
 			_ = json.Unmarshal(s.Config, &cfg)
 			list = append(list, gen.ServiceCreate{Name: s.Name, Type: gen.ServiceCreateType(s.Type), Config: &cfg})
 		}
-		WriteJSON(w, http.StatusOK, map[string]any{"services": list, "warnings": warnings})
+		WriteJSON(w, http.StatusOK, map[string]any{"services": list, "warnings": warnings, "losses": losses, "replacement_yaml": res.ReplacementYAML})
 		return
 	}
 	if h.Secrets == nil {
@@ -486,7 +508,16 @@ func (h *Handlers) finishComposeImport(w http.ResponseWriter, r *http.Request, e
 		}
 		list = append(list, h.decorateService(r.Context(), serviceJSON(s), s))
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"services": list, "warnings": warnings})
+	WriteJSON(w, http.StatusOK, map[string]any{"services": list, "warnings": warnings, "losses": losses, "replacement_yaml": res.ReplacementYAML})
+}
+
+// projectSlug is the slug of the project of an environment, for the replacement polipan.yaml. "" when it is not found.
+func (h *Handlers) projectSlug(r *http.Request, env *store.Environment) string {
+	p, err := h.Store.GetProject(r.Context(), h.orgID(r), env.ProjectID)
+	if err != nil {
+		return ""
+	}
+	return p.Slug
 }
 
 // DeleteTemplateInstance deletes all services of an instance as a group (REQ-TPL-008). Volumes go only with delete_volumes=true.

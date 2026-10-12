@@ -905,6 +905,35 @@ type ComposeGitRequest struct {
 	Variables *map[string]string `json:"variables,omitempty"`
 }
 
+// ComposeImportResult defines model for ComposeImportResult.
+type ComposeImportResult struct {
+	// Losses The parts of the file that are not imported as they are, each with its replacement.
+	Losses []ComposeLoss `json:"losses"`
+
+	// ReplacementYaml The import as a polipan.yaml with the replacements of the dropped parts. Secrets are only named, never with a value. No host path is in it.
+	ReplacementYaml string          `json:"replacement_yaml"`
+	Services        []ServiceCreate `json:"services"`
+	Warnings        []string        `json:"warnings"`
+}
+
+// ComposeLoss defines model for ComposeLoss.
+type ComposeLoss struct {
+	// Disposition One of imported, replaced, ignored, dropped, manual. imported: the content is imported in another form. replaced: Polipan does it in its own way. ignored: not imported. dropped: removed because it is not allowed. manual: a step for the user.
+	Disposition string `json:"disposition"`
+
+	// Key The Compose key, for example env_file, volumes, build, ports.
+	Key string `json:"key"`
+
+	// Lost What is lost. Never a variable value or a host path.
+	Lost string `json:"lost"`
+
+	// Path Where in the Compose file, for example services.app.env_file.
+	Path string `json:"path"`
+
+	// Replacement A polipan.yaml part, or one manual step.
+	Replacement string `json:"replacement"`
+}
+
 // ConfigPlan defines model for ConfigPlan.
 type ConfigPlan struct {
 	Changes *[]struct {
@@ -15857,11 +15886,8 @@ func (r UpdateEnvironmentResponse) StatusCode() int {
 type ImportComposeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *struct {
-		Services *[]ServiceCreate `json:"services,omitempty"`
-		Warnings *[]string        `json:"warnings,omitempty"`
-	}
-	JSON422 *Error
+	JSON200      *ComposeImportResult
+	JSON422      *Error
 }
 
 // Status returns HTTPResponse.Status
@@ -15883,11 +15909,8 @@ func (r ImportComposeResponse) StatusCode() int {
 type ImportComposeGitResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *struct {
-		Services *[]ServiceCreate `json:"services,omitempty"`
-		Warnings *[]string        `json:"warnings,omitempty"`
-	}
-	JSON422 *Error
+	JSON200      *ComposeImportResult
+	JSON422      *Error
 }
 
 // Status returns HTTPResponse.Status
@@ -21910,10 +21933,7 @@ func ParseImportComposeResponse(rsp *http.Response) (*ImportComposeResponse, err
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest struct {
-			Services *[]ServiceCreate `json:"services,omitempty"`
-			Warnings *[]string        `json:"warnings,omitempty"`
-		}
+		var dest ComposeImportResult
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -21946,10 +21966,7 @@ func ParseImportComposeGitResponse(rsp *http.Response) (*ImportComposeGitRespons
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest struct {
-			Services *[]ServiceCreate `json:"services,omitempty"`
-			Warnings *[]string        `json:"warnings,omitempty"`
-		}
+		var dest ComposeImportResult
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -25157,7 +25174,7 @@ type ServerInterface interface {
 	// Convert a Docker Compose file to services (safety validated). dry_run returns the result only.
 	// (POST /environments/{environment_id}/import-compose)
 	ImportCompose(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId, params ImportComposeParams)
-	// Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. dry_run returns the result only.
+	// Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. The env_file files that are in the repository are imported as variables, and the ones that look like secrets as secrets. dry_run returns the result only.
 	// (POST /environments/{environment_id}/import-compose-git)
 	ImportComposeGit(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId, params ImportComposeGitParams)
 	// Promote all services of this environment to another one (batch). Supports dry_run.
@@ -25841,7 +25858,7 @@ func (_ Unimplemented) ImportCompose(w http.ResponseWriter, r *http.Request, env
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. dry_run returns the result only.
+// Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. The env_file files that are in the repository are imported as variables, and the ones that look like secrets as secrets. dry_run returns the result only.
 // (POST /environments/{environment_id}/import-compose-git)
 func (_ Unimplemented) ImportComposeGit(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId, params ImportComposeGitParams) {
 	w.WriteHeader(http.StatusNotImplemented)

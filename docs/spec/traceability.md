@@ -77,6 +77,8 @@ Totals: 373 requirements, 141 acceptance criteria.
 | REQ-TPL-004 | MUST | [04-features/C03-templates.md](04-features/C03-templates.md) | M4 | unit/component test by REQ id |
 | REQ-TPL-005 | MUST | [04-features/C03-templates.md](04-features/C03-templates.md) | M4 | AC-TPL-02 |
 | REQ-TPL-006 | MUST | [04-features/C03-templates.md](04-features/C03-templates.md) | M4 | AC-TPL-03 |
+| REQ-TPL-009 | MUST | [04-features/C03-templates.md](04-features/C03-templates.md) | M4 | AC-TPL-05 |
+| REQ-TPL-010 | MUST | [04-features/C03-templates.md](04-features/C03-templates.md) | M4 | AC-TPL-05 |
 | REQ-TPL-007 | SHOULD | [04-features/C03-templates.md](04-features/C03-templates.md) | M4 | unit/component test by REQ id |
 | REQ-TPL-008 | MUST | [04-features/C03-templates.md](04-features/C03-templates.md) | M4 | unit/component test by REQ id |
 
