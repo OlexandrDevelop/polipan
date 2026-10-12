@@ -128,7 +128,7 @@ func describe(m Message) string {
 		}
 		return fmt.Sprintf("Memory of %s is at %s%% of its limit (limit %s%%)", orStr(svc, "?"), num("value"), num("threshold"))
 	case "disk_high":
-		return fmt.Sprintf("Disk of node %s is at %s%% (limit %s%%)", orStr(node, "?"), num("value"), num("threshold"))
+		return describeDisk(node, d, num)
 	case "cert_expiring":
 		return fmt.Sprintf("The certificate of %s ends in %s days", orStr(detailStr(d, "host"), "?"), num("days_left"))
 	case "cert_failed":

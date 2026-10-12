@@ -144,7 +144,7 @@ var defaultRules = []defaultRule{
 	{"Backup failed", "backup_failed", "critical", nil},
 	{"Restore check failed", "restore_check_failed", "critical", nil},
 	{"Certificate expiring", "cert_expiring", "warning", map[string]any{"days": 14}},
-	{"Disk high", "disk_high", "warning", map[string]any{"threshold": 90, "for_seconds": 300}},
+	diskLevels[0], diskLevels[1], diskLevels[2],
 }
 
 // EnsureDefaults makes the default rules of every org that lacks them (REQ-ALERT-005). The rules have no channel
@@ -173,6 +173,9 @@ func (e *Engine) EnsureDefaults(ctx context.Context) error {
 			return err
 		}
 		if has {
+			if err := e.upgradeDiskRules(ctx, org); err != nil {
+				return err
+			}
 			continue
 		}
 		var chans []string

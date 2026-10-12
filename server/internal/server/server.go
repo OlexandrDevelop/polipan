@@ -18,6 +18,7 @@ import (
 	"github.com/polipan/polipan/server/internal/api"
 	"github.com/polipan/polipan/server/internal/audit"
 	"github.com/polipan/polipan/server/internal/backup"
+	"github.com/polipan/polipan/server/internal/build"
 	"github.com/polipan/polipan/server/internal/config"
 	"github.com/polipan/polipan/server/internal/control"
 	"github.com/polipan/polipan/server/internal/db"
@@ -157,6 +158,17 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		defer close(previewDone)
 		previews.Run(runCtx)
 	}()
+	// The BuildKit cache is pruned by policy; a high BuildKit disk starts it sooner (12-observability section 7.1).
+	if bkit, ok := builds.Builder.(*build.BuildKit); ok {
+		cc := &build.CacheCleaner{BuildKit: bkit, KeepFor: cfg.BuildCacheKeep, MaxMB: cfg.BuildCacheMaxMB, Log: log}
+		if backends != nil {
+			cc.High = func(ctx context.Context) bool {
+				vs, err := backends.Query(ctx, `max(polipan_node_fs_used_bytes{roles=~".*buildkit.*"} / (polipan_node_fs_used_bytes{roles=~".*buildkit.*"} + polipan_node_fs_avail_bytes{roles=~".*buildkit.*"}) * 100)`, time.Time{})
+				return err == nil && len(vs) > 0 && vs[0].Value >= 85
+			}
+		}
+		go cc.Run(runCtx)
+	}
 	var ingestSrv *http.Server
 	if backends != nil && cfg.IngestListen != "" {
 		ingest := &obs.Ingest{DB: pool, Backends: backends, Log: log, Clock: clk}

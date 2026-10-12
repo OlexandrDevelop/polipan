@@ -443,6 +443,9 @@ Totals: 372 requirements, 141 acceptance criteria.
 | REQ-OBS-105 | MUST | [12-observability.md](12-observability.md) | M8 | unit/component test by REQ id |
 | REQ-OBS-106 | SHOULD | [12-observability.md](12-observability.md) | M8 | unit/component test by REQ id |
 | REQ-OBS-107 | MUST | [12-observability.md](12-observability.md) | M8 | unit/component test by REQ id |
+| REQ-OBS-108 | MUST | [12-observability.md](12-observability.md) | M8 | unit/component test by REQ id |
+| REQ-OBS-109 | MUST | [12-observability.md](12-observability.md) | M8 | unit/component test by REQ id |
+| REQ-OBS-110 | MUST | [12-observability.md](12-observability.md) | M8 | unit/component test by REQ id |
 
 ## BKP
 

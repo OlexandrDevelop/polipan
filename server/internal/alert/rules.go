@@ -202,6 +202,15 @@ func (e *Engine) evalThreshold(ctx context.Context, r *Rule) ([]finding, error) 
 			expr = fmt.Sprintf("min_over_time((polipan_node_memory_bytes%s / %g * 100)[%s:15s])", sel, n.memBytes, win)
 			count = fmt.Sprintf("count_over_time(polipan_node_memory_bytes%s[%s])", sel, win)
 		case "disk_high":
+			fs, ok, err := e.evalDisk(ctx, n, threshold, forS, win, minSamples)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				out = append(out, fs...)
+				continue
+			}
+			// An older agent sends only the root disk.
 			expr = fmt.Sprintf("min_over_time((polipan_node_disk_used_bytes%s / polipan_node_disk_total_bytes%s * 100)[%s:15s])", sel, sel, win)
 			count = fmt.Sprintf("count_over_time(polipan_node_disk_used_bytes%s[%s])", sel, win)
 		}

@@ -57,7 +57,8 @@ const (
 
 // metricLabels are the labels that are kept (REQ-OBS-100). Others are dropped.
 var metricLabels = map[string]bool{"org": true, "project": true, "environment": true, "service": true, "release": true,
-	"node": true, "replica": true, "volume": true, "domain": true, "status_class": true, "le": true, "policy": true, "state": true}
+	"node": true, "replica": true, "volume": true, "domain": true, "status_class": true, "le": true, "policy": true, "state": true,
+	"mountpoint": true, "roles": true}
 
 var metricNameRe = regexp.MustCompile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)
 

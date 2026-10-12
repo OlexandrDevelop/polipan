@@ -85,6 +85,10 @@ type Config struct {
 	TelegramAPI string `yaml:"telegram_api"`
 	// AlertRepeatInterval is the default time between reminders of a firing alert (alert_repeat_interval).
 	AlertRepeatInterval time.Duration `yaml:"alert_repeat_interval"`
+	// BuildCacheKeep and BuildCacheMaxMB are the BuildKit cache policy: unused cache older than BuildCacheKeep goes,
+	// then the least recently used cache above BuildCacheMaxMB megabytes (12-observability section 7.1).
+	BuildCacheKeep  time.Duration `yaml:"build_cache_keep"`
+	BuildCacheMaxMB int           `yaml:"build_cache_max_mb"`
 }
 
 // Default returns the config with the default values.
@@ -100,6 +104,8 @@ func Default() Config {
 		StorageMetricsRetentionDays: 365,
 		StorageLogsRetentionDays:    90,
 		AlertRepeatInterval:         4 * time.Hour,
+		BuildCacheKeep:              7 * 24 * time.Hour,
+		BuildCacheMaxMB:             5120,
 
 		TrustedProxies:     []string{"172.30.0.0/24"},
 		MasterKeyFile:      "/etc/polipan/master.key",
@@ -185,6 +191,7 @@ func applyEnv(cfg *Config, getenv func(string) string) error {
 		"POLIPAN_NODE_SUSPECT_AFTER":    &cfg.NodeSuspectAfter,
 		"POLIPAN_NODE_DOWN_AFTER":       &cfg.NodeDownAfter,
 		"POLIPAN_ALERT_REPEAT_INTERVAL": &cfg.AlertRepeatInterval,
+		"POLIPAN_BUILD_CACHE_KEEP":      &cfg.BuildCacheKeep,
 	} {
 		if v := getenv(env); v != "" {
 			d, err := time.ParseDuration(v)
@@ -205,6 +212,13 @@ func applyEnv(cfg *Config, getenv func(string) string) error {
 			}
 			*dst = n
 		}
+	}
+	if v := getenv("POLIPAN_BUILD_CACHE_MAX_MB"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			return fmt.Errorf("POLIPAN_BUILD_CACHE_MAX_MB: not a number of megabytes")
+		}
+		cfg.BuildCacheMaxMB = n
 	}
 	if v := getenv("POLIPAN_WIREGUARD_PORT"); v != "" {
 		n, err := strconv.Atoi(v)
