@@ -394,6 +394,7 @@
   "git.private_key": "Приватний ключ App",
   "git.token": "Токен доступу",
   "settings.source": "Джерело",
+  "settings.compose_link": "Імпортувати docker-compose.yml цього репозиторію",
   "settings.build": "Збірка",
   "settings.run": "Запуск",
   "settings.resources": "Репліки та ресурси",

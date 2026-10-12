@@ -681,7 +681,14 @@ export function NewServicePage() {
     project: projectSlug,
     env: envSlug,
   } = useParams({ from: '/o/$org/p/$project/e/$env/new' })
-  const { source } = useSearch({ from: '/o/$org/p/$project/e/$env/new' })
+  const {
+    source,
+    repo: searchRepo,
+    branch: searchBranch,
+    connection: searchConnection,
+  } = useSearch({
+    from: '/o/$org/p/$project/e/$env/new',
+  })
   const scope = useScope(projectSlug, envSlug)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -832,6 +839,7 @@ export function NewServicePage() {
             base={base}
             project={scope.project}
             environment={scope.environment}
+            initial={{ repo: searchRepo, branch: searchBranch, connection: searchConnection }}
           />
         )}
       </section>

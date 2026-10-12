@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Link, useParams } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '@/api/client'
@@ -167,6 +168,7 @@ export function ServiceSettings({
   onSection: (id: string) => void
 }) {
   const queryClient = useQueryClient()
+  const routeParams = useParams({ strict: false })
   const me = useMe()
   const access = accessFor(me.data?.org_role, 'service:update', environmentProtected)
   const config = (service.config ?? {}) as Config
@@ -254,6 +256,27 @@ export function ServiceSettings({
                     value={form.branch}
                     onChange={(e) => set({ branch: e.target.value })}
                   />
+                  <p className="sm:col-span-2">
+                    <Link
+                      to="/o/$org/p/$project/e/$env/new"
+                      params={{
+                        org: routeParams.org ?? '',
+                        project: routeParams.project ?? '',
+                        env: routeParams.env ?? '',
+                      }}
+                      search={{
+                        source: 'compose',
+                        repo: form.repo.trim() || undefined,
+                        branch: form.branch.trim() || undefined,
+                        connection:
+                          (config.git as { connection_id?: string } | undefined)?.connection_id ||
+                          undefined,
+                      }}
+                      className="text-primary underline"
+                    >
+                      {t('settings.compose_link')} →
+                    </Link>
+                  </p>
                   <Optional
                     filled={form.builder !== 'railpack' || (form.path !== '/' && form.path !== '')}
                   >

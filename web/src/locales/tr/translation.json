@@ -394,6 +394,7 @@
   "git.private_key": "App özel anahtarı",
   "git.token": "Erişim token'ı",
   "settings.source": "Kaynak",
+  "settings.compose_link": "Bu deponun docker-compose.yml dosyasını içe aktar",
   "settings.build": "Derleme",
   "settings.run": "Çalıştırma",
   "settings.resources": "Replikalar ve kaynaklar",

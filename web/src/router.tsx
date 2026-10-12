@@ -238,14 +238,26 @@ const newServiceRoute = createRoute({
   path: 'p/$project/e/$env/new',
   component: lazyRouteComponent(() => import('@/routes/NewService'), 'NewServicePage'),
   // The chosen start path of the wizard stays in the URL (UI-32).
-  validateSearch: (search: Record<string, unknown>): { source?: StartPath } =>
-    search.source === 'git' ||
-    search.source === 'image' ||
-    search.source === 'template' ||
-    search.source === 'database' ||
-    search.source === 'compose'
-      ? { source: search.source }
-      : {},
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { source?: StartPath; repo?: string; branch?: string; connection?: string } => {
+    const out: { source?: StartPath; repo?: string; branch?: string; connection?: string } = {}
+    if (
+      search.source === 'git' ||
+      search.source === 'image' ||
+      search.source === 'template' ||
+      search.source === 'database' ||
+      search.source === 'compose'
+    ) {
+      out.source = search.source
+    }
+    // The repository of a service, for the import of its Compose file.
+    for (const key of ['repo', 'branch', 'connection'] as const) {
+      const v = search[key]
+      if (typeof v === 'string' && v.length > 0 && v.length <= 300) out[key] = v
+    }
+    return out
+  },
 })
 const deploymentRoute = createRoute({
   getParentRoute: () => orgRoute,

@@ -547,13 +547,21 @@ export function ComposeGitPanel({
 
 // UI-05: Compose import. The file is pasted, or it is read from a Git repository. The check (dry_run)
 // shows the services and the warnings first.
-function ComposeWizard({ base, environment }: { base: Base; environment: Environment }) {
+function ComposeWizard({
+  base,
+  environment,
+  initial,
+}: {
+  base: Base
+  environment: Environment
+  initial?: { repo?: string; branch?: string; connection?: string }
+}) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [mode, setMode] = useState<'git' | 'paste'>('git')
   const [text, setText] = useState('')
-  const [repo, setRepo] = useState('')
-  const [branch, setBranch] = useState('main')
+  const [repo, setRepo] = useState(initial?.repo ?? '')
+  const [branch, setBranch] = useState(initial?.branch ?? 'main')
   const [file, setFile] = useState('docker-compose.yml')
   const [variables, setVariables] = useState('')
   const [skipUnsafe, setSkipUnsafe] = useState(true)
@@ -577,6 +585,7 @@ function ComposeWizard({ base, environment }: { base: Base; environment: Environ
           repo: repo.trim(),
           branch: branch.trim() || 'main',
           path: file.trim() || 'docker-compose.yml',
+          connection_id: initial?.connection || undefined,
           skip_unsafe: skipUnsafe,
           variables: parseVariables(variables),
         },
@@ -723,11 +732,14 @@ export function ExtraWizard({
   base,
   project,
   environment,
+  initial,
 }: {
   source: ExtraSource
   base: Base
   project: Project
   environment: Environment
+  // The repository of a service, when the page was opened from its settings.
+  initial?: { repo?: string; branch?: string; connection?: string }
 }) {
   void project
   return (
@@ -744,7 +756,9 @@ export function ExtraWizard({
       </div>
       {source === 'database' && <DatabaseWizard base={base} environment={environment} />}
       {source === 'template' && <TemplateWizard base={base} environment={environment} />}
-      {source === 'compose' && <ComposeWizard base={base} environment={environment} />}
+      {source === 'compose' && (
+        <ComposeWizard base={base} environment={environment} initial={initial} />
+      )}
     </div>
   )
 }

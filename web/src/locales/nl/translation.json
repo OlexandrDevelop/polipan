@@ -394,6 +394,7 @@
   "git.private_key": "Privésleutel van de app",
   "git.token": "Toegangstoken",
   "settings.source": "Bron",
+  "settings.compose_link": "De docker-compose.yml van deze repository importeren",
   "settings.build": "Build",
   "settings.run": "Uitvoeren",
   "settings.resources": "Replica's en resources",

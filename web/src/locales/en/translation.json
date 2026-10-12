@@ -394,6 +394,7 @@
   "git.private_key": "App private key",
   "git.token": "Access token",
   "settings.source": "Source",
+  "settings.compose_link": "Import the docker-compose.yml of this repository",
   "settings.build": "Build",
   "settings.run": "Run",
   "settings.resources": "Replicas and resources",

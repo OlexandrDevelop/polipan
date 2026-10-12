@@ -394,6 +394,7 @@
   "git.private_key": "Privatnøkkel for appen",
   "git.token": "Tilgangstoken",
   "settings.source": "Kilde",
+  "settings.compose_link": "Importer docker-compose.yml fra dette depotet",
   "settings.build": "Bygg",
   "settings.run": "Kjør",
   "settings.resources": "Replikaer og ressurser",

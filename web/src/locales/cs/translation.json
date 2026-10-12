@@ -394,6 +394,7 @@
   "git.private_key": "Soukromý klíč aplikace",
   "git.token": "Přístupový token",
   "settings.source": "Zdroj",
+  "settings.compose_link": "Importovat docker-compose.yml tohoto repozitáře",
   "settings.build": "Sestavení",
   "settings.run": "Běh",
   "settings.resources": "Repliky a prostředky",

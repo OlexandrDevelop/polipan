@@ -394,6 +394,7 @@
   "git.private_key": "Ιδιωτικό κλειδί της εφαρμογής",
   "git.token": "Access token",
   "settings.source": "Πηγή",
+  "settings.compose_link": "Εισαγωγή του docker-compose.yml αυτού του αποθετηρίου",
   "settings.build": "Build",
   "settings.run": "Εκτέλεση",
   "settings.resources": "Replicas και πόροι",
