@@ -27,8 +27,9 @@ var diskLevels = []defaultRule{
 const oldDiskRule = "Disk high"
 
 // upgradeDiskRules gives an org that still has the old built-in "Disk high" rule the three disk levels, with the
-// channels, repeat time and on/off state of the old rule. The old rule is deleted when it still has its default
-// values. When a person changed it, it stays as a normal (not built-in) rule. So the upgrade runs once per org.
+// channels, repeat time and on/off state of the old rule. The old rule is never deleted, so its alert history stays.
+// When it still has its default values it is turned off; when a person changed it, it stays on. Both become normal
+// (not built-in) rules, so the upgrade runs once per org.
 func (e *Engine) upgradeDiskRules(ctx context.Context, org string) error {
 	tx, err := e.DB.Begin(ctx)
 	if err != nil {
@@ -60,7 +61,15 @@ func (e *Engine) upgradeDiskRules(ctx context.Context, org string) error {
 	var p map[string]any
 	_ = json.Unmarshal(raw, &p)
 	if paramNum(p, "threshold", 90) == 90 && paramNum(p, "for_seconds", 300) == 300 {
-		_, err = tx.Exec(ctx, `DELETE FROM alert_rules WHERE id = $1`, id)
+		// The row is kept, never deleted: its alert instances (the history) go with the row (ON DELETE CASCADE).
+		// The rule is turned off, and its firing alerts are closed without a message: the levels take over.
+		now := e.now()
+		if _, err := tx.Exec(ctx, `UPDATE alert_instances SET state = 'resolved', resolved_at = $2, updated_at = $2,
+			resolved_notified = true, details = COALESCE(details, '{}'::jsonb) || '{"retired": "replaced by the disk levels 70/85/95"}'::jsonb
+			WHERE rule_id = $1 AND state = 'firing'`, id, now); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `UPDATE alert_rules SET builtin = false, enabled = false WHERE id = $1`, id)
 	} else {
 		_, err = tx.Exec(ctx, `UPDATE alert_rules SET builtin = false WHERE id = $1`, id)
 	}
