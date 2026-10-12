@@ -1854,10 +1854,10 @@ components:
         reason: {type: string, description: "The failure reason code of the deployment, or unhealthy"}
         detail: {type: string}
         deployment_id: {type: string, description: "The failed deployment. Empty when only a container is unhealthy."}
-        incident_id: {type: string}
+        incident_id: {type: string, description: "Only when no alert of the incident belongs to a service of another project"}
         node_id: {type: string}
         node_name: {type: string}
-        root_cause: {type: string, description: "The probable cause on the node, when it is another alert than the one of this service"}
+        root_cause: {type: string, description: "The probable cause on the node, when it is another alert than the one of this service: a node level alert, or an alert of a service in the same project. Never an alert of another project."}
         root_type: {type: string}
         log_source: {type: string, enum: [deployment, container]}
         log_excerpt: {type: array, items: {type: string}, description: "The last lines of the deployment log or of the container log, oldest first (at most 20)"}

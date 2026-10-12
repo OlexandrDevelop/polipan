@@ -2560,10 +2560,11 @@ export interface components {
             detail?: string;
             /** @description The failed deployment. Empty when only a container is unhealthy. */
             deployment_id?: string;
+            /** @description Only when no alert of the incident belongs to a service of another project */
             incident_id?: string;
             node_id?: string;
             node_name?: string;
-            /** @description The probable cause on the node, when it is another alert than the one of this service */
+            /** @description The probable cause on the node, when it is another alert than the one of this service: a node level alert, or an alert of a service in the same project. Never an alert of another project. */
             root_cause?: string;
             root_type?: string;
             /** @enum {string} */

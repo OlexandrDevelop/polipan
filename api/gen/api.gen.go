@@ -1648,7 +1648,9 @@ type ServiceFailure struct {
 	// DeploymentId The failed deployment. Empty when only a container is unhealthy.
 	DeploymentId *string `json:"deployment_id,omitempty"`
 	Detail       *string `json:"detail,omitempty"`
-	IncidentId   *string `json:"incident_id,omitempty"`
+
+	// IncidentId Only when no alert of the incident belongs to a service of another project
+	IncidentId *string `json:"incident_id,omitempty"`
 
 	// LogExcerpt The last lines of the deployment log or of the container log, oldest first (at most 20)
 	LogExcerpt *[]string                `json:"log_excerpt,omitempty"`
@@ -1659,7 +1661,7 @@ type ServiceFailure struct {
 	// Reason The failure reason code of the deployment, or unhealthy
 	Reason *string `json:"reason,omitempty"`
 
-	// RootCause The probable cause on the node, when it is another alert than the one of this service
+	// RootCause The probable cause on the node, when it is another alert than the one of this service: a node level alert, or an alert of a service in the same project. Never an alert of another project.
 	RootCause *string `json:"root_cause,omitempty"`
 	RootType  *string `json:"root_type,omitempty"`
 }

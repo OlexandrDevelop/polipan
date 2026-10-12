@@ -128,29 +128,45 @@ func (h *Handlers) containerTail(ctx context.Context, s *store.Service, n int) (
 }
 
 // failureIncident adds the incident of the service: an open one, or one that ended in the last hour, that has an
-// alert of the service or is open on a node of the service. The root cause is given only when it is not an alert
-// of this service: then it is the correlated cause on the node.
+// alert of the service or is open on a node of the service. The caller may read only this service's project, and a
+// node can carry services of many projects, so (10-security):
+//   - the root cause is given only when it is not an alert of this service and it is either a node level alert
+//     (no service: node, disk, memory, cpu of the node that runs this service) or an alert of a service in the
+//     same project;
+//   - the incident id is given only when no alert of the incident belongs to a service of another project, because
+//     GET /incidents/{id} lists all its alerts.
 func (h *Handlers) failureIncident(ctx context.Context, s *store.Service, f *gen.ServiceFailure) error {
-	var incID, nodeID, nodeName, rootCause, rootType, rootService string
+	var incID, nodeID, nodeName, rootCause, rootType, rootService, rootProject string
+	var foreign bool
 	err := h.Store.Pool.QueryRow(ctx, `SELECT inc.id, inc.node_id, COALESCE(n.name,''), COALESCE(inc.root_cause,''), COALESCE(inc.root_type,''),
-		COALESCE(ri.details->>'service_id','')
+		COALESCE(ri.details->>'service_id',''),
+		COALESCE((SELECT re.project_id FROM services rs JOIN environments re ON re.id = rs.environment_id
+		          WHERE rs.id = ri.details->>'service_id'), ''),
+		EXISTS (SELECT 1 FROM alert_instances m JOIN services ms ON ms.id = m.details->>'service_id'
+		        JOIN environments me ON me.id = ms.environment_id WHERE m.incident_id = inc.id AND me.project_id <> $4)
 		FROM incidents inc LEFT JOIN nodes n ON n.id = inc.node_id LEFT JOIN alert_instances ri ON ri.id = inc.root_instance_id
 		WHERE inc.org_id = $1 AND (inc.state = 'open' OR inc.resolved_at > $3)
 		  AND (EXISTS (SELECT 1 FROM alert_instances i WHERE i.incident_id = inc.id AND i.details->>'service_id' = $2)
 		       OR (inc.state = 'open' AND inc.node_id IN (SELECT node_id FROM placements WHERE service_id = $2)))
-		ORDER BY (inc.state = 'open') DESC, inc.opened_at DESC LIMIT 1`, s.OrgID, s.ID, h.Clock.Now().Add(-time.Hour)).
-		Scan(&incID, &nodeID, &nodeName, &rootCause, &rootType, &rootService)
+		ORDER BY (inc.state = 'open') DESC, inc.opened_at DESC LIMIT 1`, s.OrgID, s.ID, h.Clock.Now().Add(-time.Hour), s.ProjectID).
+		Scan(&incID, &nodeID, &nodeName, &rootCause, &rootType, &rootService, &rootProject, &foreign)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	f.IncidentId, f.NodeId = ptr(incID), ptr(nodeID)
+	// The node runs this service: its placements already show it.
+	f.NodeId = ptr(nodeID)
 	if nodeName != "" {
 		f.NodeName = ptr(nodeName)
 	}
-	if rootCause != "" && rootService != s.ID {
+	if !foreign {
+		f.IncidentId = ptr(incID)
+	}
+	nodeLevel := rootService == ""
+	sameProject := rootService != "" && rootService != s.ID && rootProject == s.ProjectID
+	if rootCause != "" && (nodeLevel || sameProject) {
 		f.RootCause, f.RootType = ptr(rootCause), ptr(rootType)
 	}
 	return nil
