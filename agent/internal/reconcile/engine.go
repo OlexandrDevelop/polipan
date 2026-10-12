@@ -102,6 +102,7 @@ type Engine struct {
 	hold       bool
 	suppressed map[string]bool
 	pulled     map[string]bool
+	noRestart  map[string]bool    // container ids that already have the restart policy "no" (kept old containers)
 	hs         map[string]*hstate // health state by placement
 	ingMu      sync.Mutex         // one ingress load at a time
 	ingSpec    [32]byte
@@ -119,7 +120,7 @@ func New(d docker.Client, store *state.Store, network string, log *slog.Logger) 
 		log = slog.Default()
 	}
 	return &Engine{Docker: d, Store: store, Network: network, Log: log, hold: true,
-		suppressed: map[string]bool{}, pulled: map[string]bool{}, inflight: map[string]bool{},
+		suppressed: map[string]bool{}, pulled: map[string]bool{}, noRestart: map[string]bool{}, inflight: map[string]bool{},
 		execs: map[string]*execSession{}, hs: map[string]*hstate{}, quotas: map[string]uint64{}, trigger: make(chan struct{}, 1)}
 }
 
@@ -476,12 +477,24 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 		ex = nil
 	}
 	if stopped {
-		if ex != nil && ex.State == "running" {
-			e.closeExecs(w.PlacementId)
-			// A kept old container must not start again with Docker after a reboot: it shares its volumes with the live one.
+		if ex == nil {
+			return nil
+		}
+		// A kept old container must not start again with Docker after a reboot: it shares its volumes with the live one.
+		// This holds for every state (running, restarting, exited), so containers made before this rule are fixed too.
+		e.mu.Lock()
+		done := e.noRestart[ex.ID]
+		e.mu.Unlock()
+		if !done {
 			if err := e.Docker.SetRestartPolicy(ctx, ex.ID, "no"); err != nil {
 				return err
 			}
+			e.mu.Lock()
+			e.noRestart[ex.ID] = true
+			e.mu.Unlock()
+		}
+		if ex.State == "running" || ex.State == "restarting" {
+			e.closeExecs(w.PlacementId)
 			return e.Docker.Stop(ctx, ex.ID, int(w.StopGraceSeconds))
 		}
 		return nil
@@ -529,6 +542,9 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 	if err := e.Docker.SetRestartPolicy(ctx, ex.ID, policy); err != nil {
 		return &codedErr{"container_start_failed", err}
 	}
+	e.mu.Lock()
+	delete(e.noRestart, ex.ID)
+	e.mu.Unlock()
 	if err := e.Docker.Start(ctx, ex.ID); err != nil {
 		return &codedErr{"container_start_failed", err}
 	}
