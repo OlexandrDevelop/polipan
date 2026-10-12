@@ -291,20 +291,49 @@ func (h *Handlers) ListAlertInstances(w http.ResponseWriter, r *http.Request, pa
 	}
 	items := make([]map[string]any, 0, len(list))
 	for _, in := range list {
-		m := map[string]any{"id": in.ID, "rule_id": in.RuleID, "rule_name": in.RuleName, "rule_type": in.RuleType, "severity": in.Severity,
-			"fingerprint": in.Fingerprint, "state": in.State, "first_fired_at": in.FirstFiredAt, "muted": in.Muted, "suppressed": in.Suppressed,
-			"details": in.Details}
-		if in.LastNotifiedAt != nil {
-			m["last_notified_at"] = in.LastNotifiedAt
-		}
-		if in.ResolvedAt != nil {
-			m["resolved_at"] = in.ResolvedAt
-		}
-		items = append(items, m)
+		items = append(items, instanceJSON(in))
 	}
 	var nc *string
 	if next != "" {
 		nc = &next
 	}
 	WriteJSON(w, http.StatusOK, page[map[string]any]{Items: items, NextCursor: nc})
+}
+
+func instanceJSON(in *alert.Instance) map[string]any {
+	m := map[string]any{"id": in.ID, "rule_id": in.RuleID, "rule_name": in.RuleName, "rule_type": in.RuleType, "severity": in.Severity,
+		"fingerprint": in.Fingerprint, "state": in.State, "first_fired_at": in.FirstFiredAt, "muted": in.Muted, "suppressed": in.Suppressed,
+		"details": in.Details}
+	if in.LastNotifiedAt != nil {
+		m["last_notified_at"] = in.LastNotifiedAt
+	}
+	if in.ResolvedAt != nil {
+		m["resolved_at"] = in.ResolvedAt
+	}
+	if in.IncidentID != "" {
+		m["incident_id"], m["root_cause"], m["related_count"] = in.IncidentID, in.RootCause, in.RelatedCount
+	}
+	return m
+}
+
+// GetIncident returns one incident of a node with its alerts, the probable cause first.
+func (h *Handlers) GetIncident(w http.ResponseWriter, r *http.Request, incidentID gen.IncidentId) {
+	if !h.needAlerts(w, r) {
+		return
+	}
+	inc, err := h.Alerts.Store.GetIncident(r.Context(), h.orgID(r), incidentID, h.Clock.Now())
+	if h.alertFailed(w, r, err) {
+		return
+	}
+	alerts := make([]map[string]any, 0, len(inc.Alerts))
+	for _, in := range inc.Alerts {
+		alerts = append(alerts, instanceJSON(in))
+	}
+	out := map[string]any{"id": inc.ID, "node_id": inc.NodeID, "node_name": inc.NodeName, "state": inc.State, "opened_at": inc.OpenedAt,
+		"last_alert_at": inc.LastAlertAt, "root_instance_id": inc.RootInstanceID, "root_type": inc.RootType, "root_cause": inc.RootCause,
+		"alerts": alerts}
+	if inc.ResolvedAt != nil {
+		out["resolved_at"] = inc.ResolvedAt
+	}
+	WriteJSON(w, http.StatusOK, out)
 }

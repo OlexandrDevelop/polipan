@@ -73,13 +73,13 @@ func (e *Engine) notifyOne(ctx context.Context, id string, now time.Time) error 
 	var count, repeat int
 	var last, mutedUntil *time.Time
 	var sup *string
-	var resolvedNotified, enabled bool
+	var resolvedNotified, enabled, absorbed bool
 	var chans []string
 	var details []byte
 	err = tx.QueryRow(ctx, `SELECT i.state, i.rule_id, i.notify_count, i.last_notified_at, i.suppressed_by, i.resolved_notified, COALESCE(i.details,'{}'::jsonb),
-		r.repeat_interval_s, r.muted_until, r.enabled, r.channel_ids
+		i.absorbed, r.repeat_interval_s, r.muted_until, r.enabled, r.channel_ids
 		FROM alert_instances i JOIN alert_rules r ON r.id = i.rule_id WHERE i.id = $1 FOR UPDATE OF i SKIP LOCKED`, id).
-		Scan(&state, &ruleID, &count, &last, &sup, &resolvedNotified, &details, &repeat, &mutedUntil, &enabled, &chans)
+		Scan(&state, &ruleID, &count, &last, &sup, &resolvedNotified, &details, &absorbed, &repeat, &mutedUntil, &enabled, &chans)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
@@ -98,6 +98,26 @@ func (e *Engine) notifyOne(ctx context.Context, id string, now time.Time) error 
 	if kind == "" {
 		return nil
 	}
+	// One incident, one message: the root alert tells about the related ones (12-observability section 5.1).
+	inc, err := incidentOf(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if inc != nil && kind == KindFiring && inc.Open && now.Before(inc.OpenedAt.Add(e.incidentHold())) {
+		return nil // wait a little: a cause that fires later still leads the message
+	}
+	silent := false
+	switch {
+	case kind == KindFiring && inc != nil && inc.RootID != id && inc.Members > 1:
+		silent = true
+		if _, err := tx.Exec(ctx, `UPDATE alert_instances SET absorbed = true WHERE id = $1`, id); err != nil {
+			return err
+		}
+	case kind == KindRepeat && absorbed && inc != nil && inc.RootFiring && inc.RootID != id:
+		silent = true // the reminder of the root alert covers it
+	case kind == KindResolved && absorbed:
+		silent = true
+	}
 	muted := mutedUntil != nil && mutedUntil.After(now)
 	if kind == KindResolved && (muted || !enabled) {
 		// The message of this rule was held back: do not tell about the end of it later.
@@ -110,11 +130,20 @@ func (e *Engine) notifyOne(ctx context.Context, id string, now time.Time) error 
 	if muted || !enabled { // the instance stays firing and records it, but no message goes out (REQ-ALERT-006)
 		return nil
 	}
-	live, err := e.liveChannels(ctx, tx, chans)
-	if err != nil {
-		return err
+	var live []string
+	if !silent {
+		if live, err = e.liveChannels(ctx, tx, chans); err != nil {
+			return err
+		}
 	}
-	if len(live) == 0 {
+	if silent && kind == KindResolved {
+		_, err = tx.Exec(ctx, `UPDATE alert_instances SET resolved_notified = true WHERE id = $1`, id)
+		if err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+	if len(live) == 0 && !silent {
 		if kind == KindResolved {
 			_, err = tx.Exec(ctx, `UPDATE alert_instances SET resolved_notified = true WHERE id = $1`, id)
 			if err != nil {

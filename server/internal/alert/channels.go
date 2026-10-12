@@ -211,6 +211,7 @@ func (e *Engine) sendSlack(ctx context.Context, ch *Channel, hook string, m *Mes
 		n := len(m.LastLines)
 		sb.WriteString("```" + slackEscape(strings.Join(m.LastLines[max(0, n-10):], "\n")) + "```\n")
 	}
+	sb.WriteString(slackEscape(m.relatedText()))
 	if m.Link != "" {
 		sb.WriteString("<" + m.Link + "|Open in Polipan>\n")
 	}

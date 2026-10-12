@@ -464,6 +464,7 @@ func (h *Handlers) GetService(w http.ResponseWriter, r *http.Request, serviceID 
 	}
 	out := h.decorateService(r.Context(), serviceJSON(s), s)
 	out.PendingChanges = ptr(h.pendingChanges(r.Context(), s))
+	out.LastFailure = h.lastFailure(r, s)
 	WriteJSON(w, http.StatusOK, out)
 }
 

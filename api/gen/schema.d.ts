@@ -2191,6 +2191,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/incidents/{incident_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One incident of a node with its alerts, the probable cause first */
+        get: operations["getIncident"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2534,6 +2551,25 @@ export interface components {
             live_release_id?: string;
             placements?: components["schemas"]["Placement"][];
             pending_changes?: boolean;
+            last_failure?: components["schemas"]["ServiceFailure"];
+        };
+        /** @description GET /services/{service_id} only: why the service failed. Set when the last deployment failed or a container is unhealthy. Secrets in the log lines are masked. */
+        ServiceFailure: {
+            /** @description The failure reason code of the deployment, or unhealthy */
+            reason?: string;
+            detail?: string;
+            /** @description The failed deployment. Empty when only a container is unhealthy. */
+            deployment_id?: string;
+            incident_id?: string;
+            node_id?: string;
+            node_name?: string;
+            /** @description The probable cause on the node, when it is another alert than the one of this service */
+            root_cause?: string;
+            root_type?: string;
+            /** @enum {string} */
+            log_source?: "deployment" | "container";
+            /** @description The last lines of the deployment log or of the container log, oldest first (at most 20) */
+            log_excerpt?: string[];
         };
         /** @description Database services only. none: no policy and not skipped (the UI shows the suggestion). skipped: the user skipped the suggestion. configured: a policy exists. */
         ServiceBackup: {
@@ -3167,6 +3203,31 @@ export interface components {
             details?: {
                 [key: string]: unknown;
             };
+            /** @description The incident of the node this alert belongs to. Empty when the alert has no node. */
+            incident_id?: string;
+            /** @description The one line text of the probable cause of the incident */
+            root_cause?: string;
+            /** @description The number of the other alerts of the incident */
+            related_count?: number;
+        };
+        /** @description Alerts that fired close together on one node (12-observability section 5.1). */
+        Incident: {
+            id?: string;
+            node_id?: string;
+            node_name?: string;
+            /** @enum {string} */
+            state?: "open" | "resolved";
+            /** Format: date-time */
+            opened_at?: string;
+            /** Format: date-time */
+            last_alert_at?: string;
+            /** Format: date-time */
+            resolved_at?: string;
+            root_instance_id?: string;
+            root_type?: string;
+            root_cause?: string;
+            /** @description The probable cause first */
+            alerts?: components["schemas"]["AlertInstance"][];
         };
         ConfigPlan: {
             plan_hash?: string;
@@ -3233,6 +3294,7 @@ export interface components {
         TargetId: string;
         PolicyId: string;
         ChannelId: string;
+        IncidentId: string;
         RuleId: string;
     };
     requestBodies: never;
@@ -7518,6 +7580,28 @@ export interface operations {
                         items?: components["schemas"]["AlertInstance"][];
                         next_cursor?: string | null;
                     };
+                };
+            };
+        };
+    };
+    getIncident: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                incident_id: components["parameters"]["IncidentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Incident"];
                 };
             };
         };

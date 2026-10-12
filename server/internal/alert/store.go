@@ -140,6 +140,25 @@ type Instance struct {
 	Muted          bool
 	Suppressed     bool
 	Details        map[string]any
+	// The incident of the node: its probable cause and the number of its other alerts.
+	IncidentID   string
+	RootCause    string
+	RelatedCount int
+}
+
+// Incident is the group of the alerts that fired close together on one node.
+type Incident struct {
+	ID             string
+	NodeID         string
+	NodeName       string
+	State          string
+	OpenedAt       time.Time
+	LastAlertAt    time.Time
+	ResolvedAt     *time.Time
+	RootInstanceID string
+	RootType       string
+	RootCause      string
+	Alerts         []*Instance // cause first
 }
 
 // Store reads and writes the alert tables.
@@ -830,8 +849,10 @@ func (s *Store) ListInstances(ctx context.Context, orgID, state string, limit in
 	}
 	args := []any{orgID, now, limit + 1}
 	q := `SELECT i.id, i.rule_id, r.name, r.type, r.severity, i.fingerprint, i.state, i.first_fired_at, i.last_notified_at, i.resolved_at,
-		(r.muted_until IS NOT NULL AND r.muted_until > $2), i.suppressed_by IS NOT NULL, COALESCE(i.details,'{}'::jsonb), i.updated_at, i.id
-		FROM alert_instances i JOIN alert_rules r ON r.id = i.rule_id WHERE r.org_id = $1`
+		(r.muted_until IS NOT NULL AND r.muted_until > $2), i.suppressed_by IS NOT NULL, COALESCE(i.details,'{}'::jsonb), i.updated_at, i.id,
+		COALESCE(i.incident_id, ''), COALESCE(inc.root_cause, ''),
+		CASE WHEN i.incident_id IS NULL THEN 0 ELSE (SELECT count(*) - 1 FROM alert_instances m WHERE m.incident_id = i.incident_id) END
+		FROM alert_instances i JOIN alert_rules r ON r.id = i.rule_id LEFT JOIN incidents inc ON inc.id = i.incident_id WHERE r.org_id = $1`
 	if state != "" {
 		args = append(args, state)
 		q += fmt.Sprintf(` AND i.state = $%d`, len(args))
@@ -856,7 +877,8 @@ func (s *Store) ListInstances(ctx context.Context, orgID, state string, limit in
 		var upd time.Time
 		var dup string
 		if err := rows.Scan(&in.ID, &in.RuleID, &in.RuleName, &in.RuleType, &in.Severity, &in.Fingerprint, &in.State, &in.FirstFiredAt,
-			&in.LastNotifiedAt, &in.ResolvedAt, &in.Muted, &in.Suppressed, &det, &upd, &dup); err != nil {
+			&in.LastNotifiedAt, &in.ResolvedAt, &in.Muted, &in.Suppressed, &det, &upd, &dup,
+			&in.IncidentID, &in.RootCause, &in.RelatedCount); err != nil {
 			return nil, "", err
 		}
 		in.Details = map[string]any{}
@@ -872,4 +894,44 @@ func (s *Store) ListInstances(ctx context.Context, orgID, state string, limit in
 		next = out[len(out)-1].ID
 	}
 	return out, next, nil
+}
+
+// GetIncident reads an incident of the org with its alerts, the probable cause first.
+func (s *Store) GetIncident(ctx context.Context, orgID, id string, now time.Time) (*Incident, error) {
+	var inc Incident
+	err := s.DB.QueryRow(ctx, `SELECT inc.id, inc.node_id, COALESCE(n.name, ''), inc.state, inc.opened_at, inc.last_alert_at, inc.resolved_at,
+		COALESCE(inc.root_instance_id, ''), COALESCE(inc.root_type, ''), COALESCE(inc.root_cause, '')
+		FROM incidents inc LEFT JOIN nodes n ON n.id = inc.node_id WHERE inc.id = $1 AND inc.org_id = $2`, id, orgID).
+		Scan(&inc.ID, &inc.NodeID, &inc.NodeName, &inc.State, &inc.OpenedAt, &inc.LastAlertAt, &inc.ResolvedAt, &inc.RootInstanceID, &inc.RootType, &inc.RootCause)
+	if err != nil {
+		return nil, notFound(err)
+	}
+	inc.Alerts, err = incidentMembers(ctx, s.DB, id)
+	if err != nil {
+		return nil, err
+	}
+	muted := map[string]bool{}
+	rows, err := s.DB.Query(ctx, `SELECT r.id FROM alert_rules r WHERE r.org_id = $1 AND r.muted_until IS NOT NULL AND r.muted_until > $2`, orgID, now)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var rid string
+		if err := rows.Scan(&rid); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		muted[rid] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, a := range inc.Alerts {
+		a.Muted = muted[a.RuleID]
+		a.RootCause = inc.RootCause
+		a.RelatedCount = len(inc.Alerts) - 1
+	}
+	SortByCause(inc.Alerts)
+	return &inc, nil
 }

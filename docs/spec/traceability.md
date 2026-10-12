@@ -448,6 +448,8 @@ Totals: 373 requirements, 141 acceptance criteria.
 | REQ-OBS-108 | MUST | [12-observability.md](12-observability.md) | M8 | unit/component test by REQ id |
 | REQ-OBS-109 | MUST | [12-observability.md](12-observability.md) | M8 | unit/component test by REQ id |
 | REQ-OBS-110 | MUST | [12-observability.md](12-observability.md) | M8 | unit/component test by REQ id |
+| REQ-OBS-111 | MUST | [12-observability.md](12-observability.md) | P1 | VM check (tests deferred by project policy) |
+| REQ-OBS-112 | MUST | [12-observability.md](12-observability.md) | P1 | VM and web UI check (tests deferred by project policy) |
 
 ## BKP
 

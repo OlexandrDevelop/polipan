@@ -271,6 +271,12 @@ const (
 	HealthStatusOk       HealthStatus = "ok"
 )
 
+// Defines values for IncidentState.
+const (
+	IncidentStateOpen     IncidentState = "open"
+	IncidentStateResolved IncidentState = "resolved"
+)
+
 // Defines values for LogLineStream.
 const (
 	LogLineStreamStderr LogLineStream = "stderr"
@@ -454,6 +460,12 @@ const (
 	ServiceCreateTypeWorker   ServiceCreateType = "worker"
 )
 
+// Defines values for ServiceFailureLogSource.
+const (
+	ServiceFailureLogSourceContainer  ServiceFailureLogSource = "container"
+	ServiceFailureLogSourceDeployment ServiceFailureLogSource = "deployment"
+)
+
 // Defines values for ServiceUpdateFailover.
 const (
 	ServiceUpdateFailoverAuto ServiceUpdateFailover = "auto"
@@ -509,8 +521,8 @@ const (
 
 // Defines values for ListAlertInstancesParamsState.
 const (
-	ListAlertInstancesParamsStateFiring   ListAlertInstancesParamsState = "firing"
-	ListAlertInstancesParamsStateResolved ListAlertInstancesParamsState = "resolved"
+	Firing   ListAlertInstancesParamsState = "firing"
+	Resolved ListAlertInstancesParamsState = "resolved"
 )
 
 // Defines values for RestoreBackupJSONBodyMode.
@@ -619,20 +631,29 @@ type AlertChannelWriteKind string
 
 // AlertInstance defines model for AlertInstance.
 type AlertInstance struct {
-	Details        *map[string]interface{} `json:"details,omitempty"`
-	Fingerprint    *string                 `json:"fingerprint,omitempty"`
-	FirstFiredAt   *time.Time              `json:"first_fired_at,omitempty"`
-	Id             *string                 `json:"id,omitempty"`
-	LastNotifiedAt *time.Time              `json:"last_notified_at,omitempty"`
+	Details      *map[string]interface{} `json:"details,omitempty"`
+	Fingerprint  *string                 `json:"fingerprint,omitempty"`
+	FirstFiredAt *time.Time              `json:"first_fired_at,omitempty"`
+	Id           *string                 `json:"id,omitempty"`
+
+	// IncidentId The incident of the node this alert belongs to. Empty when the alert has no node.
+	IncidentId     *string    `json:"incident_id,omitempty"`
+	LastNotifiedAt *time.Time `json:"last_notified_at,omitempty"`
 
 	// Muted The rule is muted: no message is sent
-	Muted      *bool                  `json:"muted,omitempty"`
-	ResolvedAt *time.Time             `json:"resolved_at,omitempty"`
-	RuleId     *string                `json:"rule_id,omitempty"`
-	RuleName   *string                `json:"rule_name,omitempty"`
-	RuleType   *string                `json:"rule_type,omitempty"`
-	Severity   *AlertInstanceSeverity `json:"severity,omitempty"`
-	State      *AlertInstanceState    `json:"state,omitempty"`
+	Muted *bool `json:"muted,omitempty"`
+
+	// RelatedCount The number of the other alerts of the incident
+	RelatedCount *int       `json:"related_count,omitempty"`
+	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
+
+	// RootCause The one line text of the probable cause of the incident
+	RootCause *string                `json:"root_cause,omitempty"`
+	RuleId    *string                `json:"rule_id,omitempty"`
+	RuleName  *string                `json:"rule_name,omitempty"`
+	RuleType  *string                `json:"rule_type,omitempty"`
+	Severity  *AlertInstanceSeverity `json:"severity,omitempty"`
+	State     *AlertInstanceState    `json:"state,omitempty"`
 
 	// Suppressed A node_down alert of the node hides this one
 	Suppressed *bool `json:"suppressed,omitempty"`
@@ -1141,6 +1162,25 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// Incident Alerts that fired close together on one node (12-observability section 5.1).
+type Incident struct {
+	// Alerts The probable cause first
+	Alerts         *[]AlertInstance `json:"alerts,omitempty"`
+	Id             *string          `json:"id,omitempty"`
+	LastAlertAt    *time.Time       `json:"last_alert_at,omitempty"`
+	NodeId         *string          `json:"node_id,omitempty"`
+	NodeName       *string          `json:"node_name,omitempty"`
+	OpenedAt       *time.Time       `json:"opened_at,omitempty"`
+	ResolvedAt     *time.Time       `json:"resolved_at,omitempty"`
+	RootCause      *string          `json:"root_cause,omitempty"`
+	RootInstanceId *string          `json:"root_instance_id,omitempty"`
+	RootType       *string          `json:"root_type,omitempty"`
+	State          *IncidentState   `json:"state,omitempty"`
+}
+
+// IncidentState defines model for Incident.State.
+type IncidentState string
+
 // LogLine defines model for LogLine.
 type LogLine struct {
 	Container     *string `json:"container,omitempty"`
@@ -1530,7 +1570,10 @@ type Service struct {
 	Id               *string         `json:"id,omitempty"`
 
 	// LastBackupAt volume services: the end of the last successful backup (REQ-NODE-007)
-	LastBackupAt       *time.Time         `json:"last_backup_at,omitempty"`
+	LastBackupAt *time.Time `json:"last_backup_at,omitempty"`
+
+	// LastFailure GET /services/{service_id} only: why the service failed. Set when the last deployment failed or a container is unhealthy. Secrets in the log lines are masked.
+	LastFailure        *ServiceFailure    `json:"last_failure,omitempty"`
 	LiveReleaseId      *string            `json:"live_release_id,omitempty"`
 	Name               *string            `json:"name,omitempty"`
 	PendingChanges     *bool              `json:"pending_changes,omitempty"`
@@ -1599,6 +1642,30 @@ type ServiceCreateDbEngine string
 
 // ServiceCreateType defines model for ServiceCreate.Type.
 type ServiceCreateType string
+
+// ServiceFailure GET /services/{service_id} only: why the service failed. Set when the last deployment failed or a container is unhealthy. Secrets in the log lines are masked.
+type ServiceFailure struct {
+	// DeploymentId The failed deployment. Empty when only a container is unhealthy.
+	DeploymentId *string `json:"deployment_id,omitempty"`
+	Detail       *string `json:"detail,omitempty"`
+	IncidentId   *string `json:"incident_id,omitempty"`
+
+	// LogExcerpt The last lines of the deployment log or of the container log, oldest first (at most 20)
+	LogExcerpt *[]string                `json:"log_excerpt,omitempty"`
+	LogSource  *ServiceFailureLogSource `json:"log_source,omitempty"`
+	NodeId     *string                  `json:"node_id,omitempty"`
+	NodeName   *string                  `json:"node_name,omitempty"`
+
+	// Reason The failure reason code of the deployment, or unhealthy
+	Reason *string `json:"reason,omitempty"`
+
+	// RootCause The probable cause on the node, when it is another alert than the one of this service
+	RootCause *string `json:"root_cause,omitempty"`
+	RootType  *string `json:"root_type,omitempty"`
+}
+
+// ServiceFailureLogSource defines model for ServiceFailure.LogSource.
+type ServiceFailureLogSource string
 
 // ServiceUpdate defines model for ServiceUpdate.
 type ServiceUpdate struct {
@@ -1790,6 +1857,9 @@ type From = time.Time
 
 // IdempotencyKey defines model for IdempotencyKey.
 type IdempotencyKey = string
+
+// IncidentId defines model for IncidentId.
+type IncidentId = string
 
 // Limit defines model for Limit.
 type Limit = int
@@ -2834,6 +2904,9 @@ type ClientInterface interface {
 
 	// GetHealth request
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIncident request
+	GetIncident(ctx context.Context, incidentId IncidentId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SearchLogs request
 	SearchLogs(ctx context.Context, params *SearchLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4257,6 +4330,18 @@ func (c *Client) ListGitRepos(ctx context.Context, connectionId ConnectionId, pa
 
 func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetIncident(ctx context.Context, incidentId IncidentId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIncidentRequest(c.Server, incidentId)
 	if err != nil {
 		return nil, err
 	}
@@ -8838,6 +8923,40 @@ func NewGetHealthRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/healthz")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetIncidentRequest generates requests for GetIncident
+func NewGetIncidentRequest(server string, incidentId IncidentId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "incident_id", runtime.ParamLocationPath, incidentId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/incidents/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -14133,6 +14252,9 @@ type ClientWithResponsesInterface interface {
 	// GetHealthWithResponse request
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
 
+	// GetIncidentWithResponse request
+	GetIncidentWithResponse(ctx context.Context, incidentId IncidentId, reqEditors ...RequestEditorFn) (*GetIncidentResponse, error)
+
 	// SearchLogsWithResponse request
 	SearchLogsWithResponse(ctx context.Context, params *SearchLogsParams, reqEditors ...RequestEditorFn) (*SearchLogsResponse, error)
 
@@ -15980,6 +16102,28 @@ func (r GetHealthResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetHealthResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetIncidentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Incident
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIncidentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIncidentResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -19149,6 +19293,15 @@ func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEdit
 	return ParseGetHealthResponse(rsp)
 }
 
+// GetIncidentWithResponse request returning *GetIncidentResponse
+func (c *ClientWithResponses) GetIncidentWithResponse(ctx context.Context, incidentId IncidentId, reqEditors ...RequestEditorFn) (*GetIncidentResponse, error) {
+	rsp, err := c.GetIncident(ctx, incidentId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIncidentResponse(rsp)
+}
+
 // SearchLogsWithResponse request returning *SearchLogsResponse
 func (c *ClientWithResponses) SearchLogsWithResponse(ctx context.Context, params *SearchLogsParams, reqEditors ...RequestEditorFn) (*SearchLogsResponse, error) {
 	rsp, err := c.SearchLogs(ctx, params, reqEditors...)
@@ -22052,6 +22205,32 @@ func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
 			return nil, err
 		}
 		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetIncidentResponse parses an HTTP response from a GetIncidentWithResponse call
+func ParseGetIncidentResponse(rsp *http.Response) (*GetIncidentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIncidentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Incident
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	}
 
@@ -25006,6 +25185,9 @@ type ServerInterface interface {
 	// Liveness and readiness of the server
 	// (GET /healthz)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// One incident of a node with its alerts, the probable cause first
+	// (GET /incidents/{incident_id})
+	GetIncident(w http.ResponseWriter, r *http.Request, incidentId IncidentId)
 	// Search logs by text and fields (LogsQL subset)
 	// (GET /logs/search)
 	SearchLogs(w http.ResponseWriter, r *http.Request, params SearchLogsParams)
@@ -25714,6 +25896,12 @@ func (_ Unimplemented) ListGitRepos(w http.ResponseWriter, r *http.Request, conn
 // Liveness and readiness of the server
 // (GET /healthz)
 func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// One incident of a node with its alerts, the probable cause first
+// (GET /incidents/{incident_id})
+func (_ Unimplemented) GetIncident(w http.ResponseWriter, r *http.Request, incidentId IncidentId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -28505,6 +28693,39 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIncident operation middleware
+func (siw *ServerInterfaceWrapper) GetIncident(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "incident_id" -------------
+	var incidentId IncidentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "incident_id", chi.URLParam(r, "incident_id"), &incidentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "incident_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerTokenScopes, []string{})
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIncident(w, r, incidentId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -32762,6 +32983,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/healthz", wrapper.GetHealth)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/incidents/{incident_id}", wrapper.GetIncident)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/logs/search", wrapper.SearchLogs)

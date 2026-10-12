@@ -51,6 +51,9 @@ type Engine struct {
 	// EventInterval and MetricInterval are how often the engine reads events and evaluates rules (1 s and 30 s).
 	EventInterval  time.Duration
 	MetricInterval time.Duration
+	// IncidentHold is how long the first message of a new incident waits for its cause. Zero means
+	// DefaultIncidentHold, a negative value means no wait (tests).
+	IncidentHold time.Duration
 
 	monitoringDown atomic.Bool
 	lastAuditCheck map[string]time.Time
@@ -124,6 +127,9 @@ func (e *Engine) Tick(ctx context.Context, rules bool) {
 	}
 	if rules {
 		e.EvalRules(ctx)
+		if err := e.CloseIncidents(ctx); err != nil && ctx.Err() == nil {
+			e.log().Warn("alert: close incidents", "err", err)
+		}
 	}
 	if err := e.SendDue(ctx); err != nil && ctx.Err() == nil {
 		e.log().Warn("alert: send", "err", err)
@@ -421,7 +427,7 @@ func (e *Engine) suppressedBy(ctx context.Context, q dbq, rtype, serviceID strin
 }
 
 // fire makes the instance firing (a new one, or one that was resolved). A firing instance keeps its time and its
-// message counters: this is the dedup (REQ-ALERT-004).
+// message counters: this is the dedup (REQ-ALERT-004). Then the instance joins the incident of its node.
 func (e *Engine) fire(ctx context.Context, tx dbq, r *Rule, fp string, details map[string]any, sc map[string]string) error {
 	sup, err := e.suppressedBy(ctx, tx, r.Type, sc["service_id"])
 	if err != nil {
@@ -439,10 +445,14 @@ func (e *Engine) fire(ctx context.Context, tx dbq, r *Rule, fp string, details m
 		  last_notified_at = CASE WHEN alert_instances.state = 'firing' THEN alert_instances.last_notified_at ELSE NULL END,
 		  notify_count = CASE WHEN alert_instances.state = 'firing' THEN alert_instances.notify_count ELSE 0 END,
 		  resolved_notified = CASE WHEN alert_instances.state = 'firing' THEN alert_instances.resolved_notified ELSE false END,
+		  absorbed = CASE WHEN alert_instances.state = 'firing' THEN alert_instances.absorbed ELSE false END,
 		  state = 'firing', resolved_at = NULL, details = EXCLUDED.details,
 		  suppressed_by = EXCLUDED.suppressed_by, updated_at = EXCLUDED.updated_at`,
 		store.NewID("ali"), r.ID, fp, now, raw, sup)
-	return err
+	if err != nil {
+		return err
+	}
+	return e.attachIncident(ctx, tx, r, fp, details, sc)
 }
 
 func withKey(m map[string]any, k string, v any) map[string]any {

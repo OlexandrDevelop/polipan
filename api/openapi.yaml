@@ -1639,6 +1639,15 @@ paths:
       parameters: [{name: state, in: query, schema: {type: string, enum: [firing, resolved]}}, {$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Cursor'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/AlertInstance'}}, next_cursor: {type: [string, 'null']}}}}}}
+  /incidents/{incident_id}:
+    get:
+      operationId: getIncident
+      summary: One incident of a node with its alerts, the probable cause first
+      tags: [alerts]
+      x-permission: alert:read
+      parameters: [{$ref: '#/components/parameters/IncidentId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Incident'}}}}
 
 components:
   securitySchemes:
@@ -1671,6 +1680,7 @@ components:
     TargetId: {name: target_id, in: path, required: true, schema: {type: string}}
     PolicyId: {name: policy_id, in: path, required: true, schema: {type: string}}
     ChannelId: {name: channel_id, in: path, required: true, schema: {type: string}}
+    IncidentId: {name: incident_id, in: path, required: true, schema: {type: string}}
     RuleId: {name: rule_id, in: path, required: true, schema: {type: string}}
   responses:
     Error:
@@ -1836,6 +1846,21 @@ components:
         live_release_id: {type: string}
         placements: {type: array, items: {$ref: '#/components/schemas/Placement'}}
         pending_changes: {type: boolean}
+        last_failure: {$ref: '#/components/schemas/ServiceFailure'}
+    ServiceFailure:
+      type: object
+      description: "GET /services/{service_id} only: why the service failed. Set when the last deployment failed or a container is unhealthy. Secrets in the log lines are masked."
+      properties:
+        reason: {type: string, description: "The failure reason code of the deployment, or unhealthy"}
+        detail: {type: string}
+        deployment_id: {type: string, description: "The failed deployment. Empty when only a container is unhealthy."}
+        incident_id: {type: string}
+        node_id: {type: string}
+        node_name: {type: string}
+        root_cause: {type: string, description: "The probable cause on the node, when it is another alert than the one of this service"}
+        root_type: {type: string}
+        log_source: {type: string, enum: [deployment, container]}
+        log_excerpt: {type: array, items: {type: string}, description: "The last lines of the deployment log or of the container log, oldest first (at most 20)"}
     ServiceBackup:
       type: object
       description: "Database services only. none: no policy and not skipped (the UI shows the suggestion). skipped: the user skipped the suggestion. configured: a policy exists."
@@ -2051,7 +2076,22 @@ components:
       properties: {name: {type: string}, type: {type: string}, scope: {type: object, additionalProperties: {type: string}}, params: {type: object, additionalProperties: true}, severity: {type: string, enum: [info, warning, critical]}, channel_ids: {type: array, items: {type: string}}, repeat_interval_seconds: {type: integer}, enabled: {type: boolean}}
     AlertInstance:
       type: object
-      properties: {id: {type: string}, rule_id: {type: string}, rule_name: {type: string}, rule_type: {type: string}, severity: {type: string, enum: [info, warning, critical]}, fingerprint: {type: string}, state: {type: string, enum: [firing, resolved]}, first_fired_at: {type: string, format: date-time}, last_notified_at: {type: string, format: date-time}, resolved_at: {type: string, format: date-time}, muted: {type: boolean, description: "The rule is muted: no message is sent"}, suppressed: {type: boolean, description: "A node_down alert of the node hides this one"}, details: {type: object, additionalProperties: true}}
+      properties: {id: {type: string}, rule_id: {type: string}, rule_name: {type: string}, rule_type: {type: string}, severity: {type: string, enum: [info, warning, critical]}, fingerprint: {type: string}, state: {type: string, enum: [firing, resolved]}, first_fired_at: {type: string, format: date-time}, last_notified_at: {type: string, format: date-time}, resolved_at: {type: string, format: date-time}, muted: {type: boolean, description: "The rule is muted: no message is sent"}, suppressed: {type: boolean, description: "A node_down alert of the node hides this one"}, details: {type: object, additionalProperties: true}, incident_id: {type: string, description: "The incident of the node this alert belongs to. Empty when the alert has no node."}, root_cause: {type: string, description: "The one line text of the probable cause of the incident"}, related_count: {type: integer, description: "The number of the other alerts of the incident"}}
+    Incident:
+      type: object
+      description: "Alerts that fired close together on one node (12-observability section 5.1)."
+      properties:
+        id: {type: string}
+        node_id: {type: string}
+        node_name: {type: string}
+        state: {type: string, enum: [open, resolved]}
+        opened_at: {type: string, format: date-time}
+        last_alert_at: {type: string, format: date-time}
+        resolved_at: {type: string, format: date-time}
+        root_instance_id: {type: string}
+        root_type: {type: string}
+        root_cause: {type: string}
+        alerts: {type: array, items: {$ref: '#/components/schemas/AlertInstance'}, description: "The probable cause first"}
     ConfigPlan:
       type: object
       properties:

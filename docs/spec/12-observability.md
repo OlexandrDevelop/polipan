@@ -63,6 +63,15 @@ flowchart LR
 - Child suppression: while a `node_down` alert for node N is firing, service-level alerts for placements on N are suppressed.
 - Message templates are fixed per rule type and channel kind. They contain severity, rule name, scope, since, link, and details.
 
+### 5.1 Incidents and failure context (P1-5)
+
+- An alert with a node joins the open incident of that node (table `incidents`, column `alert_instances.incident_id`). The node of a service alert is the node of its live container. With no open incident, the alert opens one. There is at most one open incident per node.
+- An incident closes when none of its alerts is firing and no alert joined it for 5 minutes (the correlation window).
+- The probable cause is the alert with the lowest rank, then the earliest: `node_down`, `node_suspect`, `disk_high`, node `memory_high`, `cpu_high`, failover, `container_restart_loop` and service `memory_high`, `service_unhealthy`, `deployment_failed` and `deployment_rolled_back`, `log_match`, the rest. `deployment_live` never joins an incident.
+- The first message of a new incident waits 60 s, so a cause that fires a little later still leads it. Then only the probable cause sends a message; it lists the related alerts, cause first (at most 10, and their number). The other alerts of the incident are recorded as sent without a message (`absorbed`); their reminders and resolve messages are not sent while the cause is firing. An alert that later becomes the cause sends its own message.
+- `GET /alert-instances` gives `incident_id`, `root_cause` and `related_count`; `GET /incidents/{incident_id}` gives the incident with its alerts, cause first. The alerts page shows one card per incident, cause first.
+- `GET /services/{service_id}` gives `last_failure` when the last deployment failed or a live container is unhealthy: the reason code and detail, the incident of the service (open, or closed in the last hour), the probable cause on the node when it is not an alert of this service, and the last 20 lines of the deployment log or the container log, with secrets masked. The service page shows it in the failure banner with a link to the full logs. Container exit code and OOM are not reported by the agent yet.
+
 ## 6. Self-monitoring
 
 - `GET /healthz` reports database, queue lag and VictoriaMetrics/VictoriaLogs reachability.
@@ -82,6 +91,8 @@ flowchart LR
 - **REQ-OBS-108** (MUST) Disk alerts are per file system: the root, the Docker data-root and the BuildKit state. Built-in levels are 70 % and 85 % (warning) and 95 % (critical). The message names the file system, its roles, and the used, free and total bytes (section 7.1).
 - **REQ-OBS-109** (MUST) Automatic cleanup removes only dangling images that no container uses and unused BuildKit cache. It never removes a volume, an image with a tag or digest name (so never a release image), or an image that a container uses (section 7.1).
 - **REQ-OBS-110** (MUST) Every container the agent creates has a rotated `json-file` log (`max-size` 10m, `max-file` 3).
+- **REQ-OBS-111** (MUST) Alerts that fire close together on one node are one incident with the probable cause first, and one incident sends one message (section 5.1).
+- **REQ-OBS-112** (MUST) The service page shows why the service failed: the reason, the correlated cause on the node, and the last log lines with a link to the full logs (section 5.1).
 
 ## 7. Wire details (M8)
 

@@ -32,6 +32,11 @@ type Message struct {
 	LastLines   []string // last log lines of a failed deployment
 	Count       int      // messages sent for this alert, with this one
 	Details     map[string]any
+	// The incident of which this alert is the probable cause: the other alerts, cause first (at most 10), and
+	// their number.
+	IncidentID   string
+	Related      []string
+	RelatedCount int
 }
 
 // buildMessage reads the instance and the names around it.
@@ -88,6 +93,11 @@ func (e *Engine) buildMessage(ctx context.Context, instanceID, kind string) (*Me
 		}
 	}
 	m.What = describe(m)
+	if kind != KindResolved {
+		if m.IncidentID, m.Related, m.RelatedCount, err = e.relatedOf(ctx, e.DB, instanceID); err != nil {
+			return nil, err
+		}
+	}
 	return &m, nil
 }
 
@@ -210,6 +220,7 @@ func (m *Message) text() string {
 			sb.WriteString("  " + truncate(l, 300) + "\n")
 		}
 	}
+	sb.WriteString(m.relatedText())
 	if m.Link != "" {
 		sb.WriteString("Link: " + m.Link + "\n")
 	}
@@ -231,10 +242,14 @@ func (m *Message) webhookBody(now time.Time) map[string]any {
 	for _, k := range keys {
 		details[k] = m.Details[k]
 	}
-	return map[string]any{
+	body := map[string]any{
 		"event": "alert." + m.Kind, "test": m.Test, "severity": m.Severity, "state": map[bool]string{true: "resolved", false: "firing"}[m.Kind == KindResolved],
 		"rule": map[string]string{"id": m.RuleID, "name": m.RuleName, "type": m.RuleType}, "what": m.What, "where": where,
 		"since": m.Since.UTC().Format(time.RFC3339), "link": m.Link, "reason": m.Reason, "instance_id": m.InstanceID,
 		"fingerprint": m.Fingerprint, "details": details, "sent_at": now.UTC().Format(time.RFC3339),
 	}
+	if m.RelatedCount > 0 {
+		body["incident"] = map[string]any{"id": m.IncidentID, "related_count": m.RelatedCount, "related": m.Related}
+	}
+	return body
 }
