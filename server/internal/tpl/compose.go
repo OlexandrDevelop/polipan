@@ -5,6 +5,7 @@ package tpl
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"regexp"
@@ -105,6 +106,99 @@ func anyBoolMap(in map[string]bool) map[string]any {
 
 // ImportComposeWith is ImportCompose with options (a file from a Git repository, skipping what is unsafe).
 func ImportComposeWith(data []byte, opts ComposeOptions) (*ComposeResult, error) {
+	res, err := importCompose(data, opts)
+	if err != nil {
+		return nil, redactSecrets(err, rawSecrets(data, opts))
+	}
+	return res, nil
+}
+
+// rawSecrets lists the secret values that the file gives: the secret variables of environment: and of the env
+// files, and the secret build arguments (IsSecretName, checkedSecret). It reads the file again, as it is, so it
+// also works when the import stops early with a problem.
+func rawSecrets(data []byte, opts ComposeOptions) []secretValue {
+	text, _ := composeInterpolate(string(data), opts.Vars)
+	var doc map[string]any
+	if yaml.Unmarshal([]byte(text), &doc) != nil {
+		return nil
+	}
+	var out []secretValue
+	add := func(svc, k string, v any) {
+		if v == nil {
+			return
+		}
+		if s := fmt.Sprint(v); IsSecretName(k) && checkedSecret(s) {
+			out = append(out, secretValue{svc, k, s})
+		}
+	}
+	addList := func(svc string, v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			for k, val := range x {
+				add(svc, k, val)
+			}
+		case []any:
+			for _, item := range x {
+				k, val, _ := strings.Cut(fmt.Sprint(item), "=")
+				add(svc, k, val)
+			}
+		}
+	}
+	services, _ := doc["services"].(map[string]any)
+	for _, name := range sortedKeys(services) {
+		svc, _ := services[name].(map[string]any)
+		addList(name, svc["environment"])
+		if b, ok := svc["build"].(map[string]any); ok {
+			addList(name, b["args"])
+		}
+		for _, f := range envFilesOf(svc["env_file"], repoDir(opts.Repo)) {
+			if content, ok := opts.EnvFiles[f.RepoPath]; ok && opts.Repo != nil {
+				values, _, _ := parseEnvFile(content)
+				for k, v := range values {
+					add(name, k, v)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// redactSecrets replaces the secret values in the messages of an import error (a bad port, a bad size, an unsafe
+// setting can quote a part of the file). The message names the secret instead of its value.
+func redactSecrets(err error, secrets []secretValue) error {
+	if len(secrets) == 0 {
+		return err
+	}
+	fix := func(ps Problems) Problems {
+		out := make(Problems, len(ps))
+		for i, p := range ps {
+			for _, s := range secrets {
+				p.Message = strings.ReplaceAll(p.Message, s.value, "<the value of the secret "+s.name+">")
+				p.Path = strings.ReplaceAll(p.Path, s.value, "<secret "+s.name+">")
+			}
+			out[i] = p
+		}
+		return out
+	}
+	var ps Problems
+	var unsafe *UnsafeError
+	switch {
+	case errors.As(err, &unsafe):
+		return &UnsafeError{Violations: fix(unsafe.Violations)}
+	case errors.As(err, &ps):
+		return fix(ps)
+	}
+	msg := err.Error()
+	for _, s := range secrets {
+		if strings.Contains(msg, s.value) {
+			return errors.New("the Compose file cannot be imported (the error message is hidden: it has the value of a secret)")
+		}
+	}
+	return err
+}
+
+// importCompose is ImportComposeWith without the redaction of secret values in its errors.
+func importCompose(data []byte, opts ComposeOptions) (*ComposeResult, error) {
 	text, unset := composeInterpolate(string(data), opts.Vars)
 	var doc map[string]any
 	if err := yaml.Unmarshal([]byte(text), &doc); err != nil {
