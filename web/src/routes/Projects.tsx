@@ -31,7 +31,7 @@ import type { Node } from '@/scope'
 import { nodeTone } from '@/status'
 import { VerifiedBadge, worstPolicy } from '@/routes/ServiceBackups'
 
-function CreateProjectDialog({ onClose }: { onClose: () => void }) {
+export function CreateProjectDialog({ onClose }: { onClose: () => void }) {
   const { org } = useParams({ from: '/o/$org' })
   const navigate = useNavigate()
   const queryClient = useQueryClient()
