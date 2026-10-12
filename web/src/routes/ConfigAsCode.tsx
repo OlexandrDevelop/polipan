@@ -16,6 +16,7 @@ import {
   Button,
   Card,
   CheckboxField,
+  Hint,
   SectionTabs,
   SelectField,
   Skeleton,
@@ -414,7 +415,7 @@ export function ConfigAsCodePage() {
           </Button>
         }
       />
-      <p className="text-sm text-muted">{t('config.intro')}</p>
+      <Hint>{t('config.intro')}</Hint>
       <LargerScreenNotice />
       {project.isPending && <Skeleton />}
       {project.isError && (

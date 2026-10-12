@@ -8,7 +8,7 @@ import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { PageHeader } from '@/components/PageHeader'
-import { Banner, Button, Card, SelectField, Skeleton } from '@/components/ui'
+import { Banner, Button, Card, Hint, SelectField, Skeleton } from '@/components/ui'
 import { t, tState } from '@/i18n'
 import { useAccess } from '@/permissions'
 import { NotFoundPage } from '@/routes/ErrorPages'
@@ -191,7 +191,7 @@ export function ProjectRolesPage() {
           </Link>
         }
       />
-      <p className="text-sm text-muted">{t('roles.intro')}</p>
+      <Hint>{t('roles.intro')}</Hint>
       {roles.isPending && <Skeleton />}
       {roles.isError && <ErrorBanner error={roles.error} onRetry={() => void roles.refetch()} />}
       {roles.data && <RolesEditor projectId={project.id ?? ''} initial={roles.data} />}

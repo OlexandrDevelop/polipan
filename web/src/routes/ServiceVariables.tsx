@@ -15,11 +15,12 @@ import {
   Banner,
   Button,
   CheckboxField,
-  Optional,
   EmptyState,
+  Hint,
+  LockIcon,
+  Optional,
   SecretField,
   SelectField,
-  LockIcon,
   Skeleton,
   TextAreaField,
   TextField,
@@ -508,7 +509,7 @@ function WhereUsedDialog({
   return (
     <Modal title={t('where_used.title', { name: row.name })} onClose={onClose}>
       <div className="space-y-3">
-        <p className="text-sm text-muted">{t('where_used.hint')}</p>
+        <Hint>{t('where_used.hint')}</Hint>
         {failed && <ErrorBanner error={failed} />}
         {pending ? (
           <Skeleton />
@@ -603,7 +604,7 @@ function VersionsPanel({
   return (
     <Modal title={t('versions.title', { name: row.name })} onClose={onClose}>
       <div className="space-y-4">
-        <p className="text-sm text-muted">{t('versions.hint')}</p>
+        <Hint>{t('versions.hint')}</Hint>
         {writeAccess !== 'hidden' && (
           <form
             className="hidden space-y-2 sm:block"
@@ -928,7 +929,7 @@ export function ServiceVariables({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted">{t('variables.intro')}</p>
+        <Hint>{t('variables.intro')}</Hint>
         {rows.length > 0 && toolbar}
       </div>
       {loadError !== undefined && loadError !== null && (
@@ -941,7 +942,7 @@ export function ServiceVariables({
         />
       )}
       {body}
-      <p className="text-sm text-muted">{t('secret.never_shown')}</p>
+      <Hint>{t('secret.never_shown')}</Hint>
       {editing && (
         <ItemDialog
           ctx={ctx}

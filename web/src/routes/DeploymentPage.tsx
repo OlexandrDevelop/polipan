@@ -396,7 +396,7 @@ export function DeploymentPage() {
                     <span className="text-muted">
                       <Time value={s.time} />
                     </span>
-                    {s.message && (
+                    {s.message && s.state === 'failed' && (
                       <span className="w-full break-words text-muted">
                         {stepMessage(s.message)}
                       </span>

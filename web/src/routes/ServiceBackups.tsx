@@ -18,6 +18,7 @@ import {
   Card,
   CheckboxField,
   EmptyState,
+  Hint,
   Optional,
   SelectField,
   Skeleton,
@@ -305,7 +306,7 @@ function PolicyDialog({
                   onChange={(e) => setMonthly(e.target.value)}
                 />
               </div>
-              <p className="text-sm text-muted">{t('backup.retention_hint')}</p>
+              <Hint>{t('backup.retention_hint')}</Hint>
               {submitted && errors.retention && (
                 <p className="text-sm text-danger">{errors.retention}</p>
               )}

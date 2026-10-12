@@ -17,8 +17,9 @@ import {
   Button,
   Card,
   CheckboxField,
-  Optional,
   EmptyState,
+  Hint,
+  Optional,
   SecretField,
   SelectField,
   Skeleton,
@@ -149,7 +150,7 @@ function MappingsEditor({ provider, canOwner }: { provider: Provider; canOwner: 
       <h3 id={`map-${id}`} className="text-base font-semibold">
         {t('sso.mappings')}
       </h3>
-      <p className="text-sm text-muted">{t('sso.mappings_hint')}</p>
+      <Hint>{t('sso.mappings_hint')}</Hint>
       {save.error && <ErrorBanner error={save.error} title={t('sso.mappings_failed')} />}
       {saved.isPending ? (
         <Skeleton lines={2} />
@@ -482,7 +483,7 @@ export function SsoPage() {
           {t('sso.test_error', { reason: search.reason ?? 'failed' })}
         </Banner>
       )}
-      <p className="text-sm text-muted">{t('sso.intro')}</p>
+      <Hint>{t('sso.intro')}</Hint>
       {providers.error && <ErrorBanner error={providers.error} />}
       {providers.isPending ? (
         <Skeleton lines={4} />

@@ -7,7 +7,7 @@ import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Modal } from '@/components/Modal'
-import { Button, SelectField, TextField } from '@/components/ui'
+import { Button, Hint, SelectField, TextField } from '@/components/ui'
 import { t } from '@/i18n'
 
 const HOURS = [1, 4, 24, 72, 168]
@@ -53,7 +53,7 @@ export function MuteDialog({
   return (
     <Modal title={t('mute.title', { name: ruleName })} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
-        <p className="text-sm text-muted">{t('mute.text')}</p>
+        <Hint>{t('mute.text')}</Hint>
         <SelectField label={t('mute.for')} value={hours} onChange={(e) => setHours(e.target.value)}>
           {HOURS.map((h) => (
             <option key={h} value={h}>

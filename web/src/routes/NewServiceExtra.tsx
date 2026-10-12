@@ -14,8 +14,9 @@ import {
   Button,
   Card,
   CheckboxField,
-  FieldGrid,
   EmptyState,
+  FieldGrid,
+  Hint,
   Optional,
   SectionNav,
   SelectField,
@@ -367,7 +368,7 @@ function TemplateWizard({ base, environment }: { base: Base; environment: Enviro
                   <p className="font-semibold">{template.name}</p>
                   <TemplateServices template={template} />
                 </Card>
-                <p className="text-sm text-muted">{t('template.all_or_nothing')}</p>
+                <Hint>{t('template.all_or_nothing')}</Hint>
                 {create.error && (
                   <ErrorBanner error={create.error} title={t('template.create_failed')} />
                 )}

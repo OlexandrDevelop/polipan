@@ -13,9 +13,10 @@ import { PageHeader } from '@/components/PageHeader'
 import {
   Banner,
   Button,
-  CheckboxField,
-  Optional,
   Card,
+  CheckboxField,
+  Hint,
+  Optional,
   SectionTabs,
   Skeleton,
   TextField,
@@ -94,7 +95,7 @@ function RetentionForm({ settings }: { settings: Settings }) {
     <Card>
       <form onSubmit={submit} className="space-y-4" noValidate>
         <h2 className="font-semibold">{t('org.retention')}</h2>
-        <p className="text-sm text-muted">{t('org.retention_text')}</p>
+        <Hint>{t('org.retention_text')}</Hint>
         <div className="grid gap-3 sm:grid-cols-2">
           <TextField
             label={t('org.metrics_days')}
@@ -258,7 +259,7 @@ function GeneralForm({ org }: { org: Org }) {
         }}
       >
         <h2 className="font-semibold">{t('org.general')}</h2>
-        <p className="text-sm text-muted">{t('org.general_text')}</p>
+        <Hint>{t('org.general_text')}</Hint>
         <TextField
           label={t('org.name_label')}
           required

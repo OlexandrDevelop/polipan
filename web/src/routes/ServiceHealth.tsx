@@ -15,6 +15,7 @@ import {
   Button,
   CheckboxField,
   FieldGrid,
+  Hint,
   Optional,
   Pane,
   Panel,
@@ -336,7 +337,7 @@ export function ServiceHealth({
         </form>
         <Pane id="test" active={section === 'test'}>
           <Panel title={t('health.test_title')} className="space-y-3">
-            <p className="text-sm text-muted">{t('health.test_text')}</p>
+            <Hint>{t('health.test_text')}</Hint>
             <Button loading={test.isPending} onClick={() => test.mutate()}>
               {t('health.test')}
             </Button>

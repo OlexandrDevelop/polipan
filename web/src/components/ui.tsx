@@ -72,6 +72,47 @@ export function Button({
 const inputClass =
   'block min-h-10 w-full border border-border-strong bg-bg px-3 py-1 text-text max-sm:text-base coarse:min-h-11 aria-[invalid=true]:border-danger'
 
+// A small [?] that shows an explanation when you press it. Nothing is shown until you ask. The text stays in the
+// page, hidden, so a screen reader can still read it for the field.
+export function HintButton({
+  open,
+  onToggle,
+  controls,
+}: {
+  open: boolean
+  onToggle: () => void
+  controls: string
+}) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-controls={controls}
+      aria-label={t('common.more_info')}
+      onClick={onToggle}
+      className="font-term ml-2 inline-flex min-h-6 min-w-6 items-center justify-center text-muted transition-colors duration-[200ms] hover:text-primary coarse:min-h-11 coarse:min-w-11"
+    >
+      {open ? '[x]' : '[?]'}
+    </button>
+  )
+}
+
+// A paragraph of explanation that opens when you press [?].
+export function Hint({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const id = useId()
+  return (
+    <div>
+      <HintButton open={open} onToggle={() => setOpen(!open)} controls={id} />
+      {open && (
+        <p id={id} className="enter mt-1 max-w-prose text-muted">
+          {children}
+        </p>
+      )}
+    </div>
+  )
+}
+
 interface FieldShellProps {
   id: string
   label: string
@@ -82,15 +123,25 @@ interface FieldShellProps {
 }
 
 function FieldShell({ id, label, required, hint, error, children }: FieldShellProps) {
+  const [showHint, setShowHint] = useState(false)
   return (
     <div className="space-y-1">
-      <label htmlFor={id} className="block font-medium">
-        {label}
-        {required && <span className="font-normal text-muted"> ({t('common.required')})</span>}
-      </label>
+      <div className="flex items-center">
+        <label htmlFor={id} className="font-medium">
+          {label}
+          {required && <span className="font-normal text-muted"> ({t('common.required')})</span>}
+        </label>
+        {hint && (
+          <HintButton
+            open={showHint}
+            onToggle={() => setShowHint(!showHint)}
+            controls={`${id}-hint`}
+          />
+        )}
+      </div>
       {children}
       {hint && (
-        <p id={`${id}-hint`} className="text-xs text-muted">
+        <p id={`${id}-hint`} hidden={!showHint} className="enter text-xs text-muted">
           {hint}
         </p>
       )}
@@ -229,21 +280,35 @@ export function CheckboxField({
   ...rest
 }: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
   const id = useId()
+  const [showHint, setShowHint] = useState(false)
   return (
     <div>
       {/* The whole row is the label, so on touch input the target is at least 44 px (REQ-UI-017). */}
-      <label className="flex min-h-8 items-start gap-3 py-1 coarse:min-h-11">
-        <input
-          id={id}
-          type="checkbox"
-          aria-describedby={hint ? `${id}-hint` : undefined}
-          className="mt-0.5 size-4 shrink-0 accent-primary coarse:size-6"
-          {...rest}
-        />
-        <span className="font-medium">{label}</span>
-      </label>
+      <div className="flex items-start">
+        <label className="flex min-h-8 items-start gap-3 py-1 coarse:min-h-11">
+          <input
+            id={id}
+            type="checkbox"
+            aria-describedby={hint ? `${id}-hint` : undefined}
+            className="mt-0.5 size-4 shrink-0 accent-primary coarse:size-6"
+            {...rest}
+          />
+          <span className="font-medium">{label}</span>
+        </label>
+        {hint && (
+          <HintButton
+            open={showHint}
+            onToggle={() => setShowHint(!showHint)}
+            controls={`${id}-hint`}
+          />
+        )}
+      </div>
       {hint && (
-        <p id={`${id}-hint`} className="ml-7 text-xs text-muted coarse:ml-9">
+        <p
+          id={`${id}-hint`}
+          hidden={!showHint}
+          className="enter ml-7 text-xs text-muted coarse:ml-9"
+        >
           {hint}
         </p>
       )}

@@ -15,8 +15,9 @@ import {
   Banner,
   Button,
   CheckboxField,
-  Optional,
   EmptyState,
+  Hint,
+  Optional,
   SelectField,
   Skeleton,
   TextAreaField,
@@ -190,7 +191,7 @@ function VolumeDialog({
             />
           </div>
         </Optional>
-        <p className="text-sm text-muted">{t('storage.applies_next_deploy')}</p>
+        <Hint>{t('storage.applies_next_deploy')}</Hint>
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button type="submit" variant="primary" loading={save.isPending}>
@@ -397,7 +398,7 @@ function FileMounts({ service, access }: { service: Service; access: Access }) {
           </Button>
         )}
       </div>
-      <p className="text-sm text-muted">{t('storage.files_hint')}</p>
+      <Hint>{t('storage.files_hint')}</Hint>
       {files.length === 0 ? (
         <p className="text-muted">{t('storage.files_empty')}</p>
       ) : (
@@ -527,7 +528,7 @@ function OrphanVolumes({ access }: { access: Access }) {
       <h2 id="orphans-h" className="text-lg font-semibold">
         {t('storage.orphans')}
       </h2>
-      <p className="text-sm text-muted">{t('storage.orphans_hint')}</p>
+      <Hint>{t('storage.orphans_hint')}</Hint>
       {failed && <ErrorBanner error={failed} onRetry={() => void nodes.refetch()} />}
       {pending ? (
         <Skeleton lines={2} />

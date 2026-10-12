@@ -12,6 +12,7 @@ import {
   Banner,
   Button,
   CheckboxField,
+  Hint,
   Optional,
   SelectField,
   Skeleton,
@@ -216,7 +217,7 @@ export function DeployDialog({
             {strategy === 'canary' && (
               <fieldset className="space-y-3">
                 <legend className="text-sm font-medium">{t('canary.options')}</legend>
-                <p className="text-sm text-muted">{t('canary.options_hint')}</p>
+                <Hint>{t('canary.options_hint')}</Hint>
                 <TextField
                   label={t('canary.steps_label')}
                   value={stepsText}

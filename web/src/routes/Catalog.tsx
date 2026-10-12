@@ -15,8 +15,9 @@ import {
   Button,
   Card,
   CheckboxField,
-  Optional,
   EmptyState,
+  Hint,
+  Optional,
   SecretField,
   SelectField,
   Skeleton,
@@ -288,7 +289,7 @@ function InstantiateDialog({ template, onClose }: { template: Template; onClose:
             title={conflict ? t('template.conflict') : t('template.create_failed')}
           />
         )}
-        <p className="text-sm text-muted">{t('template.all_or_nothing')}</p>
+        <Hint>{t('template.all_or_nothing')}</Hint>
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button type="submit" variant="primary" loading={mutation.isPending}>

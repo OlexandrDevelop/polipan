@@ -16,8 +16,9 @@ import {
   Banner,
   Button,
   CheckboxField,
-  Optional,
   EmptyState,
+  Hint,
+  Optional,
   SelectField,
   Skeleton,
   StatusBadge,
@@ -177,7 +178,7 @@ export function TokensPage() {
           </Button>
         }
       />
-      <p className="text-sm text-muted">{t('tokens.intro')}</p>
+      <Hint>{t('tokens.intro')}</Hint>
       {isAdmin && (
         <CheckboxField
           label={t('tokens.show_all')}

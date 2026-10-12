@@ -18,6 +18,7 @@ import {
   Button,
   Card,
   EmptyState,
+  Hint,
   SectionTabs,
   Skeleton,
   StatusBadge,
@@ -137,7 +138,7 @@ function OrphanVolumes({ id, canDelete }: { id: string; canDelete: boolean }) {
   return (
     <Card className="space-y-2">
       <h2 className="font-semibold">{t('nodes.orphans')}</h2>
-      <p className="text-sm text-muted">{t('nodes.orphans_hint')}</p>
+      <Hint>{t('nodes.orphans_hint')}</Hint>
       {list.isPending && <Skeleton lines={1} />}
       {list.isError && <ErrorBanner error={list.error} onRetry={() => void list.refetch()} />}
       {list.data && list.data.length === 0 && <p className="text-muted">{t('nodes.no_orphans')}</p>}
@@ -350,7 +351,7 @@ export function NodeDetailPage() {
                 </Card>
                 <Card className="space-y-2">
                   <h2 className="font-semibold">{t('nodes.self_check')}</h2>
-                  <p className="text-sm text-muted">{t('nodes.self_check_hint')}</p>
+                  <Hint>{t('nodes.self_check_hint')}</Hint>
                   {manage && (
                     <Button loading={selfCheck.isPending} onClick={() => selfCheck.mutate()}>
                       {t('nodes.run_self_check')}
