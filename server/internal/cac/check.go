@@ -100,6 +100,8 @@ func (p *Parsed) checkStatic() []Issue {
 	}
 	domains := map[string]string{} // host + path -> where
 	for _, env := range f.envsOf() {
+		effs := map[string]*Effective{}
+		wheres := map[string]string{}
 		for _, name := range sortedKeys(f.Services) {
 			eff, _ := f.EffectiveService(env, name)
 			if eff.Disabled {
@@ -109,6 +111,7 @@ func (p *Parsed) checkStatic() []Issue {
 			if env != "" && f.Environments[env].Services[name] != nil {
 				where = join("environments", env, "services", name)
 			}
+			effs[name], wheres[name] = eff, where
 			out = append(out, p.checkService(eff, where)...)
 			for i, d := range eff.Service.Domains {
 				host, err := NormalizeHost(d.Host)
@@ -127,8 +130,88 @@ func (p *Parsed) checkStatic() []Issue {
 				domains[key] = at
 			}
 		}
+		for _, is := range checkDependencies(effs, wheres) {
+			add(is.Path, is.Message)
+		}
 	}
 	return dedupe(out)
+}
+
+// checkDependencies rejects a cycle in depends_on and a dependency that cannot run on the same node: the agent
+// starts a service only after its dependencies on the same node are healthy (08 section 7b).
+func checkDependencies(effs map[string]*Effective, wheres map[string]string) []Issue {
+	var out []Issue
+	deps := func(name string) []string {
+		var ds []string
+		for _, d := range effs[name].Service.DependsOn {
+			if _, ok := effs[d]; ok && d != name {
+				ds = append(ds, d)
+			}
+		}
+		return ds
+	}
+	names := sortedKeys(effs)
+	state := map[string]int{} // 1 visiting, 2 done
+	var stack []string
+	var visit func(n string)
+	visit = func(n string) {
+		state[n] = 1
+		stack = append(stack, n)
+		for _, d := range deps(n) {
+			switch state[d] {
+			case 0:
+				visit(d)
+			case 1:
+				i := 0
+				for stack[i] != d {
+					i++
+				}
+				cycle := append(append([]string{}, stack[i:]...), d)
+				out = append(out, Issue{Path: join(wheres[n], "depends_on"),
+					Message: "depends_on has a cycle: " + strings.Join(cycle, " -> ")})
+			}
+		}
+		stack = stack[:len(stack)-1]
+		state[n] = 2
+	}
+	for _, n := range names {
+		if state[n] == 0 {
+			visit(n)
+		}
+	}
+	// A hard dependency must be on the same node: every node named for the service is named for the dependency too.
+	for _, n := range names {
+		mine := placementNodes(effs[n].Service.Placement)
+		if len(mine) == 0 {
+			continue
+		}
+		for _, d := range deps(n) {
+			theirs := placementNodes(effs[d].Service.Placement)
+			if len(theirs) == 0 {
+				continue
+			}
+			for node := range mine {
+				if !theirs[node] {
+					out = append(out, Issue{Path: join(wheres[n], "depends_on"),
+						Message: fmt.Sprintf("the service runs on node %q, but its dependency %q does not: a dependency must run on the same node", node, d)})
+					break
+				}
+			}
+		}
+	}
+	return out
+}
+
+// placementNodes returns placement.nodes as a set. Empty means any node.
+func placementNodes(p map[string]any) map[string]bool {
+	list, _ := p["nodes"].([]any)
+	set := map[string]bool{}
+	for _, v := range list {
+		if s, ok := v.(string); ok && s != "" {
+			set[s] = true
+		}
+	}
+	return set
 }
 
 func dedupe(in []Issue) []Issue {

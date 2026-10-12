@@ -46,7 +46,7 @@ Certificates are renewed over the stream (`CertRenewRequest`) when less than 10 
 
 ### Agent error codes (in `CommandAck.error_code`)
 
-`deadline_exceeded`, `image_pull_failed`, `container_start_failed`, `port_conflict`, `out_of_resources`, `caddy_load_failed`, `docker_unavailable`, `volume_missing`, `volume_in_use` (another container holds the volume, [08 section 7a](08-deploy-engine.md#7a-volume-guard-one-writer-per-volume)), `unsupported_version`, `internal_error`. Backup jobs add: `container_not_found`, `dump_failed`, `backup_failed`, `hook_failed`, `restore_failed`, `target_test_failed`.
+`deadline_exceeded`, `image_pull_failed`, `container_start_failed`, `port_conflict`, `out_of_resources`, `caddy_load_failed`, `docker_unavailable`, `volume_missing`, `volume_in_use` (another container holds the volume, [08 section 7a](08-deploy-engine.md#7a-volume-guard-one-writer-per-volume)), `dependency_unhealthy` (a dependency on the node is not healthy, the workload waits, [08 section 7b](08-deploy-engine.md#7b-cold-start-the-agent-starts-the-workloads-in-dependency-order)), `unsupported_version`, `internal_error`. Backup jobs add: `container_not_found`, `dump_failed`, `backup_failed`, `hook_failed`, `restore_failed`, `target_test_failed`.
 
 ## 5. Offline behaviour
 

@@ -60,7 +60,7 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 	rows, err := q.Query(ctx,
 		`SELECT p.id, p.service_id, s.environment_id, p.release_id, p.color, p.role, p.health, s.desired_state,
 		        r.image_ref, r.config_snapshot, COALESCE(host(p.ip), ''), pr.org_id, pr.id, p.replica_index,
-		        s.name, en.slug
+		        s.name, en.slug, COALESCE(s.config->'depends_on', 'null'::jsonb)
 		   FROM placements p
 		   JOIN services s ON s.id = p.service_id AND s.deleted_at IS NULL
 		   JOIN environments en ON en.id = s.environment_id
@@ -71,11 +71,13 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 	if err != nil {
 		return nil, err
 	}
+	deps := map[*pb.WorkloadSpec][]string{}      // depends_on of the service of each workload
+	byService := map[string][]*pb.WorkloadSpec{} // environment id + service name -> its workloads on this node
 	for rows.Next() {
 		var pid, sid, eid, rid, color, role, health, svcState, imageRef, ip, orgID, projectID, svcName, envSlug string
 		var replica int
-		var raw []byte
-		if err := rows.Scan(&pid, &sid, &eid, &rid, &color, &role, &health, &svcState, &imageRef, &raw, &ip, &orgID, &projectID, &replica, &svcName, &envSlug); err != nil {
+		var raw, rawDeps []byte
+		if err := rows.Scan(&pid, &sid, &eid, &rid, &color, &role, &health, &svcState, &imageRef, &raw, &ip, &orgID, &projectID, &replica, &svcName, &envSlug, &rawDeps); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -108,11 +110,16 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 			w.Ports = []*pb.PortSpec{{ContainerPort: cfg.Port, Protocol: "tcp", HostPort: cfg.HostPort}}
 		}
 		ds.Workloads = append(ds.Workloads, w)
+		byService[eid+"/"+svcName] = append(byService[eid+"/"+svcName], w)
+		var names []string
+		_ = json.Unmarshal(rawDeps, &names) // not a list of names: no dependency
+		deps[w] = names
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	startAfter(ds.Workloads, deps, byService)
 	// Env, secrets and mounts of each release (M2). This runs after rows is closed: one query at a time.
 	// A kept stopped container needs no env: a secret of an old release may be destroyed (REQ-REL-008).
 	for _, w := range ds.Workloads {
@@ -143,6 +150,24 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 		return nil, err
 	}
 	return ds, nil
+}
+
+// startAfter resolves config.depends_on to the placements on this node that the agent waits for before it starts a
+// workload (08 section 7b): the live and candidate placements of the named services in the same environment. A
+// dependency on another node is not a hard one; the config check rejects services pinned to different nodes.
+func startAfter(ws []*pb.WorkloadSpec, deps map[*pb.WorkloadSpec][]string, byService map[string][]*pb.WorkloadSpec) {
+	for _, w := range ws {
+		if w.Role == "stopped" {
+			continue
+		}
+		for _, name := range deps[w] {
+			for _, d := range byService[w.EnvironmentId+"/"+name] {
+				if d.ServiceId != w.ServiceId && (d.Role == "live" || d.Role == "candidate") {
+					w.StartAfterPlacementIds = append(w.StartAfterPlacementIds, d.PlacementId)
+				}
+			}
+		}
+	}
 }
 
 // remoteLive is a live replica of a service, wherever it runs.

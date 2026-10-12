@@ -102,12 +102,16 @@ type Engine struct {
 	hold       bool
 	suppressed map[string]bool
 	pulled     map[string]bool
-	noRestart  map[string]bool    // container ids that already have the restart policy "no" (kept old containers)
-	refused    map[string]refusal // placements that the volume guard did not start
-	repaired   bool               // the restart policies of the old containers were fixed after the agent start
-	startMu    sync.Mutex         // one volume guard and container start at a time (reconcile, commands, restore)
-	hs         map[string]*hstate // health state by placement
-	ingMu      sync.Mutex         // one ingress load at a time
+	noRestart  map[string]bool          // container ids that already have the restart policy "no" (kept old containers)
+	refused    map[string]refusal       // placements that the volume guard did not start
+	repaired   bool                     // the restart policies of the old containers were fixed after the agent start
+	cached     bool                     // a desired state is saved on disk: the agent starts the workloads, Docker does not (REQ-DEPLOY-115)
+	waiting    map[string]*depWaitState // placements that wait for their dependencies
+	depWait    bool                     // the last pass left a placement waiting for a dependency
+	retrySet   bool                     // a soon reconcile is already planned (retry)
+	startMu    sync.Mutex               // one volume guard and container start at a time (reconcile, commands, restore)
+	hs         map[string]*hstate       // health state by placement
+	ingMu      sync.Mutex               // one ingress load at a time
 	ingSpec    [32]byte
 	ingHash    string
 	errs       []string
@@ -123,7 +127,7 @@ func New(d docker.Client, store *state.Store, network string, log *slog.Logger) 
 		log = slog.Default()
 	}
 	return &Engine{Docker: d, Store: store, Network: network, Log: log, hold: true,
-		suppressed: map[string]bool{}, pulled: map[string]bool{}, noRestart: map[string]bool{}, refused: map[string]refusal{}, inflight: map[string]bool{},
+		suppressed: map[string]bool{}, pulled: map[string]bool{}, noRestart: map[string]bool{}, refused: map[string]refusal{}, waiting: map[string]*depWaitState{}, inflight: map[string]bool{},
 		execs: map[string]*execSession{}, hs: map[string]*hstate{}, quotas: map[string]uint64{}, trigger: make(chan struct{}, 1)}
 }
 
@@ -138,6 +142,7 @@ func (e *Engine) Load() error {
 	}
 	e.mu.Lock()
 	e.desired = ds
+	e.cached = ds != nil
 	e.mu.Unlock()
 	return nil
 }
@@ -191,6 +196,8 @@ func (e *Engine) SetDesired(ds *agentv1.DesiredState) {
 	if newer {
 		if _, err := e.Store.SaveDesired(ds); err != nil {
 			e.Log.Error("cannot save desired state", "error", err)
+		} else {
+			e.cached = true
 		}
 		e.desired = ds
 		e.suppressed = map[string]bool{}
@@ -277,6 +284,8 @@ func (e *Engine) Reconcile(ctx context.Context) {
 		byName[c.Name] = c
 	}
 	wanted := map[string]bool{}
+	cycle := depCycles(ds)
+	waiting := false
 	for _, w := range stoppedFirst(ds.Workloads) {
 		wanted[w.ContainerName] = true
 		e.mu.Lock()
@@ -288,6 +297,20 @@ func (e *Engine) Reconcile(ctx context.Context) {
 		var ex *docker.Container
 		if c, ok := byName[w.ContainerName]; ok {
 			ex = &c
+		}
+		// A workload that must start waits until its dependencies on this node are healthy (REQ-DEPLOY-116).
+		if w.Role != "stopped" && !isUp(ex) && !cycle[w.PlacementId] {
+			if wait, err := e.waitDeps(ds, w, byName); wait {
+				waiting = true
+				if err != nil {
+					errs = append(errs, fmt.Sprintf("dependency_unhealthy: placement %s: %s", w.PlacementId, err))
+				}
+				continue
+			}
+		} else {
+			e.mu.Lock()
+			delete(e.waiting, w.PlacementId)
+			e.mu.Unlock()
 		}
 		if err := e.ensure(ctx, w, ex); err != nil {
 			msg := e.scrub(err.Error())
@@ -301,7 +324,16 @@ func (e *Engine) Reconcile(ctx context.Context) {
 			delete(e.refused, p)
 		}
 	}
+	for p := range e.waiting {
+		if !inDesired(ds, p) {
+			delete(e.waiting, p)
+		}
+	}
+	e.depWait = waiting
 	e.mu.Unlock()
+	if waiting && len(errs) == 0 {
+		e.retry(depPoll) // look again soon: a dependency may be healthy now
+	}
 	for _, c := range managed {
 		if wanted[c.Name] || c.Labels[LabelPlacement] == "" {
 			continue
@@ -345,7 +377,7 @@ func (e *Engine) finish(ctx context.Context, ds *agentv1.DesiredState, errs []st
 	}
 	e.mu.Lock()
 	actual.CaddyConfigHash = e.ingHash
-	if docked && len(errs) == 0 {
+	if docked && len(errs) == 0 && !e.depWait {
 		e.applied = ds.Version
 	}
 	actual.AppliedStateVersion = e.applied
@@ -353,7 +385,7 @@ func (e *Engine) finish(ctx context.Context, ds *agentv1.DesiredState, errs []st
 	e.mu.Unlock()
 	if len(errs) > 0 {
 		e.Log.Warn("reconcile finished with errors", "errors", errs)
-		time.AfterFunc(5*time.Second, e.kick) // try again soon, do not wait for the timer
+		e.retry(5 * time.Second) // try again soon, do not wait for the timer
 	}
 	actual.Errors = errs
 	actual.Domains = domains
@@ -453,9 +485,7 @@ func (e *Engine) containerSpec(w *agentv1.WorkloadSpec) docker.ContainerSpec {
 		// No NET_RAW: a workload must not forge source addresses or ARP on the shared bridge (REQ-SEC-106).
 		CapDrop: []string{"NET_RAW"},
 	}
-	if sp.RestartPolicy == "" {
-		sp.RestartPolicy = "always"
-	}
+	sp.RestartPolicy = e.dockerPolicy(w)
 	sp.IP = e.wantIP(w.Ip)
 	for _, p := range w.Ports {
 		proto := p.Protocol
@@ -546,14 +576,19 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 		}
 		sp := e.containerSpec(w)
 		sp.Mounts = mounts
-		if _, err := e.Docker.CreateAndStart(ctx, sp); err != nil {
+		id, err := e.Docker.CreateAndStart(ctx, sp)
+		if err != nil {
 			return &codedErr{"container_start_failed", err}
+		}
+		if sp.RestartPolicy == "no" {
+			e.mu.Lock()
+			e.noRestart[id] = true
+			e.mu.Unlock()
 		}
 		return nil
 	}
-	switch ex.State {
-	case "running", "restarting", "paused", "removing":
-		return nil
+	if isUp(ex) {
+		return e.agentPolicy(ctx, ex)
 	}
 	// The file mounts are written again: /run is empty after a reboot.
 	if _, err := e.prepareMounts(ctx, w); err != nil {
@@ -564,21 +599,201 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 	if err := e.guard(ctx, w, ex.ID); err != nil {
 		return err
 	}
-	// A container that was kept stopped has the policy "no": give it back its own policy.
-	policy := w.RestartPolicy
-	if policy == "" {
-		policy = "always"
-	}
+	// A container that was kept stopped has the policy "no". Without a saved desired state Docker starts it again
+	// after a reboot, so it gets back its own policy; with one the agent starts it and the policy stays "no".
+	policy := e.dockerPolicy(w)
 	if err := e.Docker.SetRestartPolicy(ctx, ex.ID, policy); err != nil {
 		return &codedErr{"container_start_failed", err}
 	}
 	e.mu.Lock()
-	delete(e.noRestart, ex.ID)
+	if policy == "no" {
+		e.noRestart[ex.ID] = true
+	} else {
+		delete(e.noRestart, ex.ID)
+	}
 	e.mu.Unlock()
 	if err := e.Docker.Start(ctx, ex.ID); err != nil {
 		return &codedErr{"container_start_failed", err}
 	}
 	return nil
+}
+
+// retry plans one reconcile after d. While one is planned, more calls do nothing: passes that plan a retry
+// must not multiply the timers.
+func (e *Engine) retry(d time.Duration) {
+	e.mu.Lock()
+	set := e.retrySet
+	e.retrySet = true
+	e.mu.Unlock()
+	if set {
+		return
+	}
+	time.AfterFunc(d, func() {
+		e.mu.Lock()
+		e.retrySet = false
+		e.mu.Unlock()
+		e.kick()
+	})
+}
+
+// isUp tells if a container exists and runs, or is in a state the agent must not start it from.
+func isUp(c *docker.Container) bool {
+	if c == nil {
+		return false
+	}
+	switch c.State {
+	case "running", "restarting", "paused", "removing":
+		return true
+	}
+	return false
+}
+
+// dockerPolicy is the Docker restart policy of a live or candidate container. When the desired state is saved on
+// disk the agent starts the workloads after a boot in the order of their dependencies, so Docker must not start
+// them: "no" (REQ-DEPLOY-115). Before that (a new node, a failed save) Docker keeps the policy of the service.
+func (e *Engine) dockerPolicy(w *agentv1.WorkloadSpec) string {
+	e.mu.Lock()
+	cached := e.cached
+	e.mu.Unlock()
+	if cached {
+		return "no"
+	}
+	if w.RestartPolicy == "" {
+		return "always"
+	}
+	return w.RestartPolicy
+}
+
+// agentPolicy sets the policy "no" on a running workload container made before the desired state was saved (an
+// older agent made it with "always"). It runs once per container and agent process.
+func (e *Engine) agentPolicy(ctx context.Context, c *docker.Container) error {
+	e.mu.Lock()
+	skip := !e.cached || e.noRestart[c.ID] || c.State == "removing"
+	e.mu.Unlock()
+	if skip {
+		return nil
+	}
+	if err := e.Docker.SetRestartPolicy(ctx, c.ID, "no"); err != nil {
+		return err
+	}
+	e.Log.Info("restart policy set to no: the agent starts this container after a boot", "name", c.Name)
+	e.mu.Lock()
+	e.noRestart[c.ID] = true
+	e.mu.Unlock()
+	return nil
+}
+
+// Dependency gate (REQ-DEPLOY-116).
+const (
+	depPoll    = 2 * time.Second // how often a waiting placement is looked at again
+	depTimeout = 3 * time.Minute // wait for a dependency, after its start period, before dependency_unhealthy
+)
+
+// depWaitState is the wait of one placement for its dependencies.
+type depWaitState struct {
+	since    time.Time
+	reported bool // the timeout was logged
+}
+
+// waitDeps tells if w must wait for its dependencies on this node. A dependency is ready when it is healthy (or
+// runs, when it has no health check). The error is set when the wait is longer than the start period of the
+// dependency plus depTimeout: the workload stays stopped and the next passes check again.
+func (e *Engine) waitDeps(ds *agentv1.DesiredState, w *agentv1.WorkloadSpec, byName map[string]docker.Container) (bool, error) {
+	var notReady []string
+	var limit time.Duration
+	for _, id := range w.StartAfterPlacementIds {
+		var d *agentv1.WorkloadSpec
+		for _, x := range ds.Workloads {
+			if x.PlacementId == id {
+				d = x
+				break
+			}
+		}
+		if d == nil || d.Role == "stopped" || d.PlacementId == w.PlacementId {
+			continue // not on this node any more: not a hard dependency
+		}
+		c, ok := byName[d.ContainerName]
+		health := e.healthOf(id)
+		if d.Health == nil {
+			if ok && c.State == "running" {
+				continue
+			}
+		} else if health == "healthy" {
+			continue
+		}
+		notReady = append(notReady, fmt.Sprintf("%s (health: %s)", id, health))
+		var start time.Duration
+		if d.Health != nil {
+			start = time.Duration(d.Health.StartPeriodSeconds) * time.Second
+		}
+		limit = max(limit, start+depTimeout)
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if len(notReady) == 0 {
+		if _, ok := e.waiting[w.PlacementId]; ok {
+			e.Log.Info("dependencies are healthy, starting", "placement", w.PlacementId)
+		}
+		delete(e.waiting, w.PlacementId)
+		return false, nil
+	}
+	st, ok := e.waiting[w.PlacementId]
+	if !ok {
+		st = &depWaitState{since: time.Now()}
+		e.waiting[w.PlacementId] = st
+		e.Log.Info("waiting for dependencies", "placement", w.PlacementId, "dependencies", notReady)
+	}
+	if waited := time.Since(st.since); waited >= limit {
+		err := fmt.Errorf("the dependencies %s are not healthy after %s; the workload stays stopped and is retried",
+			strings.Join(notReady, ", "), limit)
+		if !st.reported {
+			st.reported = true
+			e.Log.Warn("workload not started", "placement", w.PlacementId, "error", err)
+		}
+		return true, err
+	}
+	return true, nil
+}
+
+// depCycles returns the placements that are in a cycle of start_after_placement_ids. The server rejects such a
+// config; the agent starts them without waiting rather than never.
+func depCycles(ds *agentv1.DesiredState) map[string]bool {
+	edges := map[string][]string{}
+	for _, w := range ds.Workloads {
+		edges[w.PlacementId] = w.StartAfterPlacementIds
+	}
+	out := map[string]bool{}
+	state := map[string]int{} // 1 visiting, 2 done
+	var stack []string
+	var visit func(p string)
+	visit = func(p string) {
+		state[p] = 1
+		stack = append(stack, p)
+		for _, d := range edges[p] {
+			if _, ok := edges[d]; !ok {
+				continue
+			}
+			switch state[d] {
+			case 0:
+				visit(d)
+			case 1:
+				for i := len(stack) - 1; i >= 0; i-- {
+					out[stack[i]] = true
+					if stack[i] == d {
+						break
+					}
+				}
+			}
+		}
+		stack = stack[:len(stack)-1]
+		state[p] = 2
+	}
+	for _, w := range ds.Workloads {
+		if state[w.PlacementId] == 0 {
+			visit(w.PlacementId)
+		}
+	}
+	return out
 }
 
 // refusal is a start that the volume guard refused, for the health check of the placement.

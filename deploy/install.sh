@@ -359,6 +359,8 @@ Description=Polipan agent
 After=docker.service network-online.target
 Wants=network-online.target
 Requires=docker.service
+# The agent starts the workloads after a boot (Docker restart policy no): it must never give up restarting.
+StartLimitIntervalSec=0
 
 [Service]
 EnvironmentFile=/etc/polipan/agent.env

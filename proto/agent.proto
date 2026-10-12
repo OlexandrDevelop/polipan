@@ -240,6 +240,9 @@ message WorkloadSpec {
   map<string, string> labels = 20;
   string registry_auth_ref = 21;     // credentials key for pulls from an external registry
   string ip = 22;                    // fixed address in the network of the node (inside the mesh subnet of the node)
+  // Placements on this node that must be healthy before this one is started by the agent (boot, self-heal).
+  // The server resolves config.depends_on to the live and candidate placements of those services on the same node.
+  repeated string start_after_placement_ids = 23;
 }
 
 message Mount {
