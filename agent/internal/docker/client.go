@@ -399,6 +399,11 @@ func (c *HTTPClient) Restart(ctx context.Context, id string, grace int) error {
 	return c.post(ctx, "/containers/"+url.PathEscape(id)+"/restart", url.Values{"t": {strconv.Itoa(grace)}}, nil)
 }
 
+func (c *HTTPClient) SetRestartPolicy(ctx context.Context, id, policy string) error {
+	body := map[string]any{"RestartPolicy": map[string]any{"Name": policy}}
+	return c.post(ctx, "/containers/"+url.PathEscape(id)+"/update", nil, body)
+}
+
 func (c *HTTPClient) Remove(ctx context.Context, id string, force bool) error {
 	resp, err := c.do(ctx, http.MethodDelete, "/containers/"+url.PathEscape(id), url.Values{"force": {strconv.FormatBool(force)}}, nil, nil)
 	if err != nil {

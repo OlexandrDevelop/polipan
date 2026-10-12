@@ -478,6 +478,10 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 	if stopped {
 		if ex != nil && ex.State == "running" {
 			e.closeExecs(w.PlacementId)
+			// A kept old container must not start again with Docker after a reboot: it shares its volumes with the live one.
+			if err := e.Docker.SetRestartPolicy(ctx, ex.ID, "no"); err != nil {
+				return err
+			}
 			return e.Docker.Stop(ctx, ex.ID, int(w.StopGraceSeconds))
 		}
 		return nil
@@ -516,6 +520,14 @@ func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker
 	// The file mounts are written again: /run is empty after a reboot.
 	if _, err := e.prepareMounts(ctx, w); err != nil {
 		return err
+	}
+	// A container that was kept stopped has the policy "no": give it back its own policy.
+	policy := w.RestartPolicy
+	if policy == "" {
+		policy = "always"
+	}
+	if err := e.Docker.SetRestartPolicy(ctx, ex.ID, policy); err != nil {
+		return &codedErr{"container_start_failed", err}
 	}
 	if err := e.Docker.Start(ctx, ex.ID); err != nil {
 		return &codedErr{"container_start_failed", err}

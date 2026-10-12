@@ -129,6 +129,9 @@ func (f *fakeDocker) Inspect(_ context.Context, n string) (*docker.Container, er
 	return nil, docker.ErrNotFound
 }
 func (f *fakeDocker) Logs(context.Context, string, int) (string, error) { return "", nil }
+func (f *fakeDocker) SetRestartPolicy(context.Context, string, string) error {
+	return nil
+}
 func (f *fakeDocker) ImageRemove(_ context.Context, ref string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

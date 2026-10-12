@@ -120,6 +120,8 @@ type Client interface {
 	Start(ctx context.Context, id string) error
 	Stop(ctx context.Context, id string, graceSeconds int) error
 	Restart(ctx context.Context, id string, graceSeconds int) error
+	// SetRestartPolicy changes the restart policy (always | no | ...) of an existing container.
+	SetRestartPolicy(ctx context.Context, id, policy string) error
 	// Remove removes the container. force kills it first.
 	Remove(ctx context.Context, id string, force bool) error
 	// List returns all containers (also stopped) that have every label pair in labels.
