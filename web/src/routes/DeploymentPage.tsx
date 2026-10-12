@@ -2,6 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from '@tanstack/react-router'
+import { failureDetail, stepMessage, warningMessage } from '@/deploymentText'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { components } from '@api/schema'
 import { api } from '@/api/client'
@@ -241,6 +242,18 @@ export function DeploymentPage() {
     await queryClient.refetchQueries({ queryKey: ['deployment', params.deployment] })
     setDialog('rollback')
   }
+  const failure = failureDetail(d.failure_detail)
+  // A deploy key is made in the settings of the service. The link opens that section.
+  const keyLink = (
+    <Link
+      to="/o/$org/p/$project/e/$env/s/$service/$tab"
+      params={{ ...params, tab: 'settings' }}
+      hash="deploy-key"
+      className="inline-flex min-h-8 items-center border border-primary bg-primary px-3 py-1 font-bold text-on-primary hover:brightness-110 coarse:min-h-11"
+    >
+      {t('deployment.open_deploy_key')}
+    </Link>
+  )
   const redeploy = deployAccess === 'allow' && scope.state === 'ok' && (
     <Button onClick={() => setDialog('deploy')}>{t('deployment.deploy_again')}</Button>
   )
@@ -275,11 +288,11 @@ export function DeploymentPage() {
           <Banner
             variant="danger"
             title={t('deployment.failed_title')}
-            action={redeploy || undefined}
+            action={failure?.needsDeployKey ? keyLink : redeploy || undefined}
           >
             <p>{tState('deployment.reason', d.failure_reason)}</p>
-            {d.failure_detail && <p className="text-muted">{d.failure_detail}</p>}
-            <p>{t('deployment.failed_next')}</p>
+            {failure && <p className="text-muted">{failure.text}</p>}
+            {!failure?.needsDeployKey && <p>{t('deployment.failed_next')}</p>}
           </Banner>
         )}
         {d.state === 'rolled_back' && (
@@ -289,7 +302,7 @@ export function DeploymentPage() {
             action={redeploy || undefined}
           >
             {d.failure_reason && <p>{tState('deployment.reason', d.failure_reason)}</p>}
-            {d.failure_detail && <p className="text-muted">{d.failure_detail}</p>}
+            {failure && <p className="text-muted">{failure.text}</p>}
             <p>{t('deployment.rolled_back_next')}</p>
           </Banner>
         )}
@@ -320,7 +333,7 @@ export function DeploymentPage() {
         )}
         {(d.warnings ?? []).map((w) => (
           <Banner key={w.code} variant="warning">
-            {w.message ?? w.code}
+            {warningMessage(w)}
           </Banner>
         ))}
       </div>
@@ -356,7 +369,9 @@ export function DeploymentPage() {
                       <Time value={s.time} />
                     </span>
                     {s.message && (
-                      <span className="w-full break-words text-muted">{s.message}</span>
+                      <span className="w-full break-words text-muted">
+                        {stepMessage(s.message)}
+                      </span>
                     )}
                   </li>
                 )

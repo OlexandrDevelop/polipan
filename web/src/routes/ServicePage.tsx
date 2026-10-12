@@ -305,7 +305,6 @@ function SettingsTab({
   onChanged: () => void
 }) {
   const git = service.source_type === 'git'
-  const [section, setSection] = useState('source')
   const items: SectionItem[] = [
     { id: 'source', label: t('settings.source') },
     { id: 'run', label: t('settings.run') },
@@ -316,6 +315,11 @@ function SettingsTab({
     { id: 'placement', label: t('placement.title') },
     { id: 'danger', label: t('delete.title'), danger: true },
   ]
+  // A link can open a section: the address ends with #deploy-key.
+  const [section, setSection] = useState(() => {
+    const wanted = window.location.hash.replace('#', '')
+    return items.some((i) => i.id === wanted) ? wanted : 'source'
+  })
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
       <SectionNav
