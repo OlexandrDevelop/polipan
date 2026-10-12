@@ -298,8 +298,9 @@ func (e *Engine) Reconcile(ctx context.Context) {
 		if c, ok := byName[w.ContainerName]; ok {
 			ex = &c
 		}
-		// A workload that must start waits until its dependencies on this node are healthy (REQ-DEPLOY-116).
-		if w.Role != "stopped" && !isUp(ex) && !cycle[w.PlacementId] {
+		// A workload that must start, or be made again, waits until its dependencies on this node are healthy
+		// (REQ-DEPLOY-116). A running container that must be made again keeps running while it waits.
+		if w.Role != "stopped" && (!isUp(ex) || e.stale(w, ex)) && !cycle[w.PlacementId] {
 			if wait, err := e.waitDeps(ds, w, byName); wait {
 				waiting = true
 				if err != nil {
@@ -515,9 +516,7 @@ func (e *Engine) wantIP(ip string) string {
 // ensure brings one workload to its role. ex is the existing container or nil.
 func (e *Engine) ensure(ctx context.Context, w *agentv1.WorkloadSpec, ex *docker.Container) error {
 	stopped := w.Role == "stopped"
-	if ex != nil && (ex.Image != w.ImageRef || ex.Labels[LabelRelease] != w.ReleaseId ||
-		(ex.State == "running" && ex.IP == "" && e.Network != "host") ||
-		(ex.State == "running" && e.wantIP(w.Ip) != "" && ex.IP != w.Ip)) {
+	if e.stale(w, ex) {
 		e.Log.Info("recreating container", "name", w.ContainerName)
 		e.closeExecs(w.PlacementId)
 		// The volumes are not touched: the new container mounts the same data (AC-VOL-01).
@@ -636,6 +635,13 @@ func (e *Engine) retry(d time.Duration) {
 	})
 }
 
+// stale tells if the existing container must be removed and made again: other image, release or address.
+func (e *Engine) stale(w *agentv1.WorkloadSpec, ex *docker.Container) bool {
+	return ex != nil && (ex.Image != w.ImageRef || ex.Labels[LabelRelease] != w.ReleaseId ||
+		(ex.State == "running" && ex.IP == "" && e.Network != "host") ||
+		(ex.State == "running" && e.wantIP(w.Ip) != "" && ex.IP != w.Ip))
+}
+
 // isUp tells if a container exists and runs, or is in a state the agent must not start it from.
 func isUp(c *docker.Container) bool {
 	if c == nil {
@@ -712,13 +718,15 @@ func (e *Engine) waitDeps(ds *agentv1.DesiredState, w *agentv1.WorkloadSpec, byN
 		if d == nil || d.Role == "stopped" || d.PlacementId == w.PlacementId {
 			continue // not on this node any more: not a hard dependency
 		}
+		// Ready only when the dependency container runs now and, with a health check, the healthy result
+		// belongs to this very container (not to one that stopped or was replaced since the last check).
 		c, ok := byName[d.ContainerName]
-		health := e.healthOf(id)
-		if d.Health == nil {
-			if ok && c.State == "running" {
-				continue
-			}
-		} else if health == "healthy" {
+		running := ok && c.State == "running"
+		health := "unknown"
+		if running {
+			health = e.healthOfContainer(id, c.ID)
+		}
+		if running && (d.Health == nil || health == "healthy") {
 			continue
 		}
 		notReady = append(notReady, fmt.Sprintf("%s (health: %s)", id, health))

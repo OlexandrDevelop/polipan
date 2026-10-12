@@ -64,6 +64,17 @@ func (e *Engine) healthOf(placement string) string {
 	return "unknown"
 }
 
+// healthOfContainer is the health of a placement only when the last checks ran on this container. Any other
+// container (stopped, replaced, not checked yet) is "unknown".
+func (e *Engine) healthOfContainer(placement, containerID string) string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if s := e.hs[placement]; s != nil && s.containerID == containerID && s.health != "" {
+		return s.health
+	}
+	return "unknown"
+}
+
 // healthLoop runs the checks until ctx ends.
 func (e *Engine) healthLoop(ctx context.Context) {
 	t := time.NewTicker(healthTick)
