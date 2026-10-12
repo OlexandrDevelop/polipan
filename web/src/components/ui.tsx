@@ -10,7 +10,7 @@ import type {
   TextareaHTMLAttributes,
 } from 'react'
 import { useCalm } from '@/display'
-import { t } from '@/i18n'
+import { t, tState } from '@/i18n'
 import type { Tone } from '@/status'
 
 const touch = 'coarse:min-h-11 coarse:min-w-11'
@@ -694,6 +694,76 @@ export function SectionTabs({
       </div>
     </div>
   )
+}
+
+// The phases of a deployment, in order. A state that has no segment of its own (image ready, shifting, draining)
+// shows on the nearest one.
+const PHASES = ['queued', 'building', 'starting', 'health_checking', 'switching', 'live'] as const
+const PHASE_OF: Record<string, number> = {
+  queued: 0,
+  building: 1,
+  image_ready: 2,
+  starting: 2,
+  health_checking: 3,
+  shifting: 4,
+  switching: 4,
+  draining: 4,
+  live: 5,
+}
+
+// The progress of a deployment as segments. The phase that runs has a moving light. A finished deployment is full,
+// and a failed one shows the phase where it stopped in red.
+export function DeployProgress({
+  state,
+  failedAfter,
+  compact,
+}: {
+  state: string | undefined
+  // The last good state of a failed deployment.
+  failedAfter?: string
+  compact?: boolean
+}) {
+  const failed = state === 'failed'
+  // The phase that runs now, or for a failed deployment the first phase that did not finish.
+  const at = failed ? (PHASE_OF[failedAfter ?? ''] ?? -1) + 1 : (PHASE_OF[state ?? ''] ?? -1)
+  const done = state === 'live'
+  const label = tState('status.deployment', state)
+  return (
+    <div
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={PHASES.length - 1}
+      aria-valuenow={Math.max(0, Math.min(at, PHASES.length - 1))}
+      aria-valuetext={label}
+      className="space-y-2"
+    >
+      <div className="flex gap-1">
+        {PHASES.map((p, i) => (
+          <span
+            key={p}
+            className="seg"
+            data-state={
+              done || i < at ? 'done' : i === at ? (failed ? 'failed' : 'active') : 'idle'
+            }
+          />
+        ))}
+      </div>
+      {!compact && (
+        <ol className="flex justify-between gap-1 text-xs text-muted">
+          {PHASES.map((p, i) => (
+            <li key={p} className={i === at && !done ? 'font-bold text-text' : undefined}>
+              {tState('status.deployment', p)}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  )
+}
+
+// A bar with a light that moves, for work that has no known steps.
+export function BusyBar() {
+  return <div aria-hidden="true" className="sweep" />
 }
 
 const METER_CELLS = 12

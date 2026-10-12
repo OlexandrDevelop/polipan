@@ -20,6 +20,7 @@ import {
   Banner,
   Button,
   CheckboxField,
+  DeployProgress,
   Panel,
   Skeleton,
   Spinner,
@@ -370,6 +371,12 @@ export function DeploymentPage() {
           <CanaryBar deployment={d} gate={gate} access={deployAccess} />
         </div>
       )}
+      <div className="mb-8">
+        <DeployProgress
+          state={d.state}
+          failedAfter={[...steps].reverse().find((x) => x.state !== 'failed')?.state}
+        />
+      </div>
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
         <Panel title={t('deployment.steps')} className="space-y-3">
           {steps.length === 0 ? (

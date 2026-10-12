@@ -295,6 +295,49 @@ main {
   font-weight: 700;
 }
 
+/* The progress of a deployment: one segment for each phase. The phase that runs has a light that moves. Only
+   transform animates. Calm mode and "reduce motion" stop the movement, and the segments still show the phase. */
+.seg {
+  position: relative;
+  height: 6px;
+  flex: 1;
+  overflow: hidden;
+  background: var(--color-border);
+  transition: background-color var(--motion-slow) var(--ease);
+}
+.seg[data-state='done'] {
+  background: var(--color-primary);
+}
+.seg[data-state='active'] {
+  background: color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+}
+.seg[data-state='active']::after,
+.sweep::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
+  animation: sweep 1.4s var(--ease) infinite;
+}
+.seg[data-state='failed'] {
+  background: var(--color-danger);
+}
+.sweep {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-primary) 22%, var(--color-border));
+}
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(230%);
+  }
+}
+
 /* Text meter: [||||    ] 41% (T7). */
 .meter {
   font-variant-ligatures: none;

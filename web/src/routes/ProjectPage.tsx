@@ -12,6 +12,7 @@ import { Modal } from '@/components/Modal'
 import { PromoteDialog } from '@/components/PromoteDialog'
 import { PageHeader } from '@/components/PageHeader'
 import {
+  BusyBar,
   Button,
   Card,
   CheckboxField,
@@ -274,6 +275,7 @@ function ServiceCards({ environment, project }: { environment: Environment; proj
                 tone={serviceTone(service.status)}
                 label={tState('status.service', service.status)}
               />
+              {service.status === 'deploying' && <BusyBar />}
               {typeof service.config?.image === 'string' && (
                 <p className="break-all font-mono text-sm text-muted">{service.config.image}</p>
               )}

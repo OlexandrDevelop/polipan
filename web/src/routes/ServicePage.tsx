@@ -18,6 +18,7 @@ import {
   Button,
   Panel,
   EmptyState,
+  DeployProgress,
   EnvironmentBadges,
   KeyHint,
   Pane,
@@ -202,7 +203,9 @@ function Overview({
             </Link>
           }
         >
-          {tState('status.deployment', latest.state)}
+          <div className="w-full min-w-[16rem] max-w-md pt-1">
+            <DeployProgress state={latest.state} compact />
+          </div>
         </Banner>
       )}
       {latest?.state === 'failed' && <FailedBanner latest={latest} base={base} />}

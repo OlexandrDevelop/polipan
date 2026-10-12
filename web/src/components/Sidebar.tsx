@@ -150,7 +150,10 @@ function ServiceLeaf({
         className={row}
         style={pad(3)}
       >
-        <span aria-hidden="true" className={`text-xs ${dot[serviceTone(service.status)]}`}>
+        <span
+          aria-hidden="true"
+          className={`text-xs ${dot[serviceTone(service.status)]} ${service.status === 'deploying' ? 'animate-pulse' : ''}`}
+        >
           ●
         </span>
         <span className="truncate">{service.name}</span>
