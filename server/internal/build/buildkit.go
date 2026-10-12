@@ -331,3 +331,50 @@ func validFor(certFile string, d time.Duration) bool {
 	c, err := x509.ParseCertificate(b.Bytes)
 	return err == nil && time.Until(c.NotAfter) > d
 }
+
+// DiskSpace is the size and the free space of one filesystem, in bytes and in inodes.
+// The agent gives the same JSON for the Docker data-root of a node (self-check "disk").
+type DiskSpace struct {
+	Path        string `json:"path"`
+	TotalBytes  uint64 `json:"total_bytes"`
+	FreeBytes   uint64 `json:"free_bytes"`
+	TotalInodes uint64 `json:"total_inodes"`
+	FreeInodes  uint64 `json:"free_inodes"`
+	Error       string `json:"error,omitempty"`
+}
+
+// ReservePercent is the part of a filesystem that a new release must leave free (08 section 4, disk admission).
+const ReservePercent = 5
+
+// Known tells if the size of the filesystem is known.
+func (s DiskSpace) Known() bool { return s.Error == "" && s.Path != "" && s.TotalBytes > 0 }
+
+// RequiredBytes is the greater of floor and ReservePercent of the size.
+func (s DiskSpace) RequiredBytes(floor uint64) uint64 {
+	return max(floor, s.TotalBytes/100*ReservePercent)
+}
+
+// RequiredInodes is ReservePercent of the inodes. A filesystem without a fixed inode count (btrfs) gives 0.
+func (s DiskSpace) RequiredInodes() uint64 { return s.TotalInodes / 100 * ReservePercent }
+
+// Low tells if a new release must not use the filesystem: the size is unknown, or free bytes or
+// free inodes are below the reserve.
+func (s DiskSpace) Low(floor uint64) bool {
+	if !s.Known() {
+		return true
+	}
+	return s.FreeBytes < s.RequiredBytes(floor) || (s.TotalInodes > 0 && s.FreeInodes < s.RequiredInodes())
+}
+
+// Detail is the failure detail of a disk_low deployment: filesystem, free_bytes, required_bytes and the inodes.
+func (s DiskSpace) Detail(floor uint64) string {
+	if !s.Known() {
+		why := s.Error
+		if why == "" {
+			why = "the size of the filesystem is not known"
+		}
+		return fmt.Sprintf("filesystem=%s free_bytes=unknown required_bytes=%d (%s)", s.Path, floor, why)
+	}
+	return fmt.Sprintf("filesystem=%s free_bytes=%d required_bytes=%d free_inodes=%d required_inodes=%d",
+		s.Path, s.FreeBytes, s.RequiredBytes(floor), s.FreeInodes, s.RequiredInodes())
+}

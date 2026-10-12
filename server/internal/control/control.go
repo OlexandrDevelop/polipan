@@ -68,6 +68,9 @@ type Deps struct {
 	Max5xxRate float64
 	// Gates gives the ingress numbers of a canary step from the metrics store. Nil: a canary gate checks health only.
 	Gates GateSource
+	// DiskReserveBytes is the byte floor of the disk admission of a new release (config disk_reserve_bytes).
+	// 0 turns the admission off (tests and the CLI commands).
+	DiskReserveBytes uint64
 	// CanaryPauseMax is how long a canary may stay paused before it is rolled back (default 24 h, canary_pause_max).
 	CanaryPauseMax time.Duration
 }

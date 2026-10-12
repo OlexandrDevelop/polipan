@@ -69,7 +69,8 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		return err
 	}
 	builds := control.SetupBuilds(ctx, pool, ca, kek, os.Getenv, log) // git builds and registry (S-B)
-	ctl := control.New(control.Deps{DB: pool, Clock: clk, Log: log, Config: cfg, CA: ca, Sender: gw, Secrets: sec, Build: builds})
+	ctl := control.New(control.Deps{DB: pool, Clock: clk, Log: log, Config: cfg, CA: ca, Sender: gw, Secrets: sec, Build: builds,
+		DiskReserveBytes: cfg.DiskReserveBytes})
 	// M8: the metrics and log stores, the ingest of the agents and the alert engine. Without the store URLs
 	// monitoring is off: the canary gate checks health only and metric rules do not run.
 	var backends *obs.Backends

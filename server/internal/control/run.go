@@ -6,12 +6,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	pb "github.com/polipan/polipan/proto/agentv1"
+	"github.com/polipan/polipan/server/internal/build"
 	"github.com/polipan/polipan/server/internal/gateway"
 )
 
@@ -103,6 +105,9 @@ func (r *run) execute(ctx context.Context) *deployErr {
 		return e
 	}
 	if e := r.prepare(ctx); e != nil {
+		return e
+	}
+	if e := r.checkNodeDisk(ctx, "before start"); e != nil {
 		return e
 	}
 	if e := r.startContainers(ctx); e != nil {
@@ -206,11 +211,19 @@ func (r *run) prepare(ctx context.Context) *deployErr {
 	if d.trigger == "move" || d.trigger == "failover" {
 		return r.prepareSameRelease(ctx)
 	}
+	if r.svc.sourceType == "git" {
+		if e := r.checkBuildDisk("before build"); e != nil {
+			return e
+		}
+	}
 	built, berr := c.buildIfGit(ctx, d.id, d.serviceID)
 	if berr != nil {
 		return berr
 	}
 	if r.svc.sourceType == "git" {
+		if e := r.checkBuildDisk("after build"); e != nil {
+			return e
+		}
 		if e := r.step(ctx, "image_ready", "image built", nil); e != nil {
 			return e
 		}
@@ -306,6 +319,9 @@ func (r *run) prepareSameRelease(ctx context.Context) *deployErr {
 
 // pullAll pulls the image on every node that gets a replica. The first answer gives the reference by digest.
 func (r *run) pullAll(ctx context.Context, image string) (imageRef, digest string, e *deployErr) {
+	if e := r.checkNodeDisk(ctx, "before pull"); e != nil {
+		return "", "", e
+	}
 	for i, n := range distinct(r.nodes) {
 		ref, dig, err := r.pull(ctx, n, image)
 		if err != nil {
@@ -407,6 +423,77 @@ func (r *run) checkCapacity(ctx context.Context) *deployErr {
 			"message": "The node has room for one copy only, so the old container stops before the new one starts."}})
 		_, _ = c.DB.Exec(ctx, `UPDATE deployments SET strategy = 'recreate', warnings = warnings || $2::jsonb WHERE id = $1`, r.d.id, warn)
 		return nil
+	}
+	return nil
+}
+
+// ---- disk admission (08 section 4, disk admission) ----
+
+// admitsDisk tells if the disk admission applies: only to a new release. A rollback, a move and a failover
+// run a release the node had before, and running workloads are never touched.
+func (r *run) admitsDisk() bool {
+	if r.c.DiskReserveBytes == 0 {
+		return false
+	}
+	switch r.d.trigger {
+	case "rollback", "move", "failover":
+		return false
+	}
+	return true
+}
+
+// checkBuildDisk checks the filesystems of the server that a git build fills: the build folder (the checkout and
+// the image archive) and the registry folder. Both are Docker volumes, so they are on the filesystem of the
+// buildkit-state and registry-data volumes too.
+func (r *run) checkBuildDisk(when string) *deployErr {
+	b := r.c.Build
+	if !r.admitsDisk() || b == nil {
+		return nil
+	}
+	dirs := []string{b.WorkDir}
+	if dirs[0] == "" {
+		dirs[0] = os.TempDir()
+	}
+	if b.Registry != nil && b.Registry.Cfg.Dir != "" {
+		dirs = append(dirs, b.Registry.Cfg.Dir)
+	}
+	for _, dir := range dirs {
+		if s := build.Disk(dir); s.Low(r.c.DiskReserveBytes) {
+			return fail(ReasonDiskLow, "%s: server %s", when, s.Detail(r.c.DiskReserveBytes))
+		}
+	}
+	return nil
+}
+
+// checkNodeDisk asks every node of the new replicas for the free space of its Docker data-root (self-check).
+// An agent that does not give it is refused: the size is not known.
+func (r *run) checkNodeDisk(ctx context.Context, when string) *deployErr {
+	if !r.admitsDisk() {
+		return nil
+	}
+	c := r.c
+	for _, n := range distinct(r.nodes) {
+		ack, err := c.sendCmd(ctx, n, r.d.id, "disk-"+when+"-"+n, &pb.Command{Body: &pb.Command_SelfCheck{SelfCheck: &pb.SelfCheck{}}}, 30*time.Second)
+		if err != nil {
+			return fail(ReasonNodeUnavailable, "disk check: %v", err)
+		}
+		var res struct {
+			Disk build.DiskSpace `json:"disk"`
+		}
+		if !ack.GetOk() {
+			res.Disk.Error = "self-check: " + ack.GetErrorCode() + ": " + ack.GetErrorMessage()
+		} else if err := json.Unmarshal(ack.GetResultJson(), &res); err != nil {
+			res.Disk.Error = "self-check: " + err.Error()
+		}
+		if res.Disk.Path == "" {
+			res.Disk.Path = "docker-data-root"
+			if res.Disk.Error == "" {
+				res.Disk.Error = "the agent gave no disk space"
+			}
+		}
+		if res.Disk.Low(c.DiskReserveBytes) {
+			return fail(ReasonDiskLow, "%s: node %s %s", when, n, res.Disk.Detail(c.DiskReserveBytes))
+		}
 	}
 	return nil
 }

@@ -30,6 +30,24 @@ func isTmpfs(dir string) error {
 	return nil
 }
 
+// diskSpace reads the size and the free space of the filesystem that holds path, in bytes and in inodes.
+// Free bytes are the bytes a process without root can use.
+func diskSpace(path string) (d diskInfo) {
+	d.Path = path
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(path, &st); err != nil {
+		d.Error = err.Error()
+		return d
+	}
+	unit := uint64(st.Frsize)
+	if unit == 0 {
+		unit = uint64(st.Bsize)
+	}
+	d.TotalBytes, d.FreeBytes = st.Blocks*unit, st.Bavail*unit
+	d.TotalInodes, d.FreeInodes = st.Files, st.Ffree
+	return d
+}
+
 // xfsQuota sets an XFS project quota with the xfs_quota tool. It needs XFS mounted with prjquota.
 type xfsQuota struct{}
 

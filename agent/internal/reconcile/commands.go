@@ -273,7 +273,37 @@ func (e *Engine) streamLogs(ctx context.Context, cmdID string, sl *agentv1.Strea
 	return []byte("{}"), "", ""
 }
 
-// selfCheck tests Docker, Caddy and WireGuard (REQ-NODE-011, the join checks of 09 section 2).
+// diskInfo is the size and the free space of the Docker data-root. The server uses it for the disk admission of a
+// new release (08 section 4, disk admission).
+type diskInfo struct {
+	Path        string `json:"path"`
+	TotalBytes  uint64 `json:"total_bytes"`
+	FreeBytes   uint64 `json:"free_bytes"`
+	TotalInodes uint64 `json:"total_inodes"`
+	FreeInodes  uint64 `json:"free_inodes"`
+	Error       string `json:"error,omitempty"`
+}
+
+// dockerDisk reads the free space of the Docker data-root. An error is in the result: the server then refuses.
+func (e *Engine) dockerDisk(ctx context.Context) diskInfo {
+	d, ok := e.Docker.(interface {
+		RootDir(context.Context) (string, error)
+	})
+	if !ok {
+		return diskInfo{Path: "docker-data-root", Error: "the Docker client gives no data-root"}
+	}
+	root, err := d.RootDir(ctx)
+	if err != nil {
+		return diskInfo{Path: "docker-data-root", Error: "docker: " + err.Error()}
+	}
+	if root == "" {
+		return diskInfo{Path: "docker-data-root", Error: "docker gave no data-root"}
+	}
+	return diskSpace(root)
+}
+
+// selfCheck tests Docker, Caddy and WireGuard (REQ-NODE-011, the join checks of 09 section 2) and gives the
+// free space of the Docker data-root.
 func (e *Engine) selfCheck(ctx context.Context) ([]byte, string, string) {
 	res := struct {
 		Docker      bool     `json:"docker"`
@@ -281,12 +311,14 @@ func (e *Engine) selfCheck(ctx context.Context) ([]byte, string, string) {
 		Wireguard   bool     `json:"wireguard"`
 		ClockSkewMS int64    `json:"clock_skew_ms"`
 		Errors      []string `json:"errors,omitempty"`
+		Disk        diskInfo `json:"disk"`
 	}{}
 	if _, err := e.Docker.Ping(ctx); err != nil {
 		res.Errors = append(res.Errors, "docker: "+err.Error())
 	} else {
 		res.Docker = true
 	}
+	res.Disk = e.dockerDisk(ctx)
 	if v, ok := e.Ingress.(interface{ Version(context.Context) string }); ok {
 		res.Caddy = v.Version(ctx) != ""
 	} else {

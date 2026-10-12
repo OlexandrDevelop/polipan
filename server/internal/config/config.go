@@ -89,6 +89,9 @@ type Config struct {
 	// then the least recently used cache above BuildCacheMaxMB megabytes (12-observability section 7.1).
 	BuildCacheKeep  time.Duration `yaml:"build_cache_keep"`
 	BuildCacheMaxMB int           `yaml:"build_cache_max_mb"`
+	// DiskReserveBytes is the byte floor of the disk admission of a new release (disk_reserve_bytes).
+	// The reserve is the greater of it and 5 % of the filesystem (08 section 4, disk admission).
+	DiskReserveBytes uint64 `yaml:"disk_reserve_bytes"`
 }
 
 // Default returns the config with the default values.
@@ -106,6 +109,7 @@ func Default() Config {
 		AlertRepeatInterval:         4 * time.Hour,
 		BuildCacheKeep:              7 * 24 * time.Hour,
 		BuildCacheMaxMB:             5120,
+		DiskReserveBytes:            2 << 30,
 
 		TrustedProxies:     []string{"172.30.0.0/24"},
 		MasterKeyFile:      "/etc/polipan/master.key",
@@ -227,6 +231,13 @@ func applyEnv(cfg *Config, getenv func(string) string) error {
 		}
 		cfg.WireguardPort = n
 	}
+	if v := getenv("POLIPAN_DISK_RESERVE_BYTES"); v != "" {
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil || n < 1 {
+			return fmt.Errorf("POLIPAN_DISK_RESERVE_BYTES: not a number of bytes")
+		}
+		cfg.DiskReserveBytes = n
+	}
 	if v := getenv("POLIPAN_SHUTDOWN_TIMEOUT"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
@@ -249,6 +260,9 @@ func (c Config) Validate() error {
 	}
 	if c.APIRateLimit < 1 {
 		return errors.New("config: api_rate_limit must be at least 1")
+	}
+	if c.DiskReserveBytes < 1 {
+		return errors.New("config: disk_reserve_bytes must be at least 1")
 	}
 	return nil
 }

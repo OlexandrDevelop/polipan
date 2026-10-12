@@ -38,6 +38,9 @@ const (
 	ReasonInternal             = "internal_error"
 	// ReasonServerRestarted is a deployment that a server restart cut before the switch (REQ-DEPLOY-107).
 	ReasonServerRestarted = "server_restarted"
+	// ReasonDiskLow is a new release that the disk admission refused: free bytes or inodes are below the reserve,
+	// or the size of the filesystem is not known (08 section 4, disk admission).
+	ReasonDiskLow = "disk_low"
 )
 
 // deployErr ends a deployment. state is the terminal state: failed (default), rolled_back or cancelled.
