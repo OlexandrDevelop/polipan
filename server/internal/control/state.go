@@ -37,6 +37,12 @@ func routable(all []liveReplica) []liveReplica {
 // ContainerName is the container name and network alias of a placement.
 func ContainerName(placementID string) string { return "pp-" + placementID }
 
+// ServiceName is the stable network alias <service>.<env> of a service. With the DNS zone it gives the documented
+// name <service>.<env>.polipan.internal.
+func ServiceName(service, envSlug string) string {
+	return strings.ToLower(service + "." + envSlug)
+}
+
 // buildDesiredState makes the full document of a node from the database.
 func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, version int64) (*pb.DesiredState, error) {
 	ds := &pb.DesiredState{Version: version, Ingress: &pb.IngressSpec{AcmeEmail: c.Config.ACMEEmail, AcmeCa: "letsencrypt"}, MeshCidr: c.Config.MeshCIDR}
@@ -53,7 +59,8 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 
 	rows, err := q.Query(ctx,
 		`SELECT p.id, p.service_id, s.environment_id, p.release_id, p.color, p.role, p.health, s.desired_state,
-		        r.image_ref, r.config_snapshot, COALESCE(host(p.ip), ''), pr.org_id, pr.id, p.replica_index
+		        r.image_ref, r.config_snapshot, COALESCE(host(p.ip), ''), pr.org_id, pr.id, p.replica_index,
+		        s.name, en.slug
 		   FROM placements p
 		   JOIN services s ON s.id = p.service_id AND s.deleted_at IS NULL
 		   JOIN environments en ON en.id = s.environment_id
@@ -65,10 +72,10 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 		return nil, err
 	}
 	for rows.Next() {
-		var pid, sid, eid, rid, color, role, health, svcState, imageRef, ip, orgID, projectID string
+		var pid, sid, eid, rid, color, role, health, svcState, imageRef, ip, orgID, projectID, svcName, envSlug string
 		var replica int
 		var raw []byte
-		if err := rows.Scan(&pid, &sid, &eid, &rid, &color, &role, &health, &svcState, &imageRef, &raw, &ip, &orgID, &projectID, &replica); err != nil {
+		if err := rows.Scan(&pid, &sid, &eid, &rid, &color, &role, &health, &svcState, &imageRef, &raw, &ip, &orgID, &projectID, &replica, &svcName, &envSlug); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -85,7 +92,7 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 			Health:           cfg.healthSpec(),
 			StopGraceSeconds: uint32(cfg.stopGraceSeconds()),
 			RestartPolicy:    cfg.RestartPolicy,
-			NetworkAliases:   []string{name, dbengine.Alias(sid)},
+			NetworkAliases:   []string{name, dbengine.Alias(sid), ServiceName(svcName, envSlug)},
 			Ip:               ip,
 			Resources:        cfg.resourceSpec(),
 			Labels: map[string]string{
@@ -283,8 +290,9 @@ func (c *Control) addIngressRoutes(ctx context.Context, q dbq, nodeID, nodeState
 // Only names, addresses and ids go out: no env, no secret (REQ-SEC-100).
 func (c *Control) addRemoteEndpoints(ctx context.Context, q dbq, nodeID string, ds *pb.DesiredState) error {
 	rows, err := q.Query(ctx,
-		`SELECT p.id, p.service_id, s.environment_id, host(p.ip)
+		`SELECT p.id, p.service_id, s.environment_id, host(p.ip), s.name, en.slug
 		   FROM placements p JOIN services s ON s.id = p.service_id AND s.deleted_at IS NULL JOIN nodes n ON n.id = p.node_id
+		   JOIN environments en ON en.id = s.environment_id
 		  WHERE p.node_id <> $1 AND p.ip IS NOT NULL AND p.role = 'live' AND n.state NOT IN ('down','pending','maintenance')
 		    AND s.environment_id IN (SELECT s2.environment_id FROM placements p2 JOIN services s2 ON s2.id = p2.service_id WHERE p2.node_id = $1)
 		  ORDER BY p.created_at, p.id`, nodeID)
@@ -293,12 +301,12 @@ func (c *Control) addRemoteEndpoints(ctx context.Context, q dbq, nodeID string, 
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var pid, sid, eid, ip string
-		if err := rows.Scan(&pid, &sid, &eid, &ip); err != nil {
+		var pid, sid, eid, ip, svcName, envSlug string
+		if err := rows.Scan(&pid, &sid, &eid, &ip, &svcName, &envSlug); err != nil {
 			return err
 		}
 		ds.RemoteEndpoints = append(ds.RemoteEndpoints, &pb.Endpoint{
-			Names: []string{ContainerName(pid), dbengine.Alias(sid)}, Ip: ip, EnvironmentId: eid, ServiceId: sid,
+			Names: []string{ContainerName(pid), dbengine.Alias(sid), ServiceName(svcName, envSlug)}, Ip: ip, EnvironmentId: eid, ServiceId: sid,
 		})
 	}
 	return rows.Err()
