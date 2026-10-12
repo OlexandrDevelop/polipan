@@ -107,7 +107,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
 
 - **Goal:** gaps 1, 2 and 5: zero-downtime deploys with health-gated switch and one-click rollback.
 - **Depends on:** M2.
-- **Covers:** REQ-DEPLOY-001..005, REQ-DEPLOY-007..012, REQ-DEPLOY-100..104, REQ-DEPLOY-106..111, REQ-REL-001..012, REQ-HC-001..012, REQ-API-005, REQ-API-006, REQ-API-103, REQ-CORE-021, REQ-CORE-022, REQ-UI-002, REQ-UI-003, REQ-UI-007, REQ-UI-010, REQ-UI-013, REQ-UI-022, REQ-UI-023, REQ-UI-025, REQ-UI-032.
+- **Covers:** REQ-DEPLOY-001..005, REQ-DEPLOY-007..012, REQ-DEPLOY-100..104, REQ-DEPLOY-106..116, REQ-REL-001..012, REQ-HC-001..012, REQ-API-005, REQ-API-006, REQ-API-103, REQ-CORE-021, REQ-CORE-022, REQ-UI-002, REQ-UI-003, REQ-UI-007, REQ-UI-010, REQ-UI-013, REQ-UI-022, REQ-UI-023, REQ-UI-025, REQ-UI-032.
 - **Work packages:**
   - WP3.1 (S) Release creation and immutability, `release_annotations`, retention and pruning, image GC.
   - WP3.2 (S) Deployment state machine, queue, supersede and cancel rules, crash recovery.
