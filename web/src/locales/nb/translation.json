@@ -354,6 +354,8 @@
   "wizard.repo_url_hint": "For eksempel https://github.com/acme/shop eller acme/shop.",
   "wizard.repo_invalid": "Skriv inn et repository uten mellomrom.",
   "wizard.branch": "Gren",
+  "wizard.use_compose": "Bruk en Docker Compose-fil fra dette depotet",
+  "wizard.use_compose_hint": "Flere tjenester lages fra én docker-compose.yml. En tjeneste med build: bygges fra dette depotet.",
   "wizard.branch_invalid": "Skriv inn et grennavn uten mellomrom.",
   "wizard.registry_login": "Innlogging til privat register",
   "wizard.registry_login_hint": "Innloggingen lagres som en hemmelighet. Den vises aldri igjen.",

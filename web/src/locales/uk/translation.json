@@ -354,6 +354,8 @@
   "wizard.repo_url_hint": "Наприклад, https://github.com/acme/shop або acme/shop.",
   "wizard.repo_invalid": "Введіть репозиторій без пробілів.",
   "wizard.branch": "Гілка",
+  "wizard.use_compose": "Використати файл Docker Compose з цього репозиторію",
+  "wizard.use_compose_hint": "З одного docker-compose.yml створюється кілька сервісів. Сервіс із build: збирається з цього репозиторію.",
   "wizard.branch_invalid": "Введіть назву гілки без пробілів.",
   "wizard.registry_login": "Вхід до приватного реєстру",
   "wizard.registry_login_hint": "Дані входу зберігаються як секрет. Їх більше ніколи не показують.",

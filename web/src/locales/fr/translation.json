@@ -354,6 +354,8 @@
   "wizard.repo_url_hint": "Par exemple https://github.com/acme/shop ou acme/shop.",
   "wizard.repo_invalid": "Saisissez un dépôt sans espaces.",
   "wizard.branch": "Branche",
+  "wizard.use_compose": "Utiliser un fichier Docker Compose de ce dépôt",
+  "wizard.use_compose_hint": "Plusieurs services naissent d'un seul docker-compose.yml. Un service avec build: est construit depuis ce dépôt.",
   "wizard.branch_invalid": "Saisissez un nom de branche sans espaces.",
   "wizard.registry_login": "Connexion au registre privé",
   "wizard.registry_login_hint": "L'identifiant est enregistré comme secret. Il n'est plus jamais affiché.",

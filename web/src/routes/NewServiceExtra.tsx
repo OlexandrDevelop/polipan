@@ -404,6 +404,147 @@ function parseVariables(text: string): Record<string, string> {
   return out
 }
 
+// What the check or the import says: the services, the warnings, or the parts that cannot be imported.
+function ComposeOutcome({ error, result }: { error: unknown; result: ComposeResult | null }) {
+  const problems = composeProblems(error instanceof Error ? error.message : undefined)
+  return (
+    <>
+      {Boolean(error) && !problems && <ErrorBanner error={error} title={t('compose.failed')} />}
+      {problems && (
+        <Banner variant="danger" title={t('compose.problems_title')}>
+          <p className="text-muted">{t('compose.safe_tip')}</p>
+          <ul className="mt-2 space-y-1">
+            {problems.map((p) => (
+              <li key={`${p.service}-${p.text}`}>
+                {p.service && <strong className="font-term">{p.service}: </strong>}
+                {p.text}
+              </li>
+            ))}
+          </ul>
+        </Banner>
+      )}
+      {result && (
+        <div className="space-y-3">
+          <Card className="space-y-2">
+            <p className="font-semibold">
+              {t('compose.result', { count: String(result.services?.length ?? 0) })}
+            </p>
+            <ul className="list-disc pl-5 text-sm">
+              {(result.services ?? []).map((s) => (
+                <li key={s.name}>{s.name}</li>
+              ))}
+            </ul>
+          </Card>
+          {(result.warnings ?? []).length > 0 && (
+            <Banner variant="warning" title={t('compose.warnings')}>
+              <ul className="list-disc pl-5">
+                {(result.warnings ?? []).map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            </Banner>
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
+// The Compose file of a Git repository: the check, the choices and the import. The repository, the branch and the
+// path of the file come from the caller.
+export function ComposeGitPanel({
+  base,
+  environment,
+  repo,
+  branch,
+  file,
+  connectionId,
+}: {
+  base: Base
+  environment: Environment
+  repo: string
+  branch: string
+  file: string
+  connectionId?: string
+}) {
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const [variables, setVariables] = useState('')
+  const [skipUnsafe, setSkipUnsafe] = useState(true)
+  const [result, setResult] = useState<ComposeResult | null>(null)
+  const send = (dry: boolean): Promise<ComposeResult> =>
+    unwrap(
+      api.POST('/environments/{environment_id}/import-compose-git', {
+        params: {
+          path: { environment_id: environment.id ?? '' },
+          query: dry ? { dry_run: true } : {},
+        },
+        body: {
+          repo: repo.trim(),
+          branch: branch.trim() || 'main',
+          path: file.trim() || 'docker-compose.yml',
+          connection_id: connectionId || undefined,
+          skip_unsafe: skipUnsafe,
+          variables: parseVariables(variables),
+        },
+      }),
+    ) as Promise<ComposeResult>
+  const check = useMutation({ mutationFn: () => send(true), onSuccess: setResult })
+  const run = useMutation({
+    mutationFn: () => send(false),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['services', environment.id] })
+      await navigate({ to: '/o/$org/p/$project/e/$env', params: base })
+    },
+  })
+  const ready = repo.trim() !== ''
+  return (
+    <div className="space-y-4">
+      <CheckboxField
+        label={t('compose.skip_unsafe')}
+        hint={t('compose.skip_unsafe_hint')}
+        checked={skipUnsafe}
+        onChange={(e) => {
+          setSkipUnsafe(e.target.checked)
+          setResult(null)
+        }}
+      />
+      <Optional filled={variables !== ''}>
+        <TextAreaField
+          label={t('compose.variables')}
+          hint={t('compose.variables_hint')}
+          rows={4}
+          spellCheck={false}
+          autoCapitalize="none"
+          value={variables}
+          onChange={(e) => {
+            setVariables(e.target.value)
+            setResult(null)
+          }}
+        />
+      </Optional>
+      <ComposeOutcome error={check.error ?? run.error} result={result} />
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          loading={check.isPending}
+          reason={ready ? undefined : t('compose.fill_first')}
+          onClick={() => check.mutate()}
+        >
+          {t('compose.check')}
+        </Button>
+        <Button
+          variant="primary"
+          loading={run.isPending}
+          reason={result ? undefined : t('compose.check_first')}
+          onClick={() => run.mutate()}
+        >
+          {t('compose.import')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // UI-05: Compose import. The file is pasted, or it is read from a Git repository. The check (dry_run)
 // shows the services and the warnings first.
 function ComposeWizard({ base, environment }: { base: Base; environment: Environment }) {
@@ -454,7 +595,6 @@ function ComposeWizard({ base, environment }: { base: Base; environment: Environ
     },
   })
   const failure = check.error ?? run.error
-  const problems = composeProblems(failure instanceof Error ? failure.message : undefined)
   const changed = () => setResult(null)
   return (
     <form
@@ -555,45 +695,7 @@ function ComposeWizard({ base, environment }: { base: Base; environment: Environ
           />
         </Optional>
       )}
-      {(check.error || run.error) && !problems && (
-        <ErrorBanner error={check.error ?? run.error} title={t('compose.failed')} />
-      )}
-      {problems && (
-        <Banner variant="danger" title={t('compose.problems_title')}>
-          <p className="text-muted">{t('compose.safe_tip')}</p>
-          <ul className="mt-2 space-y-1">
-            {problems.map((p) => (
-              <li key={`${p.service}-${p.text}`}>
-                {p.service && <strong className="font-term">{p.service}: </strong>}
-                {p.text}
-              </li>
-            ))}
-          </ul>
-        </Banner>
-      )}
-      {result && (
-        <div className="space-y-3">
-          <Card className="space-y-2">
-            <p className="font-semibold">
-              {t('compose.result', { count: String(result.services?.length ?? 0) })}
-            </p>
-            <ul className="list-disc pl-5 text-sm">
-              {(result.services ?? []).map((s) => (
-                <li key={s.name}>{s.name}</li>
-              ))}
-            </ul>
-          </Card>
-          {(result.warnings ?? []).length > 0 && (
-            <Banner variant="warning" title={t('compose.warnings')}>
-              <ul className="list-disc pl-5">
-                {(result.warnings ?? []).map((w) => (
-                  <li key={w}>{w}</li>
-                ))}
-              </ul>
-            </Banner>
-          )}
-        </div>
-      )}
+      <ComposeOutcome error={failure} result={result} />
       <div className="flex flex-wrap justify-end gap-2">
         <Button
           type="submit"

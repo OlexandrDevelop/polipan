@@ -354,6 +354,8 @@
   "wizard.repo_url_hint": "Bijvoorbeeld https://github.com/acme/shop of acme/shop.",
   "wizard.repo_invalid": "Voer een repository in zonder spaties.",
   "wizard.branch": "Branch",
+  "wizard.use_compose": "Een Docker Compose-bestand van deze repository gebruiken",
+  "wizard.use_compose_hint": "Uit één docker-compose.yml komen meerdere services. Een service met build: wordt uit deze repository gebouwd.",
   "wizard.branch_invalid": "Voer een branchnaam in zonder spaties.",
   "wizard.registry_login": "Aanmelding bij privéregistry",
   "wizard.registry_login_hint": "De aanmeldgegevens worden als secret opgeslagen. Ze worden nooit meer getoond.",

@@ -29,7 +29,7 @@ import { splitCommand } from '@/envText'
 import { t } from '@/i18n'
 import { useAccess } from '@/permissions'
 import { NotFoundPage } from '@/routes/ErrorPages'
-import { ExtraWizard } from '@/routes/NewServiceExtra'
+import { ComposeGitPanel, ExtraWizard } from '@/routes/NewServiceExtra'
 import type { ExtraSource } from '@/routes/NewServiceExtra'
 import { useScope } from '@/scope'
 import type { Environment, Project, Service } from '@/scope'
@@ -65,6 +65,9 @@ interface Draft {
   https: boolean
   vars: KeyValueRow[]
   deployNow: boolean
+  // Read a Docker Compose file of the repository and make its services, instead of one service.
+  useCompose: boolean
+  composeFile: string
 }
 
 const emptyDraft: Draft = {
@@ -89,6 +92,8 @@ const emptyDraft: Draft = {
   https: true,
   vars: [],
   deployNow: true,
+  useCompose: false,
+  composeFile: 'docker-compose.yml',
 }
 
 type Errors = Partial<Record<keyof Draft, string>>
@@ -339,6 +344,23 @@ function GitSourceStep({
         value={draft.branch}
         onChange={(e) => set({ branch: e.target.value })}
       />
+      <CheckboxField
+        label={t('wizard.use_compose')}
+        hint={t('wizard.use_compose_hint')}
+        checked={draft.useCompose}
+        onChange={(e) => set({ useCompose: e.target.checked })}
+      />
+      {draft.useCompose && (
+        <TextField
+          label={t('compose.file')}
+          hint={t('compose.file_hint')}
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={draft.composeFile}
+          onChange={(e) => set({ composeFile: e.target.value })}
+        />
+      )}
       {adding && (
         <AddGitConnectionDialog
           onClose={() => setAdding(false)}
@@ -825,8 +847,11 @@ export function NewServicePage() {
   const errors = tried[step] ? validateStep(step, source, draft) : {}
   const last = step === steps.length - 1
 
+  const composeMode = source === 'git' && draft.useCompose
+
   function next(event: FormEvent) {
     event.preventDefault()
+    if (composeMode) return
     if (last) {
       create.mutate()
       return
@@ -893,17 +918,28 @@ export function NewServicePage() {
               </div>
             )}
           </div>
-          <div className="flex flex-wrap justify-between gap-2 border-t border-border bg-bg py-3 max-sm:sticky max-sm:bottom-[calc(4rem+env(safe-area-inset-bottom))]">
-            <Button
-              onClick={() => setStep(Math.max(0, step - 1))}
-              reason={step === 0 ? t('wizard.first_step') : undefined}
-            >
-              {t('wizard.back')}
-            </Button>
-            <Button type="submit" variant="primary" loading={create.isPending}>
-              {last ? t('service.create') : t('wizard.next')}
-            </Button>
-          </div>
+          {composeMode && scope.project && scope.environment ? (
+            <ComposeGitPanel
+              base={base}
+              environment={scope.environment}
+              repo={draft.repo}
+              branch={draft.branch}
+              file={draft.composeFile}
+              connectionId={draft.connectionId}
+            />
+          ) : (
+            <div className="flex flex-wrap justify-between gap-2 border-t border-border bg-bg py-3 max-sm:sticky max-sm:bottom-[calc(4rem+env(safe-area-inset-bottom))]">
+              <Button
+                onClick={() => setStep(Math.max(0, step - 1))}
+                reason={step === 0 ? t('wizard.first_step') : undefined}
+              >
+                {t('wizard.back')}
+              </Button>
+              <Button type="submit" variant="primary" loading={create.isPending}>
+                {last ? t('service.create') : t('wizard.next')}
+              </Button>
+            </div>
+          )}
         </form>
         <aside aria-label={t('wizard.summary')} className="hidden lg:block">
           <Card className="space-y-3">

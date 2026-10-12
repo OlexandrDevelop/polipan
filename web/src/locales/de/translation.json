@@ -354,6 +354,8 @@
   "wizard.repo_url_hint": "Zum Beispiel https://github.com/acme/shop oder acme/shop.",
   "wizard.repo_invalid": "Geben Sie ein Repository ohne Leerzeichen ein.",
   "wizard.branch": "Branch",
+  "wizard.use_compose": "Eine Docker-Compose-Datei dieses Repositorys verwenden",
+  "wizard.use_compose_hint": "Aus einer docker-compose.yml entstehen mehrere Dienste. Ein Dienst mit build: wird aus diesem Repository gebaut.",
   "wizard.branch_invalid": "Geben Sie einen Branch-Namen ohne Leerzeichen ein.",
   "wizard.registry_login": "Login für private Registry",
   "wizard.registry_login_hint": "Der Login wird als Secret gespeichert. Er wird nie wieder angezeigt.",

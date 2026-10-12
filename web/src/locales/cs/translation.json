@@ -354,6 +354,8 @@
   "wizard.repo_url_hint": "Například https://github.com/acme/shop nebo acme/shop.",
   "wizard.repo_invalid": "Zadejte repozitář bez mezer.",
   "wizard.branch": "Větev",
+  "wizard.use_compose": "Použít soubor Docker Compose z tohoto repozitáře",
+  "wizard.use_compose_hint": "Z jednoho docker-compose.yml vznikne více služeb. Služba s build: se sestaví z tohoto repozitáře.",
   "wizard.branch_invalid": "Zadejte název větve bez mezer.",
   "wizard.registry_login": "Přihlášení k soukromému registru",
   "wizard.registry_login_hint": "Přihlašovací údaje se uloží jako tajný klíč. Už se nikdy nezobrazí.",

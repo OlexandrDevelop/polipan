@@ -354,6 +354,8 @@
   "wizard.repo_url_hint": "For example https://github.com/acme/shop or acme/shop.",
   "wizard.repo_invalid": "Enter a repository without spaces.",
   "wizard.branch": "Branch",
+  "wizard.use_compose": "Use a Docker Compose file of this repository",
+  "wizard.use_compose_hint": "Several services of the repository are made from one docker-compose.yml. A service with build: is built from the repository.",
   "wizard.branch_invalid": "Enter a branch name without spaces.",
   "wizard.registry_login": "Private registry login",
   "wizard.registry_login_hint": "The login is saved as a secret. It is never shown again.",

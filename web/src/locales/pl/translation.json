@@ -354,6 +354,8 @@
   "wizard.repo_url_hint": "Na przykład https://github.com/acme/shop lub acme/shop.",
   "wizard.repo_invalid": "Podaj repozytorium bez spacji.",
   "wizard.branch": "Gałąź",
+  "wizard.use_compose": "Użyj pliku Docker Compose z tego repozytorium",
+  "wizard.use_compose_hint": "Z jednego docker-compose.yml powstaje kilka usług. Usługa z build: jest budowana z tego repozytorium.",
   "wizard.branch_invalid": "Podaj nazwę gałęzi bez spacji.",
   "wizard.registry_login": "Logowanie do prywatnego rejestru",
   "wizard.registry_login_hint": "Dane logowania są zapisane jako sekret. Nie będą już nigdy pokazane.",

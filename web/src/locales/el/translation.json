@@ -354,6 +354,8 @@
   "wizard.repo_url_hint": "Για παράδειγμα https://github.com/acme/shop ή acme/shop.",
   "wizard.repo_invalid": "Εισάγετε αποθετήριο χωρίς κενά.",
   "wizard.branch": "Branch",
+  "wizard.use_compose": "Χρήση αρχείου Docker Compose αυτού του αποθετηρίου",
+  "wizard.use_compose_hint": "Από ένα docker-compose.yml δημιουργούνται πολλές υπηρεσίες. Μια υπηρεσία με build: χτίζεται από αυτό το αποθετήριο.",
   "wizard.branch_invalid": "Εισάγετε όνομα branch χωρίς κενά.",
   "wizard.registry_login": "Σύνδεση σε ιδιωτικό registry",
   "wizard.registry_login_hint": "Τα στοιχεία σύνδεσης αποθηκεύονται ως secret. Δεν εμφανίζονται ποτέ ξανά.",

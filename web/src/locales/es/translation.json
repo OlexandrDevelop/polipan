@@ -354,6 +354,8 @@
   "wizard.repo_url_hint": "Por ejemplo https://github.com/acme/shop o acme/shop.",
   "wizard.repo_invalid": "Escribe un repositorio sin espacios.",
   "wizard.branch": "Rama",
+  "wizard.use_compose": "Usar un archivo Docker Compose de este repositorio",
+  "wizard.use_compose_hint": "De un solo docker-compose.yml salen varios servicios. Un servicio con build: se construye desde este repositorio.",
   "wizard.branch_invalid": "Escribe un nombre de rama sin espacios.",
   "wizard.registry_login": "Acceso a registry privado",
   "wizard.registry_login_hint": "El acceso se guarda como secreto. No se vuelve a mostrar.",

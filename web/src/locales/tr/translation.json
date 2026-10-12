@@ -354,6 +354,8 @@
   "wizard.repo_url_hint": "Örneğin https://github.com/acme/shop veya acme/shop.",
   "wizard.repo_invalid": "Boşluksuz bir depo girin.",
   "wizard.branch": "Dal",
+  "wizard.use_compose": "Bu depodaki bir Docker Compose dosyasını kullan",
+  "wizard.use_compose_hint": "Tek bir docker-compose.yml dosyasından birden çok servis oluşur. build: olan bir servis bu depodan derlenir.",
   "wizard.branch_invalid": "Boşluksuz bir dal adı girin.",
   "wizard.registry_login": "Özel registry girişi",
   "wizard.registry_login_hint": "Giriş bilgisi secret olarak kaydedilir. Bir daha gösterilmez.",
