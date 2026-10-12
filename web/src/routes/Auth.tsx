@@ -87,6 +87,7 @@ export function LoginPage() {
   const [askCode, setAskCode] = useState(false)
 
   const login = useMutation({
+    meta: { quiet: true },
     mutationFn: () =>
       unwrap(
         api.POST('/auth/login', {
@@ -224,6 +225,7 @@ export function SetupPage() {
   const [touched, setTouched] = useState(false)
 
   const setup = useMutation({
+    meta: { quiet: true },
     mutationFn: () =>
       unwrap(
         api.POST('/setup/first-user', {
@@ -307,6 +309,7 @@ export function InvitePage() {
   const [password, setPassword] = useState('')
   const [touched, setTouched] = useState(false)
   const accept = useMutation({
+    meta: { quiet: true },
     mutationFn: () =>
       unwrap(
         api.POST('/auth/invitations/accept', { body: { token, name: name.trim(), password } }),
@@ -378,6 +381,7 @@ export function ResetPasswordPage() {
   const [password, setPassword] = useState('')
   const [touched, setTouched] = useState(false)
   const reset = useMutation({
+    meta: { quiet: true },
     mutationFn: () =>
       unwrap(api.POST('/auth/password-reset/confirm', { body: { token, password } })),
     onSuccess: () => navigate({ to: '/login' }),

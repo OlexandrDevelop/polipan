@@ -326,6 +326,7 @@ export function ServicePage() {
     ])
   }
   const restart = useMutation({
+    meta: { success: 'service.restart_started' },
     mutationFn: () =>
       unwrap(
         api.POST('/services/{service_id}/restart', { params: { path: { service_id: serviceId } } }),
@@ -336,6 +337,7 @@ export function ServicePage() {
     },
   })
   const stop = useMutation({
+    meta: { success: 'service.stop_started' },
     mutationFn: () =>
       unwrap(
         api.POST('/services/{service_id}/stop', { params: { path: { service_id: serviceId } } }),
@@ -346,6 +348,7 @@ export function ServicePage() {
     },
   })
   const start = useMutation({
+    meta: { success: 'service.start_started' },
     mutationFn: () =>
       unwrap(
         api.POST('/services/{service_id}/start', { params: { path: { service_id: serviceId } } }),

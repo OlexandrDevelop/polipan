@@ -110,6 +110,7 @@ export function DeployDialog({
   })
 
   const deploy = useMutation({
+    meta: { success: 'service.deploy_started' },
     mutationFn: () =>
       unwrap(
         api.POST('/services/{service_id}/deploy', {

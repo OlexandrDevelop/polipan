@@ -187,6 +187,7 @@ export function AppShell() {
   const canOrg = useAccess('org:update')
   const canGit = useAccess('git:manage')
   const logout = useMutation({
+    meta: { quiet: true },
     mutationFn: () => unwrap(api.POST('/auth/logout')),
     onSettled: () => {
       setCsrfToken('')
