@@ -15,7 +15,13 @@
 //	polipan-server [-config file] admin backup-password --policy <id>  print the restic password and the repositories of a policy
 //	polipan-server [-config file] admin reset-password <email>  print a one-hour link to set a new password
 //	polipan-server [-config file] admin disable-2fa <email>  turn two-factor login off for a user
+//	polipan-server [-config file] admin invite-user <email> [--role viewer|developer|admin]  print a one-hour, one-use invite link
+//	polipan-server [-config file] admin create-token <email> (--project <id or slug> | --all-projects) [--scope read|deploy|write] [--expires 24h] [--name n]
+//	                                                         print a new API token once (default scope deploy, 24 h, at most 90 days)
+//	polipan-server [-config file] admin revoke-token <token id>  revoke an API token
+//	polipan-server [-config file] admin remove-user <email>  remove a member who is not an owner
 //	polipan-server [-config file] admin audit-verify         check the audit hash chain
+//	polipan-server [-config file] admin help                 print the admin commands
 //	polipan-server version                    print the version
 package main
 
@@ -107,8 +113,19 @@ func run() error {
 			return admin.DisableTOTP(ctx, cfg, flag.Args()[2:], os.Stdout)
 		case "audit-verify":
 			return admin.AuditVerify(ctx, cfg, os.Stdout)
+		case "", "help", "-h", "--help":
+			fmt.Print(admin.Help)
+			return nil
+		case "invite-user":
+			return admin.InviteUser(ctx, cfg, flag.Args()[2:], os.Stdout)
+		case "create-token":
+			return admin.CreateToken(ctx, cfg, flag.Args()[2:], os.Stdout)
+		case "revoke-token":
+			return admin.RevokeToken(ctx, cfg, flag.Args()[2:], os.Stdout)
+		case "remove-user":
+			return admin.RemoveUser(ctx, cfg, flag.Args()[2:], os.Stdout)
 		}
-		return fmt.Errorf("unknown admin command %q (rotate-kek, rotate-dek, backup-password, reset-password, disable-2fa, audit-verify)", flag.Arg(1))
+		return fmt.Errorf("unknown admin command %q (see: polipan-server admin help)", flag.Arg(1))
 	case "healthcheck":
 		return healthcheck(ctx, cfg.Listen)
 	default:

@@ -55,6 +55,11 @@ func (s *Store) ListInvitations(ctx context.Context, orgID string, now time.Time
 
 // CreateInvitation stores an invitation. An older open invitation for the same email is replaced.
 func (s *Store) CreateInvitation(ctx context.Context, orgID, email, role, invitedBy, tokenHash string, now time.Time) (*Invitation, error) {
+	return s.CreateInvitationTTL(ctx, orgID, email, role, invitedBy, tokenHash, now, InvitationTTL)
+}
+
+// CreateInvitationTTL is CreateInvitation with an own link lifetime (the host-admin command uses one hour).
+func (s *Store) CreateInvitationTTL(ctx context.Context, orgID, email, role, invitedBy, tokenHash string, now time.Time, ttl time.Duration) (*Invitation, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -71,13 +76,13 @@ func (s *Store) CreateInvitation(ctx context.Context, orgID, email, role, invite
 	if _, err := tx.Exec(ctx, `DELETE FROM invitations WHERE org_id = $1 AND email = $2 AND accepted_at IS NULL`, orgID, email); err != nil {
 		return nil, err
 	}
-	inv := Invitation{ID: NewID("inv"), Email: email, Role: role, ExpiresAt: now.Add(InvitationTTL), CreatedAt: now}
+	inv := Invitation{ID: NewID("inv"), Email: email, Role: role, ExpiresAt: now.Add(ttl), CreatedAt: now}
 	if _, err := tx.Exec(ctx, `INSERT INTO invitations (id, org_id, email, role, token_hash, invited_by, expires_at, created_at)
 		VALUES ($1, $2, $3, $4, $5, NULLIF($6,''), $7, $8)`, inv.ID, orgID, email, role, tokenHash, invitedBy, inv.ExpiresAt, now); err != nil {
 		return nil, err
 	}
 	if err := audit.Write(ctx, tx, audit.Event{OrgID: orgID, Action: "member.invite", TargetType: "invitation", TargetID: inv.ID,
-		Diff: map[string]any{"after": map[string]any{"email": email, "role": role}}}); err != nil {
+		Diff: map[string]any{"after": map[string]any{"email": email, "role": role, "expires_at": inv.ExpiresAt}}}); err != nil {
 		return nil, err
 	}
 	return &inv, tx.Commit(ctx)

@@ -145,7 +145,7 @@ Tracks inside a milestone: **S** server/API, **A** agent, **W** web UI, **C** CL
 
 - **Goal:** gap 7 (teams, roles, audit, tokens). SSO comes in M10.
 - **Depends on:** M1 (can run parallel with M2–M4).
-- **Covers:** REQ-AUTH-002, REQ-AUTH-004, REQ-AUTH-007, REQ-AUTH-101, REQ-RBAC-001..008, REQ-RBAC-100, REQ-RBAC-101, REQ-AUDIT-001..007, REQ-AUDIT-100, REQ-CORE-024, REQ-UI-004.
+- **Covers:** REQ-AUTH-002, REQ-AUTH-004, REQ-AUTH-007, REQ-AUTH-101, REQ-AUTH-102, REQ-RBAC-001..008, REQ-RBAC-100, REQ-RBAC-101, REQ-AUDIT-001..007, REQ-AUDIT-100, REQ-CORE-024, REQ-UI-004.
 - **Work packages:**
   - WP5.1 (S) Authorization function (effective role, protected env, scopes), `x-permission` middleware, permission matrix test generator.
   - WP5.2 (S) Members, invitations, teams, project role overrides, last-owner rule.

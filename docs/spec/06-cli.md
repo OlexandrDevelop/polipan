@@ -54,7 +54,12 @@ Run on the control-plane host with access to the server config and database. The
 
 | Command | Purpose |
 |---|---|
-| `polipan-server admin reset-password <email>` | Set a new password and print it once. |
+| `polipan-server admin reset-password <email>` | Print a one-hour, one-use link to set a new password. |
+| `polipan-server admin invite-user <email> [--role r]` | Print a one-hour, one-use invite link for a new user (not owner). |
+| `polipan-server admin create-token <email> (--project <id> \| --all-projects) [--scope s] [--expires d]` | Print a new API token once (default `deploy`, 24 h, max 90 days, no `admin` scope). |
+| `polipan-server admin revoke-token <token id>` | Revoke an API token. |
+| `polipan-server admin remove-user <email>` | Remove a member who is not an owner. |
+| `polipan-server admin help` | Print the admin commands. |
 | `polipan-server admin rotate-kek` | Re-wrap all project data keys with a new master key. |
 | `polipan-server admin rotate-dek --project <id>` | Re-encrypt secrets of one project with a new data key. |
 | `polipan-server admin migrate` | Run database migrations (also done at start). |

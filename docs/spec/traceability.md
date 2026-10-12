@@ -4,7 +4,7 @@ Maps every requirement to its file, milestone and tests. The milestone comes fro
 
 Rebuild this file when a requirement is added or moved (see [README](README.md#consistency-checks)). Do not edit rows by hand.
 
-Totals: 372 requirements, 141 acceptance criteria.
+Totals: 373 requirements, 141 acceptance criteria.
 
 
 ## CORE
@@ -271,6 +271,7 @@ Totals: 372 requirements, 141 acceptance criteria.
 | REQ-AUTH-007 | MUST | [04-features/F07-teams-rbac-audit-sso-secrets.md](04-features/F07-teams-rbac-audit-sso-secrets.md) | M5 | unit/component test by REQ id |
 | REQ-AUTH-100 | MUST | [10-security.md](10-security.md) | M1 | unit/component test by REQ id |
 | REQ-AUTH-101 | MUST | [10-security.md](10-security.md) | M5 | unit/component test by REQ id |
+| REQ-AUTH-102 | MUST | [10-security.md](10-security.md) | M5 | unit/component test by REQ id |
 
 ## RBAC
 

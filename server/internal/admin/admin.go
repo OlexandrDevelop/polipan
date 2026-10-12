@@ -19,6 +19,30 @@ import (
 	"github.com/polipan/polipan/server/internal/store"
 )
 
+// Help is the text of "polipan-server admin help".
+const Help = `Usage: polipan-server [-config file] admin <command>
+
+Commands run on the control-plane host only. They use the server config and the database, not the API.
+The commands that change users or tokens write an audit event as the system ("polipan-server admin"). None of them changes the owner's password.
+
+  rotate-kek                     make a new master key and re-wrap all data keys
+  rotate-dek --project <id>      re-encrypt the secrets of a project
+  backup-password --policy <id>  print the restic password and the repositories of a policy
+  reset-password <email>         print a one-hour, one-use link to set a new password for that user
+  disable-2fa <email>            turn two-factor login off for a user
+  audit-verify                   check the audit hash chain
+  invite-user <email> [--role viewer|developer|admin]
+                                 print a one-hour, one-use invite link for a new user (default role viewer;
+                                 owner is not allowed). The user sets an own password on the link.
+  create-token <email> (--project <id or slug> | --all-projects) [--scope read|deploy|write]
+               [--expires 24h|30d] [--name <name>]
+                                 print a new API token of an existing user once (default scope deploy,
+                                 default life 24h, at most 90d; admin scope is not allowed). Only its hash
+                                 is stored. The token never has more rights than the user.
+  revoke-token <token id>        revoke an API token
+  remove-user <email>            remove a member who is not an owner; sessions and tokens end at once
+`
+
 func openStore(ctx context.Context, cfg config.Config) (*store.Store, func(), error) {
 	pool, err := db.Open(ctx, cfg.DatabaseURL)
 	if err != nil {

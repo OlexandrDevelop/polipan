@@ -18,6 +18,20 @@ Token scopes map to permissions: `read` = all `*:read`, `logs:read`, `metrics:re
 
 First start: the installer prints a one-time URL to create the first `owner` user. After that the endpoint is closed.
 
+### Host-admin access (recovery and provisioning)
+
+Commands of `polipan-server admin` run only on the control-plane host. They need shell access to the server config and the database; there is no API for them. They never read, show or change the owner's password. Each change writes an `audit_events` row with `actor_type = system` and `actor_id = "polipan-server admin"`.
+
+| Command | Rules |
+|---|---|
+| `reset-password <email>` | Prints a reset link for an existing user. One use, valid 1 h. Only its hash is stored. Audit `admin.reset_password`. |
+| `invite-user <email> [--role viewer\|developer\|admin]` | Prints an invite link for a new user. One use, valid 1 h (a web invite lives 7 days). Only its hash is stored. Default role `viewer`; the `owner` role is refused (an owner promotes in the web app). Refused when the email is already a member or when no owner exists yet (then `setup-url` is the way). The user sets an own password and 2FA. Audit `member.invite` with the expiry. |
+| `create-token <email> (--project <id or slug> \| --all-projects) [--scope read\|deploy\|write] [--expires d] [--name n]` | Makes an API token of an existing, enabled user. Default scope `deploy`, default life 24 h, max 90 days; the `admin` scope is refused. A project limit or an explicit `--all-projects` is required. The value is printed once; only its SHA-256 is stored. The token never has more rights than the user (section 1). Audit `token.create` with scopes, project and expiry. |
+| `revoke-token <token id>` | Revokes any token. Audit `token.revoke`. |
+| `remove-user <email>` | Removes a member who is not an owner: sessions and tokens end at once, the user row is soft deleted. Audit `member.remove`. |
+
+Printed links and tokens are secrets: the operator copies them from the terminal and does not keep them in shell logs or tickets.
+
 ## 2. SSO
 
 - Providers per org (`sso_providers`): `oidc` (any issuer with discovery), `google` (OIDC preset), `github` (OAuth2, scopes `read:user user:email read:org`).
@@ -155,6 +169,7 @@ Assets: secrets, source code and images, user data in volumes, control-plane DB,
 
 - **REQ-AUTH-100** (MUST) Password hashing, session cookie flags, CSRF, login rate limits and lockout follow section 1.
 - **REQ-AUTH-101** (MUST) API tokens follow section 1: hashed, scoped, expiring, revocable, never more rights than the user.
+- **REQ-AUTH-102** (MUST) Host-admin access follows section 1 "Host-admin access": invite links and tokens made on the host are shown once, stored hashed, short lived (1 h invite, token default 24 h and max 90 days), never give the `owner` role or the `admin` scope, never change the owner's password, and are audited as the system.
 - **REQ-RBAC-100** (MUST) Every endpoint declares `x-permission`. The server checks it first. The matrix in section 3 is the only source of what each role may do.
 - **REQ-RBAC-101** (MUST) The effective role rule and the protected environment rule of section 3 are enforced in one authorization function used by all handlers.
 - **REQ-SEC-100** (MUST) A node receives only the workloads, ingress routes and secrets for its own placements.
