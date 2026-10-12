@@ -4,6 +4,7 @@ package tpl
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"path"
 	"regexp"
@@ -208,6 +209,9 @@ func ImportComposeWith(data []byte, opts ComposeOptions) (*ComposeResult, error)
 		}
 		res.Manifest.Services[name] = entry
 	}
+	if len(ps) == 0 {
+		ps = secretReuse(res, secretVars)
+	}
 	if len(ps) > 0 {
 		return nil, ps
 	}
@@ -236,10 +240,15 @@ func repoDir(r *ComposeRepo) string {
 // secretEnv keeps the variables that look like secrets (IsSecretName) as secret inputs of the import: the
 // variable reads the input, and the value goes to res.Inputs. It returns the names of these variables.
 func secretEnv(service string, e *ServiceEntry, res *ComposeResult) []string {
+	return secretEnvIf(service, e, res, func(k, _ string) bool { return IsSecretName(k) })
+}
+
+// secretEnvIf is secretEnv for the variables that pick chooses.
+func secretEnvIf(service string, e *ServiceEntry, res *ComposeResult, pick func(name, value string) bool) []string {
 	var out []string
 	for _, k := range sortedKeys(e.Env) {
 		v := fmt.Sprint(e.Env[k])
-		if v == "" || !IsSecretName(k) {
+		if v == "" || strings.HasPrefix(v, "${{inputs.") || !pick(k, v) {
 			continue
 		}
 		// The number keeps the name unique: API_KEY and api_key are two variables, and the name is lower case.
@@ -253,6 +262,108 @@ func secretEnv(service string, e *ServiceEntry, res *ComposeResult) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// secretValue is a value of a secret of the import, and where it comes from.
+type secretValue struct{ service, name, value string }
+
+// checkedSecret tells if a secret value is looked for in the other settings. A very short value or a yes/no word
+// (AUTH_ENABLED=true) would be found in many places where it is not a secret.
+func checkedSecret(v string) bool {
+	switch strings.ToLower(v) {
+	case "true", "false", "yes", "no", "on", "off", "null", "none":
+		return false
+	}
+	return len(v) >= 6
+}
+
+// secretReuse keeps the secret values of the import out of the plain settings (SEC-1). A YAML alias, or the same
+// text, can put the value of a secret variable into a plain variable, a command, a health check, a file or another
+// setting. A plain variable with a secret value in it becomes a secret too. Any other setting with a secret value
+// refuses the import: the message names the service and the secret, never the value.
+func secretReuse(res *ComposeResult, secretVars map[string][]string) Problems {
+	var secrets []secretValue
+	for _, svc := range sortedKeys(res.Manifest.Services) {
+		e := res.Manifest.Services[svc]
+		for _, k := range sortedKeys(e.Env) {
+			if in, ok := strings.CutPrefix(fmt.Sprint(e.Env[k]), "${{inputs."); ok {
+				if v := fmt.Sprint(res.Inputs[strings.TrimSuffix(in, "}}")]); checkedSecret(v) {
+					secrets = append(secrets, secretValue{svc, k, v})
+				}
+			}
+		}
+		if e.Source != nil && e.Source.Git != nil {
+			for _, k := range sortedKeys(e.Source.Git.BuildArgs) {
+				if v := e.Source.Git.BuildArgs[k]; IsSecretName(k) && checkedSecret(v) {
+					secrets = append(secrets, secretValue{svc, k, v})
+				}
+			}
+		}
+	}
+	if len(secrets) == 0 {
+		return nil
+	}
+	has := func(text string) (secretValue, bool) {
+		for _, s := range secrets {
+			if strings.Contains(text, s.value) {
+				return s, true
+			}
+			// The value as it is written inside a JSON string (quotes, backslashes and the like are escaped).
+			if q, err := json.Marshal(s.value); err == nil && strings.Contains(text, string(q[1:len(q)-1])) {
+				return s, true
+			}
+		}
+		return secretValue{}, false
+	}
+	var ps Problems
+	for _, svc := range sortedKeys(res.Manifest.Services) {
+		e := res.Manifest.Services[svc]
+		// A plain variable that holds a secret value (DATABASE_URL with the password in it) is kept as a secret.
+		if names := secretEnvIf(svc, &e, res, func(_, v string) bool { _, found := has(v); return found }); len(names) > 0 {
+			secretVars[svc] = append(secretVars[svc], names...)
+			for _, n := range names {
+				res.Losses = append(res.Losses, Loss{Path: "services." + svc + ".environment." + n, Key: "environment", Disposition: LossImported,
+					Lost:        "the variable " + n + " holds the value of a secret, so it is imported as a secret",
+					Replacement: "secrets: [" + n + "]  # the value is in the Secrets tab"})
+			}
+		}
+		res.Manifest.Services[svc] = e
+		// All other settings, without the variables (all safe now) and without the build arguments that are secrets.
+		plain := e
+		plain.Env = nil
+		if e.Source != nil && e.Source.Git != nil {
+			g := *e.Source.Git
+			g.BuildArgs = map[string]string{}
+			for k, v := range e.Source.Git.BuildArgs {
+				if !IsSecretName(k) {
+					g.BuildArgs[k] = v
+				}
+			}
+			plain.Source = &Source{Image: e.Source.Image, Git: &g}
+		}
+		raw, err := json.Marshal(plain)
+		if err != nil {
+			ps = append(ps, Problem{Path: "services." + svc, Message: err.Error()})
+			continue
+		}
+		if s, found := has(string(raw)); found {
+			ps = append(ps, Problem{Path: "services." + svc, Message: fmt.Sprintf(
+				"a plain setting (command, entrypoint, health check, build argument, file or another one) has the value of the secret %s of service %s. "+
+					"Polipan keeps secrets out of plain settings. Write $%s in a shell command (sh -c) so that the container reads the secret variable, then import again",
+				s.name, s.service, s.name)})
+		}
+	}
+	// The messages of the answer quote parts of the file (a restart policy, a port, a size).
+	var texts []string
+	texts = append(texts, res.Warnings...)
+	for _, l := range res.Losses {
+		texts = append(texts, l.Lost, l.Replacement)
+	}
+	if s, found := has(strings.Join(texts, "\n")); found {
+		ps = append(ps, Problem{Path: "services." + s.service, Message: fmt.Sprintf(
+			"a setting that is not imported has the value of the secret %s of service %s. Remove the value from that setting, then import again", s.name, s.service)})
+	}
+	return ps
 }
 
 // composeBuild reads the build: key of a service of a file that is in a repository. The context is a folder of
