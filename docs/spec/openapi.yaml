@@ -1897,8 +1897,8 @@ components:
         canary_steps: {type: array, items: {type: integer}, description: "The steps of a canary deployment, for example [10, 25, 50, 100]"}
         canary_paused: {type: boolean}
         canary_gate: {type: object, additionalProperties: true, description: "The last gate result: step, passed, reason, health_ok, green_requests, green_5xx_rate, green_p95_seconds, blue_p95_seconds"}
-        failure_reason: {type: string}
-        failure_detail: {type: string}
+        failure_reason: {type: string, description: "Code of 08-deploy-engine section 2. disk_low: the disk admission refused a new release (free bytes or inodes of the Docker data-root, build or registry filesystem below the reserve, or not known)."}
+        failure_detail: {type: string, description: "Text for people. For disk_low it has filesystem=, free_bytes=, required_bytes=, free_inodes= and required_inodes= (free_bytes=unknown when the size is not known)."}
         warnings: {type: array, items: {$ref: '#/components/schemas/Warning'}}
         steps: {type: array, items: {type: object, properties: {state: {type: string}, message: {type: string}, time: {type: string, format: date-time}}}}
         actor_id: {type: string}

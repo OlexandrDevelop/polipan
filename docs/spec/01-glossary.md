@@ -58,6 +58,7 @@ All defaults below can be changed by the user in the place named in the "Set in"
 | `post_switch_check` | 15 s | server config |
 | `canary_pause_max` | 24 h, then automatic rollback | service deploy config |
 | `failed_green_keep` | 10 min | server config |
+| `disk_reserve_bytes` | 2 GiB (the reserve is the greater of it and 5 % of the filesystem, 08 section 4, disk admission) | server config (`POLIPAN_DISK_RESERVE_BYTES`) |
 | `fast_rollback_target` | < 10 s from click to traffic on old release | design goal |
 | `health.type` | `tcp` on the service port when no check is set | service |
 | `health.interval` | 5 s | health check |

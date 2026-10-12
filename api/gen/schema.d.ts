@@ -2669,7 +2669,9 @@ export interface components {
             canary_gate?: {
                 [key: string]: unknown;
             };
+            /** @description Code of 08-deploy-engine section 2. disk_low: the disk admission refused a new release (free bytes or inodes of the Docker data-root, build or registry filesystem below the reserve, or not known). */
             failure_reason?: string;
+            /** @description Text for people. For disk_low it has filesystem=, free_bytes=, required_bytes=, free_inodes= and required_inodes= (free_bytes=unknown when the size is not known). */
             failure_detail?: string;
             warnings?: components["schemas"]["Warning"][];
             steps?: {

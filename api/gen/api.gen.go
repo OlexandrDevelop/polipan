@@ -946,9 +946,13 @@ type Deployment struct {
 	CanaryStep   *int                    `json:"canary_step,omitempty"`
 
 	// CanarySteps The steps of a canary deployment, for example [10, 25, 50, 100]
-	CanarySteps       *[]int           `json:"canary_steps,omitempty"`
-	EnvironmentId     *string          `json:"environment_id,omitempty"`
-	FailureDetail     *string          `json:"failure_detail,omitempty"`
+	CanarySteps   *[]int  `json:"canary_steps,omitempty"`
+	EnvironmentId *string `json:"environment_id,omitempty"`
+
+	// FailureDetail Text for people. For disk_low it has filesystem=, free_bytes=, required_bytes=, free_inodes= and required_inodes= (free_bytes=unknown when the size is not known).
+	FailureDetail *string `json:"failure_detail,omitempty"`
+
+	// FailureReason Code of 08-deploy-engine section 2. disk_low: the disk admission refused a new release (free bytes or inodes of the Docker data-root, build or registry filesystem below the reserve, or not known).
 	FailureReason     *string          `json:"failure_reason,omitempty"`
 	FinishedAt        *time.Time       `json:"finished_at,omitempty"`
 	Id                *string          `json:"id,omitempty"`

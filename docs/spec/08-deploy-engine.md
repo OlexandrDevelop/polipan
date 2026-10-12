@@ -53,7 +53,7 @@ Rules for states:
 - `failed` and `rolled_back` always leave the previous Release live and serving. If there is no previous Release, the service has no live Release and the state is shown as "no live release".
 - Terminal states: `live`, `failed`, `rolled_back`, `cancelled`, `superseded`.
 - Every transition writes a `deployment_steps` row and an `events` row, and (for the user actions) an audit event.
-- `failure_reason` codes: `build_failed`, `build_timeout`, `image_pull_failed`, `pre_deploy_failed`, `container_start_failed`, `health_timeout`, `health_failed`, `gate_5xx`, `gate_latency`, `switch_failed`, `node_unavailable`, `cancelled_by_user`, `superseded`, `server_restarted` (the server restarted before the switch was saved, section 11), `internal_error`.
+- `failure_reason` codes: `build_failed`, `build_timeout`, `image_pull_failed`, `pre_deploy_failed`, `container_start_failed`, `health_timeout`, `health_failed`, `gate_5xx`, `gate_latency`, `switch_failed`, `node_unavailable`, `cancelled_by_user`, `superseded`, `server_restarted` (the server restarted before the switch was saved, section 11), `disk_low` (the disk admission of section 4 refused a new release), `internal_error`.
 
 ## 3. Strategy selection
 
@@ -78,6 +78,28 @@ Rules for states:
 7. **Switch** (per strategy, section 5, 6, 7).
 8. **Drain and stop blue**: wait `drain_seconds`, send SIGTERM with the service `stop_grace_period` (default 30 s), then stop. Containers are stopped but kept, up to `retain_stopped` sets.
 9. **Finalize**: set `services.live_release_id`, `placements` roles, `deployments.state = live`, prune old Releases' images beyond `retain_releases`.
+
+### Disk admission
+
+A full disk must stop a new release before it fills the disk, not after (REQ-DEPLOY-112). The check is an admission
+guard: it does not promise that the image fits.
+
+- **What is checked.** Free bytes and free inodes of:
+  - the Docker data-root of every node that gets a new replica (`DockerRootDir` of Docker `/info`). The agent reads it
+    with `statfs` and gives it in the self-check result (`disk`: `path`, `total_bytes`, `free_bytes`, `total_inodes`,
+    `free_inodes`, `error`);
+  - for a Git build, the build folder and the registry folder of the server. They are Docker volumes of the control
+    plane, so they are on the same filesystem as the `buildkit-state` and `registry-data` volumes.
+- **Reserve.** Bytes: the greater of `disk_reserve_bytes` (server config, env `POLIPAN_DISK_RESERVE_BYTES`, default
+  2 GiB, at least 1) and 5 % of the filesystem size. Inodes: 5 % of the inodes. A filesystem without a fixed inode
+  count (it reports 0 inodes, for example btrfs) has no inode reserve.
+- **When.** Before the build, after the build, before the pull and before the green containers start.
+- **Result.** Free bytes or inodes below the reserve, or a size that is not known (statfs error, no Docker data-root,
+  an agent without the `disk` field) → `failed` / `disk_low`. `failure_detail` names the place and the numbers, for
+  example `before pull: node nod_1 filesystem=/var/lib/docker free_bytes=1073741824 required_bytes=2147483648
+  free_inodes=600000 required_inodes=32768`. When the size is not known, it is `free_bytes=unknown` and the reason.
+- **Not checked.** A rollback, a move and a failover (they run a Release the node had before), and running workloads.
+  Nothing is stopped or deleted by the check.
 
 ## 5. Blue-green
 
@@ -176,3 +198,4 @@ SSE stream `GET /api/v1/deployments/{id}/events` sends each state change, health
 - **REQ-DEPLOY-111** (MUST) Deploy progress is available as an SSE stream.
 - **REQ-DEPLOY-112** (MUST) The agent refuses with `volume_in_use` to start a container while another container (managed or not; running, restarting, paused, or stopped with a restart policy other than `no`) holds the same writable single-writer volume or bind. It never stops a container that Polipan does not manage (section 7a).
 - **REQ-DEPLOY-113** (MUST) At agent start, before the first reconcile, every Polipan container that must not run gets the restart policy `no` (section 7a.7).
+- **REQ-DEPLOY-114** (MUST) A new release is refused with `disk_low` when free bytes or inodes of a filesystem it fills are below the reserve or not known (section 4, disk admission). Rollback and running workloads are not affected.

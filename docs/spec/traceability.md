@@ -153,6 +153,7 @@ Totals: 373 requirements, 141 acceptance criteria.
 | REQ-DEPLOY-109 | MUST | [08-deploy-engine.md](08-deploy-engine.md) | M3 | unit/component test by REQ id |
 | REQ-DEPLOY-110 | SHOULD | [08-deploy-engine.md](08-deploy-engine.md) | M3 | unit/component test by REQ id |
 | REQ-DEPLOY-111 | MUST | [08-deploy-engine.md](08-deploy-engine.md) | M3 | unit/component test by REQ id |
+| REQ-DEPLOY-112 | MUST | [08-deploy-engine.md](08-deploy-engine.md) | M3 | VM check with a raised `disk_reserve_bytes` |
 
 ## REL
 
