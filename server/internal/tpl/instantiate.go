@@ -275,9 +275,11 @@ func (m *Manifest) planService(name string, s ServiceEntry, path string, expand 
 			if g.Dockerfile != "" {
 				git["dockerfile"] = g.Dockerfile
 			}
-			// The arguments of the build are variables of the service that the build can read.
+			// The arguments of the build are variables of the service that the build can read. One that looks
+			// like a secret (IsSecretName) is a build-time secret.
 			for _, k := range sortedKeys(anyMap(g.BuildArgs)) {
-				out.Env = append(out.Env, dbengine.EnvEntry{Name: k, Value: g.BuildArgs[k], BuildTime: true})
+				v := g.BuildArgs[k]
+				out.Env = append(out.Env, dbengine.EnvEntry{Name: k, Value: v, BuildTime: true, Secret: v != "" && IsSecretName(k)})
 			}
 			if g.ConnectionID != "" {
 				git["connection_id"] = g.ConnectionID

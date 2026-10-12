@@ -136,6 +136,7 @@ func ImportComposeWith(data []byte, opts ComposeOptions) (*ComposeResult, error)
 				Replacement: "Polipan has no setting for " + k + ". Remove it, or set what it does on each service."})
 		}
 	}
+	res.Losses = append(res.Losses, topLevelLosses(doc)...)
 	names := map[string]string{}        // compose name -> service name
 	secretVars := map[string][]string{} // service name -> the names of its secret variables
 	for _, raw := range sortedKeys(services) {
@@ -167,6 +168,11 @@ func ImportComposeWith(data []byte, opts ComposeOptions) (*ComposeResult, error)
 					continue
 				}
 				git = g
+				for _, k := range sortedKeys(g.BuildArgs) {
+					if IsSecretName(k) {
+						res.Losses = append(res.Losses, buildArgLoss(path+".build.args."+k, k))
+					}
+				}
 			}
 		}
 		name := names[raw]
@@ -236,7 +242,8 @@ func secretEnv(service string, e *ServiceEntry, res *ComposeResult) []string {
 		if v == "" || !IsSecretName(k) {
 			continue
 		}
-		in := "s_" + strings.ReplaceAll(service, "-", "_") + "__" + strings.ToLower(k)
+		// The number keeps the name unique: API_KEY and api_key are two variables, and the name is lower case.
+		in := fmt.Sprintf("s%d_%s__%s", len(res.Manifest.Inputs)+1, strings.ReplaceAll(service, "-", "_"), strings.ToLower(k))
 		res.Manifest.Inputs = append(res.Manifest.Inputs, Input{Name: in, Type: "secret"})
 		if res.Inputs == nil {
 			res.Inputs = map[string]any{}

@@ -40,11 +40,14 @@ type composeExtra struct {
 }
 
 type secretRef struct {
-	Name string `yaml:"name"`
-	File string `yaml:"file,omitempty"`
+	Name      string `yaml:"name"`
+	File      string `yaml:"file,omitempty"`
+	BuildTime bool   `yaml:"build_time,omitempty"`
 }
 
 var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+
+var notEnvChar = regexp.MustCompile(`[^A-Za-z0-9_]+`)
 
 // secretName tells if a variable looks like a secret by its name.
 var secretName = regexp.MustCompile(`(?i)(PASS|SECRET|TOKEN|PRIVATE|CREDENTIAL|(^|_)KEY($|_)|APIKEY|AUTH|SALT|DSN|CERT)`)
@@ -378,6 +381,75 @@ func buildPath(b any) string {
 	return path.Clean("/" + ctx)
 }
 
+// buildArgLoss tells that a build argument looks like a secret and is imported as a build-time secret. Its value is
+// never in the message.
+func buildArgLoss(where, name string) Loss {
+	return Loss{Path: where, Key: "build", Disposition: LossImported,
+		Lost:        "the build argument " + name + " looks like a secret: it is imported as a build-time secret, not as a plain build argument",
+		Replacement: fmt.Sprintf("secrets:\n  - name: %s\n    build_time: true\n# The value is in the Secrets tab. Change it there.", name)}
+}
+
+// topLevelLosses tells what the top-level volumes, networks, configs and secrets of a file had that is not
+// imported. A named volume without settings is not a loss: the service gets it. A host path is never written.
+func topLevelLosses(doc map[string]any) []Loss {
+	var out []Loss
+	if v, ok := doc["name"]; ok && fmt.Sprint(v) != "" {
+		out = append(out, Loss{Path: "name", Key: "name", Disposition: LossReplaced, Lost: "the project name of the file",
+			Replacement: "The services go to the project and environment where you import them."})
+	}
+	if _, ok := doc["version"]; ok {
+		out = append(out, Loss{Path: "version", Key: "version", Disposition: LossReplaced, Lost: "the version of the file format",
+			Replacement: "Not needed. Nothing to set."})
+	}
+	vols, _ := doc["volumes"].(map[string]any)
+	for _, name := range sortedKeys(vols) {
+		def, _ := vols[name].(map[string]any)
+		var keys []string
+		for _, k := range sortedKeys(def) {
+			if k != "name" {
+				keys = append(keys, k)
+			}
+		}
+		if len(keys) == 0 {
+			continue
+		}
+		l := Loss{Path: "volumes." + name, Key: "volumes", Disposition: LossIgnored,
+			Lost:        fmt.Sprintf("the settings %s of the volume %s: Polipan makes a local volume on the node", strings.Join(keys, ", "), name),
+			Replacement: fmt.Sprintf("volumes:\n  - name: %s\n    path: <path in the container>\n    size_limit: <size, for example 10Gi>  # optional", name)}
+		if truthy(def["external"]) {
+			l.Disposition = LossManual
+			l.Lost = "the external volume " + name + " and its data: Polipan makes a new empty volume"
+			l.Replacement += "\n# Copy the data of the old volume into the new one after the first deploy."
+		}
+		out = append(out, l)
+	}
+	nets, _ := doc["networks"].(map[string]any)
+	for _, name := range sortedKeys(nets) {
+		out = append(out, Loss{Path: "networks." + name, Key: "networks", Disposition: LossReplaced, Lost: "the network " + name,
+			Replacement: "All services of an environment share one private network. Use the service name as the host."})
+	}
+	cfgs, _ := doc["configs"].(map[string]any)
+	for _, name := range sortedKeys(cfgs) {
+		def, _ := cfgs[name].(map[string]any)
+		from := "its content"
+		if f, ok := def["file"].(string); ok {
+			from = envFileLabel(f)
+		}
+		out = append(out, Loss{Path: "configs." + name, Key: "configs", Disposition: LossIgnored, Lost: "the config " + name + " (" + from + ")",
+			Replacement: "files:\n  - path: <path in the container>\n    content: |\n      <the content>\n# Put it on each service that uses the config. A file must not hold secrets."})
+	}
+	secs, _ := doc["secrets"].(map[string]any)
+	for _, name := range sortedKeys(secs) {
+		n := strings.Trim(strings.ToUpper(notEnvChar.ReplaceAllString(name, "_")), "_")
+		if n == "" || !envNameRe.MatchString(n) {
+			n = "SECRET"
+		}
+		out = append(out, Loss{Path: "secrets." + name, Key: "secrets", Disposition: LossManual, Lost: "the secret " + name + ": its value is not read",
+			Replacement: fmt.Sprintf("secrets:\n  - name: %s\n    file: /run/secrets/%s  # or leave out file: to get it as a variable\n# Set the value in the Secrets tab.", n, name)})
+	}
+	return out
+}
+
 // The replacement polipan.yaml. The fields are in the order of the file format (07-config-as-code).
 type yamlFile struct {
 	Version  int                     `yaml:"version"`
@@ -433,7 +505,18 @@ func replacementYAML(m *Manifest, secretEnv map[string][]string, extras map[stri
 		if s.Source != nil {
 			ys.Source = &yamlSource{Image: s.Source.Image}
 			if g := s.Source.Git; g != nil {
-				ys.Source.Git = &yamlGit{Repo: g.Repo, Branch: g.Branch, Path: g.Path, Builder: "dockerfile", Dockerfile: g.Dockerfile, BuildArgs: g.BuildArgs}
+				ys.Source.Git = &yamlGit{Repo: g.Repo, Branch: g.Branch, Path: g.Path, Builder: "dockerfile", Dockerfile: g.Dockerfile}
+				// A build argument that looks like a secret is a build-time secret: only its name is in the file.
+				for _, k := range sortedKeys(g.BuildArgs) {
+					if IsSecretName(k) {
+						ys.Secrets = append(ys.Secrets, secretRef{Name: k, BuildTime: true})
+						continue
+					}
+					if ys.Source.Git.BuildArgs == nil {
+						ys.Source.Git.BuildArgs = map[string]string{}
+					}
+					ys.Source.Git.BuildArgs[k] = g.BuildArgs[k]
+				}
 			}
 		}
 		secret := map[string]bool{}

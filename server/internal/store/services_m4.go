@@ -106,7 +106,12 @@ func (s *Store) CreateServices(ctx context.Context, p secrets.SecretProvider, or
 		sc := &Scope{EnvironmentID: &env.ID, ServiceID: &sv.ID, Protected: env.Protected}
 		for _, e := range sv.Env {
 			if e.Secret {
-				if _, _, err := writeSecret(ctx, tx, p, orgID, env.ProjectID, sc, NewSecret{Name: e.Name, Value: e.Value}, false, a); err != nil {
+				ns := NewSecret{Name: e.Name, Value: e.Value}
+				if e.BuildTime {
+					yes := true
+					ns.BuildTime = &yes
+				}
+				if _, _, err := writeSecret(ctx, tx, p, orgID, env.ProjectID, sc, ns, false, a); err != nil {
 					return nil, err
 				}
 			} else {
