@@ -13,6 +13,7 @@ export type Role = components['schemas']['Role']
 //   p:     owner, admin; developer only on a non-protected environment
 export type Permission =
   | 'project:create'
+  | 'project:delete'
   | 'env:create'
   | 'service:create'
   | 'service:update'
@@ -53,6 +54,7 @@ export type Permission =
 
 const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p' | 'owner'> = {
   'project:create': 'dev',
+  'project:delete': 'admin',
   'env:create': 'dev',
   'service:create': 'p',
   'service:update': 'p',

@@ -28,7 +28,7 @@ import { useAccess, accessFor, useRole } from '@/permissions'
 import { useMe } from '@/auth'
 import { NotFoundPage } from '@/routes/ErrorPages'
 import { useScope, useServices } from '@/scope'
-import type { Environment } from '@/scope'
+import type { Environment, Project } from '@/scope'
 import { serviceTone } from '@/status'
 
 function CreateEnvironmentDialog({
@@ -137,6 +137,68 @@ function CreateEnvironmentDialog({
   )
 }
 
+// Deletes the project, its environments and its services. The slug of the project must be typed.
+function DeleteProjectDialog({
+  project,
+  org,
+  onClose,
+}: {
+  project: Project
+  org: string
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const [typed, setTyped] = useState('')
+  const remove = useMutation({
+    mutationFn: () =>
+      unwrap(
+        api.DELETE('/projects/{project_id}', {
+          params: {
+            path: { project_id: project.id ?? '' },
+            query: { confirm: project.slug ?? '' },
+          },
+        }),
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['projects'] })
+      await navigate({ to: '/o/$org/projects', params: { org } })
+    },
+  })
+  return (
+    <Modal title={t('project.delete_title', { name: project.name ?? '' })} onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (typed === project.slug) remove.mutate()
+        }}
+      >
+        <p>{t('project.delete_text')}</p>
+        <TextField
+          label={t('common.type_to_confirm', { name: project.slug ?? '' })}
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+        />
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button onClick={onClose}>{t('common.cancel')}</Button>
+          <Button
+            type="submit"
+            variant="destructive"
+            loading={remove.isPending}
+            reason={typed === project.slug ? undefined : t('project.delete_type')}
+          >
+            {t('project.delete')}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
 function ServiceCards({ environment, project }: { environment: Environment; project: string }) {
   const role = useRole(environment.project_id)
   const { org } = useParams({ from: '/o/$org' })
@@ -233,6 +295,8 @@ export function ProjectPage() {
   const canCreateEnv = useAccess('env:create', false, scope.project?.id)
   const canManageRoles = useAccess('member:manage')
   const promoteAccess = useAccess('service:promote', false, scope.project?.id)
+  const canDelete = useAccess('project:delete', false, scope.project?.id)
+  const [deleting, setDeleting] = useState(false)
 
   if (scope.state === 'pending') return <Skeleton />
   if (scope.state === 'error') return <ErrorBanner error={scope.error} onRetry={scope.retry} />
@@ -354,6 +418,18 @@ export function ProjectPage() {
           environments={environments}
           onClose={() => setPromoting(false)}
         />
+      )}
+      {canDelete === 'allow' && (
+        <div className="mt-10">
+          <Optional label={t('project.danger')}>
+            <Button variant="destructive" onClick={() => setDeleting(true)}>
+              {t('project.delete')}
+            </Button>
+          </Optional>
+        </div>
+      )}
+      {deleting && (
+        <DeleteProjectDialog project={project} org={orgSlug} onClose={() => setDeleting(false)} />
       )}
       {creating && (
         <CreateEnvironmentDialog
