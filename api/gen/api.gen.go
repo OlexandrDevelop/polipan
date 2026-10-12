@@ -1267,14 +1267,21 @@ type OrgUpdate struct {
 
 // Placement defines model for Placement.
 type Placement struct {
-	Color        *PlacementColor  `json:"color,omitempty"`
-	Health       *PlacementHealth `json:"health,omitempty"`
-	Id           *string          `json:"id,omitempty"`
-	NodeId       *string          `json:"node_id,omitempty"`
-	ReleaseId    *string          `json:"release_id,omitempty"`
-	ReplicaIndex *int             `json:"replica_index,omitempty"`
-	Role         *PlacementRole   `json:"role,omitempty"`
-	Weight       *int             `json:"weight,omitempty"`
+	Color *PlacementColor `json:"color,omitempty"`
+
+	// ContainerId The Docker container. Empty until the agent reports it.
+	ContainerId *string          `json:"container_id,omitempty"`
+	CreatedAt   *time.Time       `json:"created_at,omitempty"`
+	Health      *PlacementHealth `json:"health,omitempty"`
+	Id          *string          `json:"id,omitempty"`
+
+	// Ip The address of the container in the mesh.
+	Ip           *string        `json:"ip,omitempty"`
+	NodeId       *string        `json:"node_id,omitempty"`
+	ReleaseId    *string        `json:"release_id,omitempty"`
+	ReplicaIndex *int           `json:"replica_index,omitempty"`
+	Role         *PlacementRole `json:"role,omitempty"`
+	Weight       *int           `json:"weight,omitempty"`
 }
 
 // PlacementColor defines model for Placement.Color.

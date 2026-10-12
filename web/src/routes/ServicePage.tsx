@@ -45,6 +45,7 @@ import { ServiceVariables } from '@/routes/ServiceVariables'
 import { useNodes, useScope } from '@/scope'
 import type { Service } from '@/scope'
 import { deploymentTone, isDeploymentActive, serviceTone } from '@/status'
+import type { Tone } from '@/status'
 
 const ServiceLogs = lazyNamed(() => import('@/routes/ServiceLogs'), 'ServiceLogs')
 const MetricsPanel = lazyNamed(() => import('@/components/MetricsPanel'), 'MetricsPanel')
@@ -81,9 +82,24 @@ function useDeployments(serviceId: string) {
   })
 }
 
+// The colour of the health of one container.
+function healthTone(health: string | undefined): Tone {
+  switch (health) {
+    case 'healthy':
+      return 'success'
+    case 'unhealthy':
+      return 'danger'
+    case 'starting':
+      return 'warning'
+    default:
+      return 'muted'
+  }
+}
+
 function sourceText(service: Service): string {
   const config = (service.config ?? {}) as Record<string, unknown>
-  const source = (config.source ?? {}) as Record<string, unknown>
+  // The server keeps the Git source in config.git.
+  const source = (config.git ?? config.source ?? {}) as Record<string, unknown>
   if (service.source_type === 'git' && typeof source.repo === 'string') {
     return `${source.repo} @ ${typeof source.branch === 'string' ? source.branch : 'main'}`
   }
@@ -174,18 +190,59 @@ function Overview({
             {t('service.desired')}: {tState('status.desired', service.desired_state)}
           </p>
         </Panel>
-        <Panel title={t('service.replicas')} className="space-y-1">
-          {(service.placements ?? []).length === 0 && (
+        <Panel
+          title={t('containers.title')}
+          className="sm:col-span-2 lg:col-span-3"
+          hint={String((service.placements ?? []).length)}
+        >
+          {(service.placements ?? []).length === 0 ? (
             <p className="text-muted">{t('service.no_placements')}</p>
+          ) : (
+            <DataList
+              caption={t('containers.title')}
+              rows={service.placements ?? []}
+              rowKey={(p) => p.id ?? ''}
+              columns={[
+                {
+                  header: t('containers.replica'),
+                  primary: true,
+                  cell: (p) => `#${(p.replica_index ?? 0) + 1}`,
+                },
+                {
+                  header: t('containers.id'),
+                  cell: (p) =>
+                    p.container_id ? (
+                      <code title={p.container_id}>{p.container_id.slice(0, 12)}</code>
+                    ) : (
+                      <span className="text-muted">{t('containers.waiting')}</span>
+                    ),
+                },
+                { header: t('containers.node'), cell: (p) => nodeName(p.node_id) },
+                {
+                  header: t('containers.release'),
+                  cell: (p) => {
+                    const r = releases.data?.items?.find((x) => x.id === p.release_id)
+                    return r?.number ? `v${r.number}` : '-'
+                  },
+                },
+                { header: t('containers.role'), cell: (p) => tState('status.role', p.role) },
+                {
+                  header: t('containers.health'),
+                  cell: (p) => (
+                    <StatusBadge
+                      tone={healthTone(p.health)}
+                      label={tState('status.health', p.health)}
+                    />
+                  ),
+                },
+                { header: t('containers.address'), cell: (p) => p.ip || '-' },
+                {
+                  header: t('containers.created'),
+                  cell: (p) => (p.created_at ? <Time value={p.created_at} /> : '-'),
+                },
+              ]}
+            />
           )}
-          <ul className="space-y-1 text-sm">
-            {(service.placements ?? []).map((p) => (
-              <li key={p.id}>
-                #{(p.replica_index ?? 0) + 1} {nodeName(p.node_id)} ·{' '}
-                {tState('status.role', p.role)} · {tState('status.health', p.health)}
-              </li>
-            ))}
-          </ul>
         </Panel>
         <Panel title={t('service.urls')} className="space-y-1 sm:col-span-2 lg:col-span-3">
           {domains.isPending && <Skeleton lines={1} />}

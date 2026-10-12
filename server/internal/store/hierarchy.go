@@ -313,6 +313,9 @@ type Placement struct {
 	Role         string
 	Weight       int
 	Health       string
+	ContainerID  string
+	IP           string
+	CreatedAt    time.Time
 }
 
 const activeStates = `'queued','building','image_ready','starting','health_checking','shifting','switching','draining'`
@@ -392,7 +395,8 @@ func (s *Store) placements(ctx context.Context, serviceIDs []string) (map[string
 	if len(serviceIDs) == 0 {
 		return out, nil
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT service_id, id, node_id, release_id, replica_index, color, role, weight, health
+	rows, err := s.Pool.Query(ctx, `SELECT service_id, id, node_id, release_id, replica_index, color, role, weight, health,
+		COALESCE(container_id, ''), COALESCE(host(ip), ''), created_at
 		FROM placements WHERE service_id = ANY($1) ORDER BY created_at, id`, serviceIDs)
 	if err != nil {
 		return nil, err
@@ -401,7 +405,7 @@ func (s *Store) placements(ctx context.Context, serviceIDs []string) (map[string
 	for rows.Next() {
 		var sid string
 		var p Placement
-		if err := rows.Scan(&sid, &p.ID, &p.NodeID, &p.ReleaseID, &p.ReplicaIndex, &p.Color, &p.Role, &p.Weight, &p.Health); err != nil {
+		if err := rows.Scan(&sid, &p.ID, &p.NodeID, &p.ReleaseID, &p.ReplicaIndex, &p.Color, &p.Role, &p.Weight, &p.Health, &p.ContainerID, &p.IP, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		out[sid] = append(out[sid], p)

@@ -1833,7 +1833,7 @@ components:
         suggestion: {type: object, properties: {schedule: {type: string}, retention: {type: object, additionalProperties: {type: integer}}, restore_check_schedule: {type: string}}}
     Placement:
       type: object
-      properties: {id: {type: string}, node_id: {type: string}, release_id: {type: string}, replica_index: {type: integer}, color: {type: string, enum: [blue, green]}, role: {type: string, enum: [live, candidate, draining, stopped]}, weight: {type: integer}, health: {type: string, enum: [unknown, starting, healthy, unhealthy]}}
+      properties: {id: {type: string}, node_id: {type: string}, release_id: {type: string}, replica_index: {type: integer}, color: {type: string, enum: [blue, green]}, role: {type: string, enum: [live, candidate, draining, stopped]}, weight: {type: integer}, health: {type: string, enum: [unknown, starting, healthy, unhealthy]}, container_id: {type: string, description: "The Docker container. Empty until the agent reports it."}, ip: {type: string, description: "The address of the container in the mesh."}, created_at: {type: string, format: date-time}}
     ServiceCreate:
       type: object
       required: [name, type]

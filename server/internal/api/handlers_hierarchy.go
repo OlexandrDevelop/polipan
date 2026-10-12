@@ -363,7 +363,8 @@ func serviceJSON(s *store.Service) gen.Service {
 	for i, p := range s.Placements {
 		color, role, health := gen.PlacementColor(p.Color), gen.PlacementRole(p.Role), gen.PlacementHealth(p.Health)
 		pl[i] = gen.Placement{Id: ptr(p.ID), NodeId: ptr(p.NodeID), ReleaseId: ptr(p.ReleaseID), ReplicaIndex: ptr(p.ReplicaIndex),
-			Color: &color, Role: &role, Weight: ptr(p.Weight), Health: &health}
+			Color: &color, Role: &role, Weight: ptr(p.Weight), Health: &health,
+			ContainerId: ptr(p.ContainerID), Ip: ptr(p.IP), CreatedAt: ptr(p.CreatedAt)}
 	}
 	out := gen.Service{Id: &s.ID, EnvironmentId: &s.EnvironmentID, Name: &s.Name, Type: &typ, SourceType: &src, Config: &cfg,
 		GitManagedFields: &managed, Status: &status, DesiredState: &desired, Failover: &failover,

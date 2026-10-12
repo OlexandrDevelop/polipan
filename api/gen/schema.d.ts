@@ -2542,6 +2542,12 @@ export interface components {
             weight?: number;
             /** @enum {string} */
             health?: "unknown" | "starting" | "healthy" | "unhealthy";
+            /** @description The Docker container. Empty until the agent reports it. */
+            container_id?: string;
+            /** @description The address of the container in the mesh. */
+            ip?: string;
+            /** Format: date-time */
+            created_at?: string;
         };
         ServiceCreate: {
             name: string;
