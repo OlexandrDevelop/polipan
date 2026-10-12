@@ -49,7 +49,7 @@
   --color-surface: #f3efe3;
   --color-raised: #ebe6d6;
   --color-text: #161b18;
-  --color-muted: #4c5a52;
+  --color-muted: #435048;
   --color-border-strong: #6b756f;
   --color-border: #d8d2c0;
   --color-primary: #0d6a37;
@@ -77,9 +77,9 @@
   --color-surface: #101512;
   --color-raised: #161d19;
   --color-text: #d5e0d9;
-  --color-muted: #8fa196;
+  --color-muted: #a5b5ab;
   --color-border-strong: #5d7066;
-  --color-border: #212a25;
+  --color-border: #2a352f;
   --color-primary: #4be08a;
   --color-on-primary: #04120a;
   --color-amber: #f0b33c;
@@ -110,27 +110,29 @@
   --windowbar-h: 32px;
 }
 
-/* The type scale of tokens-terminal.json: 13/20 on a laptop, 14/22 on a large screen and a phone.
-   Spacing stays in rem (16 px), so a 44 px target is 2.75rem everywhere. */
+/* The type scale. Text is Inter at 14/22 on a laptop and 15/24 on a large screen. Terminal parts
+   (titles, panels, bars, fields, code) stay in JetBrains Mono. Spacing stays in rem (16 px), so a
+   44 px target is 2.75rem everywhere. */
 :root {
-  --fs-xs: 12px;
-  --lh-xs: 16px;
-  --fs-sm: 13px;
-  --lh-sm: 20px;
-  --fs-base: 14px;
-  --lh-base: 22px;
-  --fs-lg: 16px;
-  --lh-lg: 24px;
-  --fs-xl: 20px;
-  --lh-xl: 28px;
-  --fs-2xl: 28px;
-  --lh-2xl: 36px;
+  --fs-xs: 13px;
+  --lh-xs: 18px;
+  --fs-sm: 14px;
+  --lh-sm: 22px;
+  --fs-base: 15px;
+  --lh-base: 24px;
+  --fs-lg: 17px;
+  --lh-lg: 26px;
+  --fs-xl: 22px;
+  --lh-xl: 30px;
+  --fs-2xl: 30px;
+  --lh-2xl: 38px;
 }
 @media (min-width: 1536px) {
   :root {
-    --fs-sm: 14px;
-    --lh-sm: 22px;
-    --fs-base: 15px;
+    --fs-sm: 15px;
+    --lh-sm: 24px;
+    --fs-base: 16px;
+    --lh-base: 26px;
   }
 }
 @media (max-width: 639.98px) {
@@ -153,10 +155,33 @@
 }
 
 body {
-  @apply bg-bg font-mono text-text antialiased;
+  @apply bg-bg font-sans text-text antialiased;
   font-size: var(--fs-sm);
   line-height: var(--lh-sm);
   font-variant-numeric: tabular-nums;
+  font-variant-ligatures: none;
+}
+
+/* The terminal parts keep the monospace font: titles, panels, bars, fields, code and logs. */
+h1,
+h2,
+h3,
+.panel-title,
+code,
+pre,
+kbd,
+samp,
+input,
+select,
+textarea,
+.meter,
+.font-term {
+  font-family:
+    'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+h1,
+h2,
+h3 {
   font-variant-ligatures: none;
 }
 
@@ -172,7 +197,7 @@ body {
   position: relative;
   border: 1px solid var(--color-border-strong);
   background: var(--color-bg);
-  padding: 1.25rem 1.5ch 1ch;
+  padding: 1.5rem 2ch 1.25rem;
   margin-top: 0.75rem;
 }
 .panel > .panel-title {

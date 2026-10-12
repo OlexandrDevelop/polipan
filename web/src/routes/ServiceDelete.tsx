@@ -8,7 +8,7 @@ import { ApiError, unwrap } from '@/api/errors'
 import { useMe } from '@/auth'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Modal } from '@/components/Modal'
-import { Banner, Button, CheckboxField, TextField } from '@/components/ui'
+import { Banner, Button, CheckboxField, Panel, TextField } from '@/components/ui'
 import { t } from '@/i18n'
 import { accessFor } from '@/permissions'
 import { useServices } from '@/scope'
@@ -112,9 +112,12 @@ export function ServiceDelete({
 
   if (access === 'hidden') return null
   return (
-    <section className="mt-10 max-w-2xl space-y-3 border-t border-border pt-6">
-      <h2 className="text-lg font-semibold text-danger">{t('delete.title')}</h2>
-      <p className="text-sm text-muted">{t('delete.text')}</p>
+    <Panel
+      id="settings-danger"
+      title={t('delete.title')}
+      className="space-y-3 !border-danger [&>.panel-title]:!text-danger"
+    >
+      <p className="text-muted">{t('delete.text')}</p>
       <Button
         variant="destructive"
         reason={access === 'blocked' ? t('common.needs_admin') : undefined}
@@ -194,6 +197,6 @@ export function ServiceDelete({
           </form>
         </Modal>
       )}
-    </section>
+    </Panel>
   )
 }

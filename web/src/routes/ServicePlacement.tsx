@@ -8,7 +8,15 @@ import { unwrap } from '@/api/errors'
 import { useMe } from '@/auth'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Time } from '@/components/Time'
-import { Banner, Button, CheckboxField, SelectField, TextField } from '@/components/ui'
+import {
+  Banner,
+  Button,
+  CheckboxField,
+  FieldGrid,
+  Panel,
+  SelectField,
+  TextField,
+} from '@/components/ui'
 import { obj } from '@/configForm'
 import type { Config } from '@/configForm'
 import { t } from '@/i18n'
@@ -118,81 +126,86 @@ export function ServicePlacement({
   const showBackup = service.last_backup_at !== undefined || lossOk
 
   return (
-    <form onSubmit={submit} noValidate className="max-w-2xl space-y-4 pb-6">
-      <h2 className="text-lg font-semibold">{t('placement.title')}</h2>
-      {saved && <Banner>{t('settings.saved')}</Banner>}
-      {save.error && <ErrorBanner error={save.error} title={t('settings.save_failed')} />}
-      <FailoverBanner service={service} />
-      <TextField
-        label={t('placement.nodes')}
-        hint={t('placement.nodes_hint')}
-        readOnly={readOnly}
-        autoComplete="off"
-        value={names}
-        onChange={(e) => setNames(e.target.value)}
-      />
-      <div className="space-y-1">
-        <label htmlFor="placement-labels" className="block text-sm font-medium">
-          {t('placement.labels')}
-        </label>
-        <textarea
-          id="placement-labels"
-          rows={2}
-          spellCheck={false}
-          readOnly={readOnly}
-          aria-invalid={parsed ? undefined : true}
-          className="block w-full rounded-sm border border-border-strong bg-bg px-3 py-2 font-mono text-base text-text aria-[invalid=true]:border-danger"
-          value={labels}
-          onChange={(e) => setLabels(e.target.value)}
-        />
-        <p className="text-sm text-muted">
-          {parsed ? t('placement.labels_hint') : t('nodes.labels_invalid')}
-        </p>
-      </div>
-      <CheckboxField
-        label={t('placement.spread')}
-        hint={t('placement.spread_hint')}
-        disabled={readOnly}
-        checked={spread}
-        onChange={(e) => setSpread(e.target.checked)}
-      />
-      <SelectField
-        label={t('failover.policy')}
-        hint={t('failover.policy_hint')}
-        disabled={readOnly}
-        value={failover}
-        onChange={(e) => setFailover(e.target.value as 'none' | 'auto')}
-      >
-        <option value="none">{t('failover.none')}</option>
-        <option value="auto">{t('failover.auto')}</option>
-      </SelectField>
-      <CheckboxField
-        label={t('failover.allow_loss')}
-        hint={t('failover.allow_loss_hint')}
-        disabled={readOnly || failover !== 'auto'}
-        checked={lossOk}
-        onChange={(e) => setLossOk(e.target.checked)}
-      />
-      {showBackup && (
-        <p className="text-sm text-muted">
-          {t('failover.last_backup')}:{' '}
-          {service.last_backup_at ? (
-            <Time value={service.last_backup_at} />
-          ) : (
-            t('failover.no_backup')
-          )}
-        </p>
-      )}
-      {!readOnly && (
-        <Button
-          type="submit"
-          variant="primary"
-          loading={save.isPending}
-          reason={parsed ? undefined : t('nodes.labels_invalid')}
-        >
-          {t('common.save')}
-        </Button>
-      )}
-    </form>
+    <Panel id="settings-placement" title={t('placement.title')}>
+      <form onSubmit={submit} noValidate className="space-y-5">
+        {saved && <Banner>{t('settings.saved')}</Banner>}
+        {save.error && <ErrorBanner error={save.error} title={t('settings.save_failed')} />}
+        <FailoverBanner service={service} />
+        <FieldGrid>
+          <TextField
+            label={t('placement.nodes')}
+            hint={t('placement.nodes_hint')}
+            readOnly={readOnly}
+            autoComplete="off"
+            value={names}
+            onChange={(e) => setNames(e.target.value)}
+          />
+          <div className="space-y-1">
+            <label htmlFor="placement-labels" className="block font-medium">
+              {t('placement.labels')}
+            </label>
+            <textarea
+              id="placement-labels"
+              rows={2}
+              spellCheck={false}
+              readOnly={readOnly}
+              aria-invalid={parsed ? undefined : true}
+              className="block w-full border border-border-strong bg-bg px-3 py-2 text-text aria-[invalid=true]:border-danger"
+              value={labels}
+              onChange={(e) => setLabels(e.target.value)}
+            />
+            <p className="text-xs text-muted">
+              {parsed ? t('placement.labels_hint') : t('nodes.labels_invalid')}
+            </p>
+          </div>
+          <SelectField
+            label={t('failover.policy')}
+            hint={t('failover.policy_hint')}
+            disabled={readOnly}
+            value={failover}
+            onChange={(e) => setFailover(e.target.value as 'none' | 'auto')}
+          >
+            <option value="none">{t('failover.none')}</option>
+            <option value="auto">{t('failover.auto')}</option>
+          </SelectField>
+          <div className="space-y-2">
+            <CheckboxField
+              label={t('placement.spread')}
+              hint={t('placement.spread_hint')}
+              disabled={readOnly}
+              checked={spread}
+              onChange={(e) => setSpread(e.target.checked)}
+            />
+            <CheckboxField
+              label={t('failover.allow_loss')}
+              hint={t('failover.allow_loss_hint')}
+              disabled={readOnly || failover !== 'auto'}
+              checked={lossOk}
+              onChange={(e) => setLossOk(e.target.checked)}
+            />
+          </div>
+        </FieldGrid>
+        {showBackup && (
+          <p className="text-muted">
+            {t('failover.last_backup')}:{' '}
+            {service.last_backup_at ? (
+              <Time value={service.last_backup_at} />
+            ) : (
+              t('failover.no_backup')
+            )}
+          </p>
+        )}
+        {!readOnly && (
+          <Button
+            type="submit"
+            variant="primary"
+            loading={save.isPending}
+            reason={parsed ? undefined : t('nodes.labels_invalid')}
+          >
+            {t('common.save')}
+          </Button>
+        )}
+      </form>
+    </Panel>
   )
 }

@@ -7,7 +7,7 @@ import { unwrap } from '@/api/errors'
 import { useMe } from '@/auth'
 import { CodeBlock } from '@/components/Copy'
 import { ErrorBanner } from '@/components/ErrorBanner'
-import { Banner, Button } from '@/components/ui'
+import { Banner, Button, Panel } from '@/components/ui'
 import { t } from '@/i18n'
 import { accessFor } from '@/permissions'
 import type { Service } from '@/scope'
@@ -39,9 +39,8 @@ export function ServiceDeployKey({
   })
   if (service.source_type !== 'git' || access === 'hidden') return null
   return (
-    <section className="max-w-2xl space-y-4 pb-6">
-      <h2 className="text-lg font-semibold">{t('deploykey.title')}</h2>
-      <p className="text-sm text-muted">{t('deploykey.text')}</p>
+    <Panel id="settings-deploy-key" title={t('deploykey.title')} className="space-y-4">
+      <p className="text-muted">{t('deploykey.text')}</p>
       {create.error && <ErrorBanner error={create.error} title={t('deploykey.failed')} />}
       {result ? (
         <div className="space-y-4">
@@ -66,6 +65,6 @@ export function ServiceDeployKey({
           {t('deploykey.create')}
         </Button>
       )}
-    </section>
+    </Panel>
   )
 }

@@ -15,7 +15,15 @@ import { PageHeader } from '@/components/PageHeader'
 import { RollbackDialog } from '@/components/RollbackDialog'
 import { Time } from '@/components/Time'
 import { TrafficLanes } from '@/components/Traffic'
-import { Banner, Button, CheckboxField, Skeleton, Spinner, StatusBadge } from '@/components/ui'
+import {
+  Banner,
+  Button,
+  CheckboxField,
+  Panel,
+  Skeleton,
+  Spinner,
+  StatusBadge,
+} from '@/components/ui'
 import { formatTime, t, tState } from '@/i18n'
 import { openStream } from '@/live'
 import { useMe } from '@/auth'
@@ -321,20 +329,19 @@ export function DeploymentPage() {
           <CanaryBar deployment={d} gate={gate} access={deployAccess} />
         </div>
       )}
-      <div className="grid gap-6 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
-        <div className="space-y-2">
-          <h2 className="font-semibold">{t('deployment.steps')}</h2>
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
+        <Panel title={t('deployment.steps')} className="space-y-3">
           {steps.length === 0 ? (
             <p className="text-muted">{tState('status.deployment', d.state)}</p>
           ) : (
-            <ol className="space-y-1">
+            <ol className="space-y-2">
               {steps.map((s, i) => {
                 const current = i === steps.length - 1 && live
                 return (
                   <li
                     key={`${s.state}-${i}`}
                     aria-current={current ? 'step' : undefined}
-                    className={`flex flex-wrap items-center gap-2 px-2 py-0.5 ${current ? 'bg-selection' : ''}`}
+                    className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-l-2 px-3 py-2 ${current ? 'border-primary bg-selection' : 'border-border'}`}
                   >
                     <StatusBadge
                       tone={
@@ -345,22 +352,23 @@ export function DeploymentPage() {
                       label={tState('status.deployment', s.state)}
                       glyph={current ? <Spinner /> : undefined}
                     />
-                    <Time value={s.time} />
-                    {s.message && <span className="w-full text-muted">{s.message}</span>}
+                    <span className="text-muted">
+                      <Time value={s.time} />
+                    </span>
+                    {s.message && (
+                      <span className="w-full break-words text-muted">{s.message}</span>
+                    )}
                   </li>
                 )
               })}
             </ol>
           )}
-          <p className="text-sm text-muted">
+          <p className="text-muted">
             {t('deployment.started')}: <Time value={d.started_at} />
           </p>
-        </div>
-        <div className="min-w-0 space-y-6">
-          <section aria-labelledby="dep-replicas" className="space-y-2">
-            <h2 id="dep-replicas" className="font-semibold">
-              {t('deployment.replicas')}
-            </h2>
+        </Panel>
+        <div className="min-w-0 space-y-8">
+          <Panel title={t('deployment.replicas')} className="space-y-2">
             {service.isPending && Boolean(serviceId) && <Skeleton lines={2} />}
             {service.data && placements.length === 0 && (
               <p className="text-muted">{t('service.no_placements')}</p>
@@ -388,8 +396,8 @@ export function DeploymentPage() {
                 />
               </div>
             )}
-          </section>
-          <details open className="space-y-2">
+          </Panel>
+          <details open className="space-y-2 border border-border-strong bg-surface p-4">
             <summary className="min-h-11 cursor-pointer font-semibold">{t('build.log')}</summary>
             {log.stored.isError && (
               <ErrorBanner error={log.stored.error} onRetry={() => void log.stored.refetch()} />

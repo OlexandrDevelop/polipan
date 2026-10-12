@@ -75,7 +75,7 @@ function CreateProjectDialog({ onClose }: { onClose: () => void }) {
 }
 
 // The projects as cards, or the empty state with the "create project" action.
-function ProjectCards({ onCreate }: { onCreate: () => void }) {
+function ProjectCards({ onCreate, narrow }: { onCreate: () => void; narrow?: boolean }) {
   const { org } = useParams({ from: '/o/$org' })
   const projects = useProjects()
   const canCreate = useAccess('project:create')
@@ -100,7 +100,7 @@ function ProjectCards({ onCreate }: { onCreate: () => void }) {
     )
   }
   return (
-    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+    <ul className={`grid gap-4 ${narrow ? '' : 'sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4'}`}>
       {projects.data.map((project) => (
         <li key={project.id}>
           <Card>
@@ -148,11 +148,6 @@ function AlertsCard({ org }: { org: string }) {
   const firing = (alerts.data ?? []).filter((a) => a.state === 'firing')
   return (
     <div className="space-y-1">
-      <h3>
-        <Link to="/o/$org/alerts" params={{ org }} className="text-muted underline">
-          {t('dashboard.alerts')}
-        </Link>
-      </h3>
       {alerts.isPending && <Skeleton lines={1} />}
       {alerts.isError && <ErrorBanner error={alerts.error} onRetry={() => void alerts.refetch()} />}
       {alerts.data && firing.length === 0 && (
@@ -163,6 +158,11 @@ function AlertsCard({ org }: { org: string }) {
           <StatusBadge tone="danger" label={t('dashboard.firing', { count: firing.length })} />
         </p>
       )}
+      <p>
+        <Link to="/o/$org/alerts" params={{ org }} className="text-primary underline">
+          {t('dashboard.alerts')} →
+        </Link>
+      </p>
     </div>
   )
 }
@@ -178,17 +178,17 @@ function BackupsCard({ org }: { org: string }) {
   const worst = worstPolicy(policies.data ?? [])
   return (
     <div className="space-y-1">
-      <h3>
-        <Link to="/o/$org/backups" params={{ org }} className="text-muted underline">
-          {t('dashboard.backups')}
-        </Link>
-      </h3>
       {policies.isPending && <Skeleton lines={1} />}
       {policies.isError && (
         <ErrorBanner error={policies.error} onRetry={() => void policies.refetch()} />
       )}
       {policies.data && !worst && <StatusBadge tone="warning" label={t('backup.badge.none')} />}
       {worst && <VerifiedBadge policy={worst} />}
+      <p>
+        <Link to="/o/$org/backups" params={{ org }} className="text-primary underline">
+          {t('dashboard.backups')} →
+        </Link>
+      </p>
     </div>
   )
 }
@@ -278,69 +278,72 @@ export function DashboardPage() {
   }
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-8">
       <PageHeader title={t('dashboard.title')} />
       <Onboarding />
-      <Panel title={t('dashboard.overview')}>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-1">
-            <h3 className="text-muted">{t('dashboard.projects')}</h3>
-            {projects.isError ? (
-              <ErrorBanner error={projects.error} onRetry={() => void projects.refetch()} />
-            ) : (
-              <p className="text-2xl font-bold">
-                <Counter value={projects.data?.length ?? '-'} />
-              </p>
-            )}
-          </div>
-          <div className="space-y-1">
-            <h3>
-              <Link to="/o/$org/nodes" params={{ org }} className="text-muted underline">
-                {t('dashboard.nodes')}
-              </Link>
-            </h3>
-            {nodes.isPending && <Skeleton lines={1} />}
-            {nodes.isError && (
-              <ErrorBanner error={nodes.error} onRetry={() => void nodes.refetch()} />
-            )}
-            {nodes.data && byState.size === 0 && (
-              <p className="text-muted">{t('dashboard.no_nodes')}</p>
-            )}
-            <ul className="space-y-1">
-              {[...byState.entries()].map(([state, count]) => (
-                <li key={state} className="flex items-center gap-2">
-                  <StatusBadge tone={nodeTone(state)} label={tState('status.node', state)} />
-                  <span className="font-bold">
-                    <Counter value={count} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <AlertsCard org={org} />
-          <BackupsCard org={org} />
-        </div>
-      </Panel>
-      {/* The panel is there while the nodes load, so the page below does not jump. */}
-      {(nodes.isPending || (nodes.data?.length ?? 0) > 0) && (
-        <Panel title={t('dashboard.nodes')} hint={t('dashboard.refresh_hint')}>
-          {nodes.isPending ? (
-            <Skeleton lines={3} />
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <Panel title={t('dashboard.projects')} className="space-y-2">
+          {projects.isError ? (
+            <ErrorBanner error={projects.error} onRetry={() => void projects.refetch()} />
           ) : (
-            <NodesTable org={org} nodes={nodes.data ?? []} />
+            <p className="font-term text-4xl font-bold">
+              <Counter value={projects.data?.length ?? '-'} />
+            </p>
           )}
         </Panel>
-      )}
-      <Panel title={t('dashboard.projects')} className="space-y-3">
-        {canCreate === 'allow' && (projects.data?.length ?? 0) > 0 && (
-          <div className="flex justify-end">
-            <Button variant="primary" onClick={() => setCreating(true)}>
-              {t('projects.create')}
-            </Button>
-          </div>
+        <Panel title={t('dashboard.nodes')} className="space-y-2">
+          {nodes.isPending && <Skeleton lines={1} />}
+          {nodes.isError && (
+            <ErrorBanner error={nodes.error} onRetry={() => void nodes.refetch()} />
+          )}
+          {nodes.data && byState.size === 0 && (
+            <p className="text-muted">{t('dashboard.no_nodes')}</p>
+          )}
+          <ul className="space-y-1">
+            {[...byState.entries()].map(([state, count]) => (
+              <li key={state} className="flex items-center gap-2">
+                <StatusBadge tone={nodeTone(state)} label={tState('status.node', state)} />
+                <span className="font-term font-bold">
+                  <Counter value={count} />
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p>
+            <Link to="/o/$org/nodes" params={{ org }} className="text-primary underline">
+              {t('dashboard.nodes')} →
+            </Link>
+          </p>
+        </Panel>
+        <Panel title={t('dashboard.alerts')} className="space-y-2">
+          <AlertsCard org={org} />
+        </Panel>
+        <Panel title={t('dashboard.backups')} className="space-y-2">
+          <BackupsCard org={org} />
+        </Panel>
+      </div>
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        {/* The panel is there while the nodes load, so the page below does not jump. */}
+        {(nodes.isPending || (nodes.data?.length ?? 0) > 0) && (
+          <Panel title={t('dashboard.nodes')} hint={t('dashboard.refresh_hint')}>
+            {nodes.isPending ? (
+              <Skeleton lines={3} />
+            ) : (
+              <NodesTable org={org} nodes={nodes.data ?? []} />
+            )}
+          </Panel>
         )}
-        <ProjectCards onCreate={() => setCreating(true)} />
-      </Panel>
+        <Panel title={t('dashboard.projects')} className="space-y-4">
+          {canCreate === 'allow' && (projects.data?.length ?? 0) > 0 && (
+            <div className="flex justify-end">
+              <Button variant="primary" onClick={() => setCreating(true)}>
+                {t('projects.create')}
+              </Button>
+            </div>
+          )}
+          <ProjectCards narrow onCreate={() => setCreating(true)} />
+        </Panel>
+      </div>
       {creating && <CreateProjectDialog onClose={() => setCreating(false)} />}
     </section>
   )

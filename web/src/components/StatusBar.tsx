@@ -76,7 +76,7 @@ export function StatusBar({
     <footer
       aria-label={t('statusbar.label')}
       data-production={env?.kind === 'production' || undefined}
-      className="sticky z-20 flex flex-wrap items-center justify-between gap-x-3 gap-y-0 border-t border-border-strong bg-raised px-3 py-0.5 max-sm:top-0 max-sm:order-1 max-sm:border-b max-sm:border-t-0 sm:bottom-0 sm:order-4 sm:min-h-7"
+      className="font-term sticky z-20 flex flex-wrap items-center justify-between gap-x-3 gap-y-0 border-t border-border-strong bg-raised px-3 py-0.5 max-sm:top-0 max-sm:order-1 max-sm:border-b max-sm:border-t-0 sm:bottom-0 sm:order-4 sm:min-h-7"
     >
       <div className="flex min-w-0 flex-wrap items-center gap-x-3">
         <span className="border border-border-strong px-1" title={t('statusbar.org')}>

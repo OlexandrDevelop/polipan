@@ -35,8 +35,8 @@ Two themes plus `system` (default, follows the OS live, same rules as [REQ-UI-01
 | `surface` | `#101512` | `#f3efe3` | Prompt line, log area, palette |
 | `raised` | `#161d19` | `#ebe6d6` | Status bar, hover |
 | `text` | `#d5e0d9` | `#161b18` | Text |
-| `muted` | `#8fa196` | `#4c5a52` | Labels, hints |
-| `border` / `border-strong` | `#212a25` / `#5d7066` | `#d8d2c0` / `#6b756f` | Dividers (decor only) / panel and control borders |
+| `muted` | `#a5b5ab` | `#435048` | Labels, hints |
+| `border` / `border-strong` | `#2a352f` / `#5d7066` | `#d8d2c0` / `#6b756f` | Dividers (decor only) / panel and control borders |
 | `primary` | `#4be08a` | `#0d6a37` | Action, focus, cursor, links |
 | `amber`, `cyan` | `#f0b33c`, `#4cd3e6` | `#855300`, `#0a6577` | Warning, info |
 | `danger` | `#ff7070` | `#b3261e` | Failed, production chip |

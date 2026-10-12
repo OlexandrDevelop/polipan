@@ -289,6 +289,43 @@ export function validateServiceSearch(search: Record<string, unknown>): {
 }
 
 // UI-06 (basic): state and control of one service, with the tabs of M1.
+// The sections of the settings tab. The list stays in view while the page scrolls.
+function SettingsNav({ git }: { git: boolean }) {
+  const items: [string, string][] = [
+    ['settings-source', t('settings.source')],
+    ['settings-run', t('settings.run')],
+    ['settings-resources', t('settings.resources')],
+    ['settings-deploy', t('settings.deploy')],
+    ['settings-hooks', t('settings.hooks')],
+    ...(git ? ([['settings-deploy-key', t('deploykey.title')]] as [string, string][]) : []),
+    ['settings-placement', t('placement.title')],
+    ['settings-danger', t('delete.title')],
+  ]
+  return (
+    <nav
+      aria-label={t('settings.sections')}
+      className="font-term hidden lg:sticky lg:top-24 lg:block"
+    >
+      <ul className="space-y-1 border-l border-border">
+        {items.map(([id, label]) => (
+          <li key={id}>
+            <a
+              href={`#${id}`}
+              className="block py-1 pl-4 text-muted hover:bg-raised hover:text-text"
+              onClick={(e) => {
+                e.preventDefault()
+                document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}
+            >
+              {label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}
+
 export function ServicePage() {
   const params = useParams({ strict: false })
   const org = params.org ?? ''
@@ -670,26 +707,29 @@ export function ServicePage() {
         </Suspense>
       )}
       {tab === 'settings' && (
-        <>
-          <ServiceSettings
-            key={service.id}
-            service={service}
-            environmentProtected={environment.protected}
-            onChanged={changed}
-          />
-          <ServiceDeployKey service={service} environmentProtected={environment.protected} />
-          <ServicePlacement
-            key={`${service.id}-${service.failover}-${service.allow_data_loss_failover}`}
-            service={service}
-            environmentProtected={environment.protected}
-            onChanged={changed}
-          />
-          <ServiceDelete
-            service={service}
-            environmentProtected={environment.protected}
-            base={base}
-          />
-        </>
+        <div className="grid items-start gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]">
+          <SettingsNav git={service.source_type === 'git'} />
+          <div className="min-w-0 space-y-8">
+            <ServiceSettings
+              key={service.id}
+              service={service}
+              environmentProtected={environment.protected}
+              onChanged={changed}
+            />
+            <ServiceDeployKey service={service} environmentProtected={environment.protected} />
+            <ServicePlacement
+              key={`${service.id}-${service.failover}-${service.allow_data_loss_failover}`}
+              service={service}
+              environmentProtected={environment.protected}
+              onChanged={changed}
+            />
+            <ServiceDelete
+              service={service}
+              environmentProtected={environment.protected}
+              base={base}
+            />
+          </div>
+        </div>
       )}
       {dialog === 'deploy' && (
         <DeployDialog

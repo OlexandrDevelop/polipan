@@ -8,7 +8,7 @@ import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { useMe } from '@/auth'
 import { ErrorBanner } from '@/components/ErrorBanner'
-import { Button, Card, StatusBadge, TextField } from '@/components/ui'
+import { Button, Panel, StatusBadge, TextField } from '@/components/ui'
 import { t } from '@/i18n'
 import { AddNodeDialog } from '@/routes/Nodes'
 import { useNodes, useProjects } from '@/scope'
@@ -215,21 +215,33 @@ export function Onboarding() {
     }
   }
 
+  const doneCount = ids.filter((id) => done[id]).length
   return (
-    <Card className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">{t('onboarding.title')}</h2>
-        {showAll && <Button onClick={() => setShowAll(false)}>{t('common.close')}</Button>}
-      </div>
-      <p className="text-sm text-muted">{t('onboarding.text')}</p>
+    <Panel
+      title={t('onboarding.title')}
+      hint={
+        showAll ? (
+          <Button variant="ghost" onClick={() => setShowAll(false)}>
+            {t('common.close')}
+          </Button>
+        ) : (
+          `${doneCount}/${ids.length}`
+        )
+      }
+      className="space-y-4"
+    >
+      <p className="text-muted">{t('onboarding.text')}</p>
       {rename.error && <ErrorBanner error={rename.error} title={t('onboarding.rename_failed')} />}
-      <ol className="space-y-4">
+      <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {ids.map((id) => {
           const isDone = done[id]
           const isSkipped = !isDone && skipped.includes(id)
           return (
-            <li key={id} className="space-y-2 border-t border-border pt-3">
-              <div className="flex flex-wrap items-center gap-2">
+            <li
+              key={id}
+              className={`flex flex-col gap-2 border border-border p-3 ${isDone ? 'bg-bg' : 'bg-surface'}`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-semibold">{t(`onboarding.step.${id}`)}</h3>
                 <StatusBadge
                   tone={isDone ? 'success' : isSkipped ? 'muted' : 'warning'}
@@ -242,9 +254,9 @@ export function Onboarding() {
                   }
                 />
               </div>
-              <p className="text-sm text-muted">{t(`onboarding.step.${id}_text`)}</p>
+              {!isDone && <p className="text-muted">{t(`onboarding.step.${id}_text`)}</p>}
               {!isDone && (
-                <div className="flex flex-wrap items-end gap-3">
+                <div className="mt-auto flex flex-wrap items-end gap-3 pt-1">
                   {action(id)}
                   {isSkipped ? (
                     <Button onClick={() => mark(id, false)}>{t('onboarding.resume_step')}</Button>
@@ -258,6 +270,6 @@ export function Onboarding() {
         })}
       </ol>
       {addingServer && <AddNodeDialog onClose={() => setAddingServer(false)} />}
-    </Card>
+    </Panel>
   )
 }

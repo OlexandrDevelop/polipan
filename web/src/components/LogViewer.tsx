@@ -438,7 +438,7 @@ export function LogViewer({
             tabIndex={0}
             onKeyDown={onKeyDown}
             onScroll={onScroll}
-            className={`max-h-[60vh] min-h-24 overflow-auto border border-border-strong bg-surface py-1 ${
+            className={`font-term max-h-[60vh] min-h-24 overflow-auto border border-border-strong bg-surface py-1 ${
               wrap ? '' : 'whitespace-pre'
             }`}
           >

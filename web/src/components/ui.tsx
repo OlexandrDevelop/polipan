@@ -90,7 +90,7 @@ function FieldShell({ id, label, required, hint, error, children }: FieldShellPr
       </label>
       {children}
       {hint && (
-        <p id={`${id}-hint`} className="text-muted">
+        <p id={`${id}-hint`} className="text-xs text-muted">
           {hint}
         </p>
       )}
@@ -243,7 +243,7 @@ export function CheckboxField({
         <span className="font-medium">{label}</span>
       </label>
       {hint && (
-        <p id={`${id}-hint`} className="ml-7 text-muted coarse:ml-9">
+        <p id={`${id}-hint`} className="ml-7 text-xs text-muted coarse:ml-9">
           {hint}
         </p>
       )}
@@ -421,6 +421,12 @@ export function Panel({
       {children}
     </section>
   )
+}
+
+// The fields of a panel in two columns on a wide screen. A field that needs the whole row sits in
+// a wrapper with the class "sm:col-span-2".
+export function FieldGrid({ children }: { children: ReactNode }) {
+  return <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">{children}</div>
 }
 
 const METER_CELLS = 12

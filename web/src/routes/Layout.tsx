@@ -93,7 +93,8 @@ export function AppShell() {
   const userId = me.data?.user?.id
   const live = useLiveEvents(Boolean(me.data))
   const [help, setHelp] = useState(false)
-  const [more, setMore] = useState(false)
+  // The sheet of links: all the others on a phone, only the settings pages on a larger screen.
+  const [more, setMore] = useState<false | 'all' | 'settings'>(false)
   const openHelp = useCallback(() => setHelp(true), [])
   const theme = useTheme()
   const calm = useCalm()
@@ -219,6 +220,8 @@ export function AppShell() {
     show: boolean
     bar?: boolean
     exact?: boolean
+    // A page of the settings group. On a large screen these live behind the settings button.
+    settings?: boolean
   }[] = [
     {
       to: '/o/$org',
@@ -242,14 +245,34 @@ export function AppShell() {
     { to: '/o/$org/alerts', label: t('nav.alerts'), show: true },
     { to: '/o/$org/logs', label: t('nav.logs'), show: true },
     { to: '/o/$org/backups', label: t('nav.backups'), show: true },
-    { to: '/o/$org/settings/members', label: t('nav.members'), show: canMembers === 'allow' },
-    { to: '/o/$org/settings/teams', label: t('nav.teams'), show: canMembers === 'allow' },
-    { to: '/o/$org/settings/organization', label: t('nav.organization'), show: canOrg === 'allow' },
-    { to: '/o/$org/settings/git', label: t('nav.git'), show: canGit === 'allow' },
-    { to: '/o/$org/settings/sso', label: t('nav.sso'), show: canOrg === 'allow' },
-    { to: '/o/$org/settings/tokens', label: t('nav.tokens'), show: true },
-    { to: '/o/$org/settings/audit', label: t('nav.audit'), show: canAudit === 'allow' },
-    { to: '/o/$org/settings/profile', label: t('nav.profile'), show: true },
+    {
+      settings: true,
+      to: '/o/$org/settings/members',
+      label: t('nav.members'),
+      show: canMembers === 'allow',
+    },
+    {
+      settings: true,
+      to: '/o/$org/settings/teams',
+      label: t('nav.teams'),
+      show: canMembers === 'allow',
+    },
+    {
+      settings: true,
+      to: '/o/$org/settings/organization',
+      label: t('nav.organization'),
+      show: canOrg === 'allow',
+    },
+    { settings: true, to: '/o/$org/settings/git', label: t('nav.git'), show: canGit === 'allow' },
+    { settings: true, to: '/o/$org/settings/sso', label: t('nav.sso'), show: canOrg === 'allow' },
+    { settings: true, to: '/o/$org/settings/tokens', label: t('nav.tokens'), show: true },
+    {
+      settings: true,
+      to: '/o/$org/settings/audit',
+      label: t('nav.audit'),
+      show: canAudit === 'allow',
+    },
+    { settings: true, to: '/o/$org/settings/profile', label: t('nav.profile'), show: true },
   ]
   const orgName = orgQuery.data?.name ?? 'Polipan'
   const wrongOrg = orgQuery.data?.slug !== undefined && orgQuery.data.slug !== org
@@ -259,7 +282,7 @@ export function AppShell() {
     <div className="flex min-h-screen flex-col">
       <Boot />
       <div className="fx-scanlines" aria-hidden="true" />
-      <header className="sticky top-0 z-20 flex min-h-9 items-center gap-2 border-b border-border-strong bg-surface px-3 max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:order-4 max-sm:min-h-14 max-sm:border-b-0 max-sm:border-t max-sm:pb-[env(safe-area-inset-bottom)] sm:order-1">
+      <header className="font-term sticky top-0 z-20 flex min-h-9 items-center gap-2 border-b border-border-strong bg-surface px-3 max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:order-4 max-sm:min-h-14 max-sm:border-b-0 max-sm:border-t max-sm:pb-[env(safe-area-inset-bottom)] sm:order-1">
         <span aria-hidden="true" className="font-bold text-primary">
           $
         </span>
@@ -291,23 +314,20 @@ export function AppShell() {
       </header>
       <nav
         aria-label={t('nav.main')}
-        className="sticky top-9 z-10 border-b border-border bg-bg pb-[env(safe-area-inset-bottom)] max-sm:fixed max-sm:inset-x-0 max-sm:bottom-14 max-sm:top-auto max-sm:z-20 max-sm:order-3 max-sm:border-b-0 max-sm:border-t max-sm:bg-surface max-sm:pb-0 sm:order-2"
+        className="font-term sticky top-9 z-10 border-b border-border bg-bg pb-[env(safe-area-inset-bottom)] max-sm:fixed max-sm:inset-x-0 max-sm:bottom-14 max-sm:top-auto max-sm:z-20 max-sm:order-3 max-sm:border-b-0 max-sm:border-t max-sm:bg-surface max-sm:pb-0 sm:order-2"
       >
         <ul className="flex gap-0 overflow-x-auto sm:px-2 max-sm:justify-around">
-          {bar.map((l, i) => (
-            <li key={l.to} className={`shrink-0 max-sm:flex-1 ${l.bar ? '' : 'max-sm:hidden'}`}>
+          {bar.map((l) => (
+            <li
+              key={l.to}
+              className={`shrink-0 max-sm:flex-1 ${l.bar ? '' : 'max-sm:hidden'} ${l.settings ? 'hidden' : ''}`}
+            >
               <Link
                 to={l.to}
                 params={{ org }}
                 activeOptions={l.exact ? { exact: true } : undefined}
                 className={navLink}
               >
-                <span
-                  aria-hidden="true"
-                  className="text-muted max-sm:hidden [.active>&]:text-primary"
-                >
-                  {i + 1}:
-                </span>
                 {l.short ? (
                   <>
                     <span className="sm:hidden">{l.short}</span>
@@ -324,9 +344,19 @@ export function AppShell() {
               type="button"
               aria-haspopup="dialog"
               className={`${navLink} w-full`}
-              onClick={() => setMore(true)}
+              onClick={() => setMore('all')}
             >
               {t('nav.more')}
+            </button>
+          </li>
+          <li className="shrink-0 max-sm:hidden">
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              className={navLink}
+              onClick={() => setMore('settings')}
+            >
+              {t('nav.settings')} ▾
             </button>
           </li>
         </ul>
@@ -361,10 +391,13 @@ export function AppShell() {
         signingOut={logout.isPending}
       />
       {more && (
-        <Modal title={t('nav.more')} onClose={() => setMore(false)}>
+        <Modal
+          title={more === 'settings' ? t('nav.settings') : t('nav.more')}
+          onClose={() => setMore(false)}
+        >
           <ul className="grid gap-1">
             {links
-              .filter((l) => l.show && !l.bar)
+              .filter((l) => l.show && !l.bar && (more === 'all' || l.settings))
               .map((l) => (
                 <li key={l.to}>
                   <Link
