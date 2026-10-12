@@ -1,0 +1,19 @@
+{{define "content"}}
+<p class="kicker">community</p>
+<h1>{{.Cfg.SiteName}}</h1>
+<p class="lead">Ask for help, share your setup and tell us what to build next.</p>
+<section aria-labelledby="cats">
+  <h2 class="section-title" id="cats">Categories</h2>
+  <div class="grid">
+  {{range .Categories}}<article class="panel">
+    <h3 class="panel-title"><a href="/c/{{.Slug}}">{{.Name}}</a></h3>
+    <p>{{.Description}}</p>
+    <p class="muted small">{{.Topics}} topics{{if .LastPostAt}} · last {{ago (deref .LastPostAt)}}{{end}}</p>
+  </article>{{end}}
+  </div>
+</section>
+<section aria-labelledby="latest">
+  <h2 class="section-title" id="latest">Latest topics</h2>
+  {{template "topics" .Topics}}
+</section>
+{{end}}

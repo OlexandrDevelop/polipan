@@ -1,0 +1,19 @@
+{{define "content"}}
+<p class="kicker"><a href="/">community</a> / new</p>
+<h1>New topic</h1>
+{{template "error" .}}
+<form method="post" action="/new" class="form">
+  {{template "trap" .}}
+  <label for="category">Category</label>
+  <select id="category" name="category" required>
+    {{$sel := index .Form "category"}}
+    {{range .Categories}}{{if or (not .StaffOnly) $.User.IsStaff}}<option value="{{.Slug}}"{{if eq .Slug $sel}} selected{{end}}>{{.Name}}</option>{{end}}{{end}}
+  </select>
+  <label for="title">Title</label>
+  <input id="title" name="title" maxlength="120" required value="{{index .Form "title"}}">
+  <label for="body">Text</label>
+  <textarea id="body" name="body" rows="10" maxlength="10000" required>{{index .Form "body"}}</textarea>
+  <p class="muted small">Plain text. A blank line starts a new paragraph. Use three backticks for code.</p>
+  <button type="submit" class="btn">Create topic</button>
+</form>
+{{end}}

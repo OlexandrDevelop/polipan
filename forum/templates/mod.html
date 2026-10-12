@@ -1,0 +1,16 @@
+{{define "content"}}
+<p class="kicker">team</p>
+<h1>Moderation</h1>
+<form action="/mod" method="get" class="form" role="search">
+  <label for="mq">Find a user</label>
+  <input id="mq" name="q" maxlength="24" value="{{.Query}}">
+  <button type="submit" class="btn">Find</button>
+</form>
+<ul class="rows">
+{{range .Users}}<li class="row">
+  <span>{{.Username}} <span class="tag{{if ne .Role "member"}} amber{{end}}">{{.Role}}</span>{{if .Banned}} <span class="tag danger">banned</span>{{end}}</span>
+  <span class="muted row-meta">joined {{date .Created}}</span>
+  {{if eq .Role "member"}}<form method="post" action="/mod/ban" class="inline">{{template "hidden" $}}<input type="hidden" name="user" value="{{.ID}}"><input type="hidden" name="ban" value="{{if .Banned}}0{{else}}1{{end}}"><button type="submit" class="{{if not .Banned}}danger{{end}}">[{{if .Banned}}unban{{else}}ban{{end}}]</button></form>{{end}}
+</li>{{end}}
+</ul>
+{{end}}

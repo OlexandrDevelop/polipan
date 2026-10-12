@@ -1,0 +1,18 @@
+{{define "content"}}
+<div class="narrow">
+<p class="kicker">account</p>
+<h1>Log in</h1>
+{{template "error" .}}
+<form method="post" action="/login" class="form">
+  {{template "hidden" .}}
+  <input type="hidden" name="next" value="{{.Next}}">
+  <div class="hp" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off"></label></div>
+  <label for="username">Name</label>
+  <input id="username" name="username" required maxlength="24" autocomplete="username" value="{{index .Form "username"}}">
+  <label for="password">Password</label>
+  <input id="password" name="password" type="password" required maxlength="200" autocomplete="current-password">
+  <button type="submit" class="btn">Log in</button>
+</form>
+<p class="muted">No account? <a href="/register">Register</a>.</p>
+</div>
+{{end}}

@@ -1,0 +1,34 @@
+{{define "content"}}
+<p class="kicker"><a href="/">community</a> / <a href="/c/{{.Topic.CategorySlug}}">{{.Topic.CategorySlug}}</a></p>
+<h1>{{.Topic.Title}}</h1>
+<p class="muted small">{{.Topic.Author}} · {{date .Topic.CreatedAt}} · {{.Topic.Replies}} replies{{if .Topic.Pinned}} · pinned{{end}}{{if .Topic.Locked}} · locked{{end}}{{if .Topic.Deleted}} · deleted{{end}}</p>
+{{if .User.IsStaff}}<div class="actions" aria-label="Team actions">
+  <form method="post" action="/t/{{.Topic.ID}}/{{if .Topic.Locked}}unlock{{else}}lock{{end}}" class="inline">{{template "hidden" .}}<button type="submit">[{{if .Topic.Locked}}unlock{{else}}lock{{end}}]</button></form>
+  <form method="post" action="/t/{{.Topic.ID}}/{{if .Topic.Pinned}}unpin{{else}}pin{{end}}" class="inline">{{template "hidden" .}}<button type="submit">[{{if .Topic.Pinned}}unpin{{else}}pin{{end}}]</button></form>
+  <form method="post" action="/t/{{.Topic.ID}}/delete" class="inline">{{template "hidden" .}}<button type="submit" class="danger">[delete topic]</button></form>
+</div>{{end}}
+{{template "error" .}}
+{{range .Posts}}<article class="panel post" id="p{{.ID}}">
+  <h2 class="panel-title">{{.Author}}{{if ne .Role "member"}} <span class="tag amber">{{.Role}}</span>{{end}}</h2>
+  <span class="panel-hint">{{date .CreatedAt}}{{if .EditedAt}} · edited{{end}}</span>
+  {{if .Deleted}}<p class="muted">(deleted)</p>{{else}}<div class="body">{{render .Body}}</div>{{end}}
+  {{if or .CanEdit .CanDelete}}<div class="actions">
+    {{if .CanEdit}}<a href="/p/{{.ID}}/edit">[edit]</a>{{end}}
+    {{if .CanDelete}}<form method="post" action="/p/{{.ID}}/delete" class="inline">{{template "hidden" $}}<button type="submit" class="danger">[delete]</button></form>{{end}}
+  </div>{{end}}
+</article>{{end}}
+{{template "pager" .}}
+{{if .Topic.Deleted}}{{else if and .Topic.Locked (not .User.IsStaff)}}<p class="muted">This topic is locked.</p>
+{{else if .User}}
+<section aria-labelledby="reply">
+  <h2 class="section-title" id="reply">Reply</h2>
+  <form method="post" action="/t/{{.Topic.ID}}/reply" class="form">
+    {{template "trap" .}}
+    <label for="body">Your reply</label>
+    <textarea id="body" name="body" rows="6" maxlength="10000" required>{{index .Form "body"}}</textarea>
+    <p class="muted small">Plain text. A blank line starts a new paragraph. Use three backticks for code.</p>
+    <button type="submit" class="btn">Send reply</button>
+  </form>
+</section>
+{{else}}<p><a href="/login?next=/t/{{.Topic.ID}}">[log in]</a> or <a href="/register">[register]</a> to reply.</p>{{end}}
+{{end}}

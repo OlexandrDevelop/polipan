@@ -1,0 +1,71 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{if .Title}}{{.Title}} | {{end}}{{.Cfg.SiteName}}</title>
+    <meta name="color-scheme" content="dark light">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="alternate" type="application/rss+xml" title="{{.Cfg.SiteName}}" href="/feed.xml">
+    <link rel="preload" href="/static/jetbrains-mono-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/forum.css">
+    <script src="/static/theme-init.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="bar bar-top">
+      <a class="brand" href="/" aria-label="{{.Cfg.SiteName}}"><span aria-hidden="true">$</span>polipan/community</a>
+      <nav aria-label="Main">
+        <a href="/">Categories</a>
+        <a href="/new">New topic</a>
+        <a href="{{.Cfg.DocsURL}}">Docs</a>
+        {{if .User.IsStaff}}<a href="/mod">Moderation</a>{{end}}
+      </nav>
+      <div class="group">
+        <form action="/search" method="get" role="search" class="inline">
+          <label class="sr" for="q">Search</label>
+          <input id="q" name="q" type="search" maxlength="100" placeholder="search" class="search">
+        </form>
+        {{if .User}}
+          <span class="muted" title="Signed in">{{.User.Username}}</span>
+          <form action="/logout" method="post" class="inline">
+            <input type="hidden" name="_csrf" value="{{.CSRF}}">
+            <button type="submit">[log out]</button>
+          </form>
+        {{else}}
+          <a href="/login">[log in]</a>
+          <a href="/register">[register]</a>
+        {{end}}
+      </div>
+    </header>
+    <main id="main" tabindex="-1">
+      {{template "content" .}}
+    </main>
+    <footer class="bar bar-bottom">
+      <div class="group">
+        <a href="{{.Cfg.MainURL}}">polipan.dev</a>
+        <a href="{{.Cfg.DocsURL}}">Docs</a>
+        <a href="/feed.xml">RSS</a>
+      </div>
+      <div class="group">
+        <span class="muted">Be kind. No spam.</span>
+        <button type="button" data-theme-toggle data-word="theme" hidden></button>
+      </div>
+    </footer>
+    <script src="/static/forum.js" defer></script>
+  </body>
+</html>{{end}}
+{{define "hidden"}}<input type="hidden" name="_csrf" value="{{.CSRF}}">{{end}}
+{{define "trap"}}<input type="hidden" name="_csrf" value="{{.CSRF}}"><input type="hidden" name="ts" value="{{.TS}}"><div class="hp" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off"></label></div>{{end}}
+{{define "error"}}{{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}{{end}}
+{{define "pager"}}{{if gt .Pages 1}}<nav class="pager" aria-label="Pages">
+  {{if gt .Page 1}}<a href="{{.Base}}?page={{sub .Page 1}}" rel="prev">[prev]</a>{{end}}
+  <span class="muted">page {{.Page}} / {{.Pages}}</span>
+  {{if lt .Page .Pages}}<a href="{{.Base}}?page={{add .Page 1}}" rel="next">[next]</a>{{end}}
+</nav>{{end}}{{end}}
+{{define "topics"}}<ul class="rows">
+{{range .}}<li class="row">
+  <a class="row-title" href="/t/{{.ID}}">{{if .Pinned}}<span class="tag amber">pin</span> {{end}}{{if .Locked}}<span class="tag">lock</span> {{end}}{{.Title}}</a>
+  <span class="muted row-meta"><a href="/c/{{.CategorySlug}}">{{.CategoryName}}</a> · {{.Author}} · {{.Replies}} replies · {{ago .LastPostAt}}</span>
+</li>{{else}}<li class="muted">No topics yet.</li>{{end}}
+</ul>{{end}}

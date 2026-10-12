@@ -1,0 +1,16 @@
+{{define "content"}}
+<p class="kicker">search</p>
+<h1>Search</h1>
+<form action="/search" method="get" class="form" role="search">
+  <label for="sq">Words</label>
+  <input id="sq" name="q" maxlength="100" value="{{.Query}}">
+  <button type="submit" class="btn">Search</button>
+</form>
+{{if .Query}}<ul class="rows">
+{{range .Results}}<li class="row">
+  <a class="row-title" href="/t/{{.TopicID}}">{{.Title}}</a>
+  <span class="muted row-meta">{{.Category}} · {{ago .When}}</span>
+  {{if .Snippet}}<span class="muted small snippet">{{.Snippet}}</span>{{end}}
+</li>{{else}}<li class="muted">Nothing found.</li>{{end}}
+</ul>{{end}}
+{{end}}

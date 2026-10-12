@@ -1,0 +1,11 @@
+{{define "content"}}
+<p class="kicker"><a href="/t/{{.Post.TopicID}}#p{{.Post.ID}}">back to the topic</a></p>
+<h1>Edit post</h1>
+{{template "error" .}}
+<form method="post" action="/p/{{.Post.ID}}/edit" class="form">
+  {{template "hidden" .}}
+  <label for="body">Text</label>
+  <textarea id="body" name="body" rows="10" maxlength="10000" required>{{index .Form "body"}}</textarea>
+  <button type="submit" class="btn">Save</button>
+</form>
+{{end}}
