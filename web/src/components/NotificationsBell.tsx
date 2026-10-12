@@ -42,7 +42,14 @@ export function NotificationsBell({
         )}
       </Button>
       {open && (
-        <Modal title={t('bell.title')} onClose={() => setOpen(false)}>
+        <Modal
+          title={t('bell.title')}
+          onClose={() => {
+            setOpen(false)
+            // The messages about deployments are read when you close the list.
+            if (notices.length > 0) onClear()
+          }}
+        >
           {count === 0 ? (
             <p className="text-muted">{t('bell.empty')}</p>
           ) : (

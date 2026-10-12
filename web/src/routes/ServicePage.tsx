@@ -44,6 +44,7 @@ import { ServiceStorage } from '@/routes/ServiceStorage'
 import { ServiceVariables } from '@/routes/ServiceVariables'
 import { useNodes, useScope } from '@/scope'
 import type { Service } from '@/scope'
+import { failureDetail } from '@/deploymentText'
 import { deploymentTone, isDeploymentActive, serviceTone } from '@/status'
 import type { Tone } from '@/status'
 
@@ -106,6 +107,59 @@ function sourceText(service: Service): string {
   return typeof config.image === 'string' ? config.image : '-'
 }
 
+// The last deployment failed. One short line with the reason, and a button for the fix. The long text of the
+// build is on the page of the deployment.
+function FailedBanner({
+  latest,
+  base,
+}: {
+  latest: { id?: string; failure_reason?: string; failure_detail?: string }
+  base: { org: string; project: string; env: string; service: string }
+}) {
+  const detail = failureDetail(latest.failure_detail)
+  const link =
+    'inline-flex min-h-8 items-center border px-3 py-1 hover:bg-raised coarse:min-h-11 border-border-strong'
+  const fix = detail?.needsDeployKey
+    ? 'deploy-key'
+    : detail?.needsBuildSettings
+      ? 'source'
+      : undefined
+  return (
+    <Banner
+      variant="danger"
+      title={t('deployment.failed_title')}
+      action={
+        <span className="flex flex-wrap gap-2">
+          {fix && (
+            <Link
+              to="/o/$org/p/$project/e/$env/s/$service/$tab"
+              params={{ ...base, tab: 'settings' }}
+              hash={fix}
+              className={`${link} border-primary bg-primary font-bold text-on-primary`}
+            >
+              {fix === 'source'
+                ? t('deployment.open_build_settings')
+                : t('deployment.open_deploy_key')}
+            </Link>
+          )}
+          <Link
+            to="/o/$org/p/$project/e/$env/s/$service/deployments/$deployment"
+            params={{ ...base, deployment: latest.id ?? '' }}
+            className={link}
+          >
+            {t('service.open_deployment')}
+          </Link>
+        </span>
+      }
+    >
+      <p>
+        {detail && !detail.raw ? detail.text : tState('deployment.reason', latest.failure_reason)}
+      </p>
+      {detail?.raw && <p className="text-muted">{detail.needsBuildSettings ? detail.text : ''}</p>}
+    </Banner>
+  )
+}
+
 function Overview({
   service,
   serviceId,
@@ -151,13 +205,7 @@ function Overview({
           {tState('status.deployment', latest.state)}
         </Banner>
       )}
-      {latest?.state === 'failed' && (
-        <Banner variant="danger" title={t('deployment.failed_title')}>
-          <p>{tState('deployment.reason', latest.failure_reason)}</p>
-          {latest.failure_detail && <p className="text-muted">{latest.failure_detail}</p>}
-          <p>{t('deployment.failed_next')}</p>
-        </Banner>
-      )}
+      {latest?.state === 'failed' && <FailedBanner latest={latest} base={base} />}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Panel
           title={service.source_type === 'git' ? t('service.source_git') : t('service.source')}
@@ -434,7 +482,7 @@ export function ServicePage() {
   const navigate = useNavigate()
   const me = useMe()
   const serviceId = scope.service?.id ?? ''
-  const [notice, setNotice] = useState<ReactNode>(null)
+  const [, setNotice] = useState<ReactNode>(null)
   // A change made on this page shows the banner at once, before the server reports it.
   const [localPending, setLocalPending] = useState(false)
   const [dialog, setDialog] = useState<'deploy' | 'rollback' | 'move' | null>(null)
@@ -679,9 +727,6 @@ export function ServicePage() {
         actions={actions}
       />
       <div className="mb-4 space-y-3">
-        {environment.protected && (
-          <Banner variant="warning">{t('service.protected_banner')}</Banner>
-        )}
         {(service.pending_changes || localPending) && (
           <Banner
             variant="warning"
@@ -703,7 +748,6 @@ export function ServicePage() {
             {t('service.pending_text')}
           </Banner>
         )}
-        {notice && <Banner>{notice}</Banner>}
         {mutationError && (
           <ErrorBanner
             error={mutationError}

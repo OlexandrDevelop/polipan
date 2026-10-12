@@ -269,11 +269,11 @@ export function Banner({ variant = 'info', title, children, action }: BannerProp
   return (
     <div
       role={variant === 'danger' ? 'alert' : 'status'}
-      className={`flex flex-wrap items-center justify-between gap-3 border border-l-[6px] bg-surface p-3 ${bannerStyles[variant]}`}
+      className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border border-l-[4px] bg-[var(--card-bg)] px-4 py-2.5 ${bannerStyles[variant]}`}
     >
-      <div className="min-w-0 space-y-1">
+      <div className="min-w-0 space-y-0.5">
         {title && <p className="font-bold">{title}</p>}
-        {children && <div className="break-words">{children}</div>}
+        {children && <div className="break-words text-muted">{children}</div>}
       </div>
       {action}
     </div>
