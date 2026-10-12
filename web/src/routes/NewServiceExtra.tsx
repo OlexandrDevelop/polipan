@@ -20,6 +20,7 @@ import {
   TextAreaField,
   TextField,
 } from '@/components/ui'
+import { composeProblems } from '@/composeProblems'
 import { t } from '@/i18n'
 import {
   initialValues,
@@ -405,6 +406,8 @@ function ComposeWizard({ base, environment }: { base: Base; environment: Environ
       await navigate({ to: '/o/$org/p/$project/e/$env', params: base })
     },
   })
+  const failure = check.error ?? run.error
+  const problems = composeProblems(failure instanceof Error ? failure.message : undefined)
   return (
     <form
       className="max-w-3xl space-y-4"
@@ -424,8 +427,21 @@ function ComposeWizard({ base, environment }: { base: Base; environment: Environ
           setResult(null)
         }}
       />
-      {(check.error || run.error) && (
+      {(check.error || run.error) && !problems && (
         <ErrorBanner error={check.error ?? run.error} title={t('compose.failed')} />
+      )}
+      {problems && (
+        <Banner variant="danger" title={t('compose.problems_title')}>
+          <p className="text-muted">{t('compose.safe_tip')}</p>
+          <ul className="mt-2 space-y-1">
+            {problems.map((p) => (
+              <li key={`${p.service}-${p.text}`}>
+                {p.service && <strong className="font-term">{p.service}: </strong>}
+                {p.text}
+              </li>
+            ))}
+          </ul>
+        </Banner>
       )}
       {result && (
         <div className="space-y-3">
