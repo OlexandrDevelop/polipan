@@ -301,7 +301,7 @@ func (e *Engine) Reconcile(ctx context.Context) {
 		// A workload that must start, or be made again, waits until its dependencies on this node are healthy
 		// (REQ-DEPLOY-116). A running container that must be made again keeps running while it waits.
 		if w.Role != "stopped" && (!isUp(ex) || e.stale(w, ex)) && !cycle[w.PlacementId] {
-			if wait, err := e.waitDeps(ds, w, byName); wait {
+			if wait, err := e.waitDeps(ctx, ds, w, byName); wait {
 				waiting = true
 				if err != nil {
 					errs = append(errs, fmt.Sprintf("dependency_unhealthy: placement %s: %s", w.PlacementId, err))
@@ -704,7 +704,7 @@ type depWaitState struct {
 // waitDeps tells if w must wait for its dependencies on this node. A dependency is ready when it is healthy (or
 // runs, when it has no health check). The error is set when the wait is longer than the start period of the
 // dependency plus depTimeout: the workload stays stopped and the next passes check again.
-func (e *Engine) waitDeps(ds *agentv1.DesiredState, w *agentv1.WorkloadSpec, byName map[string]docker.Container) (bool, error) {
+func (e *Engine) waitDeps(ctx context.Context, ds *agentv1.DesiredState, w *agentv1.WorkloadSpec, byName map[string]docker.Container) (bool, error) {
 	var notReady []string
 	var limit time.Duration
 	for _, id := range w.StartAfterPlacementIds {
@@ -719,12 +719,15 @@ func (e *Engine) waitDeps(ds *agentv1.DesiredState, w *agentv1.WorkloadSpec, byN
 			continue // not on this node any more: not a hard dependency
 		}
 		// Ready only when the dependency container runs now and, with a health check, the healthy result
-		// belongs to this very container (not to one that stopped or was replaced since the last check).
+		// belongs to this very container and its current start (not to one that stopped, restarted or was
+		// replaced since the last check).
 		c, ok := byName[d.ContainerName]
 		running := ok && c.State == "running"
 		health := "unknown"
-		if running {
-			health = e.healthOfContainer(id, c.ID)
+		if running && d.Health != nil {
+			if ic, err := e.Docker.Inspect(ctx, c.ID); err == nil && ic.State == "running" {
+				health = e.healthOfContainer(id, c.ID, ic.StartedAt)
+			}
 		}
 		if running && (d.Health == nil || health == "healthy") {
 			continue

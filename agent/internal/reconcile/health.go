@@ -64,12 +64,14 @@ func (e *Engine) healthOf(placement string) string {
 	return "unknown"
 }
 
-// healthOfContainer is the health of a placement only when the last checks ran on this container. Any other
-// container (stopped, replaced, not checked yet) is "unknown".
-func (e *Engine) healthOfContainer(placement, containerID string) string {
+// healthOfContainer is the health of a placement only when the last checks ran on this container and on its
+// current start (Docker StartedAt): the same container id survives a stop and start or a restart. Any other
+// container or start (stopped, replaced, restarted, not checked yet) is "unknown".
+func (e *Engine) healthOfContainer(placement, containerID string, startedAt time.Time) string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if s := e.hs[placement]; s != nil && s.containerID == containerID && s.health != "" {
+	if s := e.hs[placement]; s != nil && s.containerID == containerID && !startedAt.IsZero() &&
+		s.startedAt.Equal(startedAt) && s.health != "" {
 		return s.health
 	}
 	return "unknown"
