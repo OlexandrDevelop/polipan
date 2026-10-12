@@ -348,6 +348,39 @@ div[data-flash] {
 dialog[open] {
   animation: fade-in-up var(--motion-fast) var(--ease);
 }
+
+/* Content that appears after a click: a page, a tab, a section. It fades in and moves up a little.
+   Only opacity and transform animate. Calm mode and "reduce motion" turn it off with the rest. */
+@keyframes enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.enter {
+  animation: enter-up var(--motion-slow) var(--ease) both;
+}
+/* The first thing of a list of items: each next one starts a little later. */
+.enter-stagger > * {
+  animation: enter-up var(--motion-slow) var(--ease) both;
+}
+.enter-stagger > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+.enter-stagger > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+.enter-stagger > *:nth-child(4) {
+  animation-delay: 120ms;
+}
+.enter-stagger > *:nth-child(n + 5) {
+  animation-delay: 160ms;
+}
+
 dialog {
   box-shadow: var(--shadow-popover);
 }

@@ -81,6 +81,7 @@ const OVERLAYS: { name: string; path: string; open: (page: Page) => Promise<void
     name: 'delete organization dialog',
     path: '/o/acme/settings/organization',
     open: async (page) => {
+      await page.getByRole('tab', { name: 'Delete organization' }).click()
       await page.getByRole('button', { name: 'Delete organization' }).click()
       await page.getByRole('dialog').waitFor()
     },

@@ -23,6 +23,7 @@ import {
   StatusBadge,
   TextAreaField,
   TextField,
+  SectionTabs,
 } from '@/components/ui'
 import { t, tState } from '@/i18n'
 import { useAccess } from '@/permissions'
@@ -540,14 +541,29 @@ export function PreviewsPage() {
               ))}
             </SelectField>
           </div>
-          <PreviewList project={project} environments={environments.data ?? []} />
-          {environments.data && (
-            <PreviewSettingsForm
-              key={project.id}
-              project={project}
-              environments={environments.data}
-            />
-          )}
+          <SectionTabs
+            label={t('settings.sections')}
+            sections={[
+              {
+                id: 'list',
+                label: t('previews.title'),
+                content: <PreviewList project={project} environments={environments.data ?? []} />,
+              },
+              {
+                id: 'settings',
+                label: t('previews.settings'),
+                content: environments.data ? (
+                  <PreviewSettingsForm
+                    key={project.id}
+                    project={project}
+                    environments={environments.data}
+                  />
+                ) : (
+                  <Skeleton />
+                ),
+              },
+            ]}
+          />
         </div>
       )}
     </section>

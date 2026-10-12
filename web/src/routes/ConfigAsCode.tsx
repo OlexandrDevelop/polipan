@@ -16,6 +16,7 @@ import {
   Button,
   Card,
   CheckboxField,
+  SectionTabs,
   SelectField,
   Skeleton,
   StatusBadge,
@@ -437,56 +438,77 @@ export function ConfigAsCodePage() {
           {t('config.failed_text')}
         </Banner>
       )}
-      {project.data && (
-        <SourceCard
-          key={project.dataUpdatedAt}
-          projectId={projectId}
-          source={project.data.config_source}
-          canEdit={isAdmin}
-        />
-      )}
-      <div className="hidden space-y-4 sm:block">
-        <Card className="space-y-4">
-          <h2 className="text-lg font-semibold">{t('config.plan_title')}</h2>
-          <TextAreaField
-            label={t('config.file')}
-            hint={t('config.file_hint')}
-            rows={14}
-            spellCheck={false}
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value)
-              setPlan(null)
-            }}
-          />
-          {load.error && <ErrorBanner error={load.error} title={t('config.export_failed')} />}
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={() => load.mutate()} loading={load.isPending}>
-              {t('config.load')}
-            </Button>
-            <Button
-              variant="primary"
-              loading={run.isPending}
-              disabled={text.trim() === ''}
-              onClick={() => run.mutate()}
-            >
-              {t('config.plan_now')}
-            </Button>
-            {readyToApply && (
-              <Button variant="primary" onClick={() => setApplying(true)}>
-                {t('config.apply')}
-              </Button>
-            )}
-          </div>
-          {!canApply && <p className="text-sm text-muted">{t('config.apply_denied')}</p>}
-        </Card>
-        {run.error && errors.length === 0 && (
-          <ErrorBanner error={run.error} title={t('config.plan_failed')} />
-        )}
-        {errors.length > 0 && <ErrorList errors={errors} />}
-        {applied && <Banner>{t('config.applied')}</Banner>}
-        {plan && plan.valid !== false && <PlanView plan={plan} />}
-      </div>
+      <SectionTabs
+        label={t('settings.sections')}
+        sections={[
+          {
+            id: 'source',
+            label: t('config.source_title'),
+            content: (
+              <>
+                {project.data && (
+                  <SourceCard
+                    key={project.dataUpdatedAt}
+                    projectId={projectId}
+                    source={project.data.config_source}
+                    canEdit={isAdmin}
+                  />
+                )}
+              </>
+            ),
+          },
+          {
+            id: 'plan',
+            label: t('config.plan_title'),
+            content: (
+              <div className="space-y-4">
+                <Card className="space-y-4">
+                  <h2 className="text-lg font-semibold">{t('config.plan_title')}</h2>
+                  <TextAreaField
+                    label={t('config.file')}
+                    hint={t('config.file_hint')}
+                    rows={14}
+                    spellCheck={false}
+                    value={text}
+                    onChange={(e) => {
+                      setText(e.target.value)
+                      setPlan(null)
+                    }}
+                  />
+                  {load.error && (
+                    <ErrorBanner error={load.error} title={t('config.export_failed')} />
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => load.mutate()} loading={load.isPending}>
+                      {t('config.load')}
+                    </Button>
+                    <Button
+                      variant="primary"
+                      loading={run.isPending}
+                      disabled={text.trim() === ''}
+                      onClick={() => run.mutate()}
+                    >
+                      {t('config.plan_now')}
+                    </Button>
+                    {readyToApply && (
+                      <Button variant="primary" onClick={() => setApplying(true)}>
+                        {t('config.apply')}
+                      </Button>
+                    )}
+                  </div>
+                  {!canApply && <p className="text-sm text-muted">{t('config.apply_denied')}</p>}
+                </Card>
+                {run.error && errors.length === 0 && (
+                  <ErrorBanner error={run.error} title={t('config.plan_failed')} />
+                )}
+                {errors.length > 0 && <ErrorList errors={errors} />}
+                {applied && <Banner>{t('config.applied')}</Banner>}
+                {plan && plan.valid !== false && <PlanView plan={plan} />}
+              </div>
+            ),
+          },
+        ]}
+      />
       {applying && plan && (
         <ApplyDialog
           projectId={projectId}

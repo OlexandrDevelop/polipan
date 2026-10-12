@@ -13,7 +13,15 @@ import { ErrorBanner } from '@/components/ErrorBanner'
 import { ConfirmDialog, TypedConfirmDialog } from '@/components/Modal'
 import { PageHeader } from '@/components/PageHeader'
 import { Time } from '@/components/Time'
-import { Banner, Button, Card, EmptyState, Skeleton, StatusBadge } from '@/components/ui'
+import {
+  Banner,
+  Button,
+  Card,
+  EmptyState,
+  SectionTabs,
+  Skeleton,
+  StatusBadge,
+} from '@/components/ui'
 import { formatRelative, t, tState } from '@/i18n'
 import { useAccess } from '@/permissions'
 import { NotFoundPage } from '@/routes/ErrorPages'
@@ -306,89 +314,128 @@ export function NodeDetailPage() {
         )}
         {actionError && <ErrorBanner error={actionError} title={t('nodes.action_failed')} />}
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="space-y-3 lg:col-span-2">
-          <h2 className="font-semibold">{t('nodes.load')}</h2>
-          <NodeBars node={node} />
-        </Card>
-        <Card className="space-y-3 lg:col-span-2">
-          <h2 className="font-semibold">{t('nodes.metrics')}</h2>
-          <Suspense fallback={<Skeleton />}>
-            <MetricsPanel kind="node" id={id} />
-          </Suspense>
-        </Card>
-        <Card className="space-y-1 text-sm">
-          <h2 className="font-semibold">{t('nodes.details')}</h2>
-          <p>
-            {t('nodes.heartbeat')}:{' '}
-            {node.last_heartbeat_at ? <Time value={node.last_heartbeat_at} /> : '-'}
-          </p>
-          <p>
-            {t('nodes.public_ip')}: {node.public_ip ?? '-'}
-          </p>
-          <p>
-            {t('nodes.mesh_ip')}: {node.mesh_ip ?? '-'} ({node.mesh_subnet ?? '-'})
-          </p>
-          <p>
-            {t('nodes.os')}: {node.os ?? '-'} {node.arch ?? ''}
-          </p>
-          <p>
-            {t('nodes.agent')}: {node.agent_version ?? '-'}
-          </p>
-          <p>
-            {t('nodes.docker')}: {node.docker_version ?? '-'}
-          </p>
-        </Card>
-        <Card className="space-y-2">
-          <h2 className="font-semibold">{t('nodes.self_check')}</h2>
-          <p className="text-sm text-muted">{t('nodes.self_check_hint')}</p>
-          {manage && (
-            <Button loading={selfCheck.isPending} onClick={() => selfCheck.mutate()}>
-              {t('nodes.run_self_check')}
-            </Button>
-          )}
-          {selfCheck.data && (
-            <ul className="space-y-1 text-sm" aria-live="polite">
-              <li>Docker: {selfCheck.data.docker ? t('nodes.ok') : t('nodes.failed')}</li>
-              <li>Caddy: {selfCheck.data.caddy ? t('nodes.ok') : t('nodes.failed')}</li>
-              <li>WireGuard: {selfCheck.data.wireguard ? t('nodes.ok') : t('nodes.failed')}</li>
-              {(selfCheck.data as { errors?: string[] }).errors?.map((e) => (
-                <li key={e} className="text-danger">
-                  {e}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-        <Card className="space-y-2 lg:col-span-2">
-          <LabelsForm
-            key={labelsText(node.labels)}
-            id={id}
-            labels={node.labels}
-            disabled={!manage}
-          />
-        </Card>
-        <div className="space-y-2 lg:col-span-2">
-          <h2 className="font-semibold">{t('nodes.workloads')}</h2>
-          {(node.workloads ?? []).length === 0 ? (
-            <EmptyState title={t('nodes.no_workloads')} text={t('nodes.no_workloads_text')} />
-          ) : (
-            <DataList
-              caption={t('nodes.workloads')}
-              rows={node.workloads ?? []}
-              rowKey={(w) => w.placement_id ?? ''}
-              columns={[
-                { header: t('nodes.service'), primary: true, cell: (w) => w.service_name },
-                { header: t('nodes.role'), cell: (w) => tState('status.role', w.role) },
-                { header: t('nodes.health'), cell: (w) => tState('status.health', w.health) },
-              ]}
-            />
-          )}
-        </div>
-        <div className="lg:col-span-2">
-          <OrphanVolumes id={id} canDelete={manage} />
-        </div>
-      </div>
+      <SectionTabs
+        label={t('settings.sections')}
+        sections={[
+          {
+            id: 'overview',
+            label: t('nodes.details'),
+            content: (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card className="space-y-3 lg:col-span-2">
+                  <h2 className="font-semibold">{t('nodes.load')}</h2>
+                  <NodeBars node={node} />
+                </Card>
+                <Card className="space-y-1 text-sm">
+                  <h2 className="font-semibold">{t('nodes.details')}</h2>
+                  <p>
+                    {t('nodes.heartbeat')}:{' '}
+                    {node.last_heartbeat_at ? <Time value={node.last_heartbeat_at} /> : '-'}
+                  </p>
+                  <p>
+                    {t('nodes.public_ip')}: {node.public_ip ?? '-'}
+                  </p>
+                  <p>
+                    {t('nodes.mesh_ip')}: {node.mesh_ip ?? '-'} ({node.mesh_subnet ?? '-'})
+                  </p>
+                  <p>
+                    {t('nodes.os')}: {node.os ?? '-'} {node.arch ?? ''}
+                  </p>
+                  <p>
+                    {t('nodes.agent')}: {node.agent_version ?? '-'}
+                  </p>
+                  <p>
+                    {t('nodes.docker')}: {node.docker_version ?? '-'}
+                  </p>
+                </Card>
+                <Card className="space-y-2">
+                  <h2 className="font-semibold">{t('nodes.self_check')}</h2>
+                  <p className="text-sm text-muted">{t('nodes.self_check_hint')}</p>
+                  {manage && (
+                    <Button loading={selfCheck.isPending} onClick={() => selfCheck.mutate()}>
+                      {t('nodes.run_self_check')}
+                    </Button>
+                  )}
+                  {selfCheck.data && (
+                    <ul className="space-y-1 text-sm" aria-live="polite">
+                      <li>Docker: {selfCheck.data.docker ? t('nodes.ok') : t('nodes.failed')}</li>
+                      <li>Caddy: {selfCheck.data.caddy ? t('nodes.ok') : t('nodes.failed')}</li>
+                      <li>
+                        WireGuard: {selfCheck.data.wireguard ? t('nodes.ok') : t('nodes.failed')}
+                      </li>
+                      {(selfCheck.data as { errors?: string[] }).errors?.map((e) => (
+                        <li key={e} className="text-danger">
+                          {e}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Card>
+              </div>
+            ),
+          },
+          {
+            id: 'metrics',
+            label: t('nodes.metrics'),
+            content: (
+              <Card className="space-y-3">
+                <h2 className="font-semibold">{t('nodes.metrics')}</h2>
+                <Suspense fallback={<Skeleton />}>
+                  <MetricsPanel kind="node" id={id} />
+                </Suspense>
+              </Card>
+            ),
+          },
+          {
+            id: 'labels',
+            label: t('nodes.labels_column'),
+            content: (
+              <Card className="space-y-2">
+                <LabelsForm
+                  key={labelsText(node.labels)}
+                  id={id}
+                  labels={node.labels}
+                  disabled={!manage}
+                />
+              </Card>
+            ),
+          },
+          {
+            id: 'workloads',
+            label: t('nodes.workloads'),
+            content: (
+              <>
+                <div className="space-y-2">
+                  <h2 className="font-semibold">{t('nodes.workloads')}</h2>
+                  {(node.workloads ?? []).length === 0 ? (
+                    <EmptyState
+                      title={t('nodes.no_workloads')}
+                      text={t('nodes.no_workloads_text')}
+                    />
+                  ) : (
+                    <DataList
+                      caption={t('nodes.workloads')}
+                      rows={node.workloads ?? []}
+                      rowKey={(w) => w.placement_id ?? ''}
+                      columns={[
+                        { header: t('nodes.service'), primary: true, cell: (w) => w.service_name },
+                        { header: t('nodes.role'), cell: (w) => tState('status.role', w.role) },
+                        {
+                          header: t('nodes.health'),
+                          cell: (w) => tState('status.health', w.health),
+                        },
+                      ]}
+                    />
+                  )}
+                </div>
+                <div className="lg:col-span-2">
+                  <OrphanVolumes id={id} canDelete={manage} />
+                </div>
+              </>
+            ),
+          },
+        ]}
+      />
       {dialog === 'drain' && (
         <ConfirmDialog
           title={t('nodes.drain_title')}

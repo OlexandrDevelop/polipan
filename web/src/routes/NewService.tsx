@@ -844,35 +844,37 @@ export function NewServicePage() {
               </Link>
             )}
           </div>
-          {step === 0 && source === 'git' && (
-            <GitSourceStep draft={draft} set={set} errors={errors} />
-          )}
-          {step === 0 && source === 'image' && (
-            <ImageSourceStep draft={draft} set={set} errors={errors} />
-          )}
-          {step === 1 && <BuildRunStep source={source} draft={draft} set={set} errors={errors} />}
-          {step === 2 && (
-            <DomainEnvStep draft={draft} set={set} errors={errors} showErrors={tried[2]} />
-          )}
-          {step === 3 && (
-            <div className="space-y-4">
-              <Card>
-                <Summary source={source} draft={draft} />
-              </Card>
-              <CheckboxField
-                label={t('wizard.deploy_now')}
-                hint={t('wizard.deploy_now_hint')}
-                checked={draft.deployNow}
-                onChange={(e) => set({ deployNow: e.target.checked })}
-              />
-              {create.error && (
-                <ErrorBanner error={create.error} title={t('service.create_failed')} />
-              )}
-              {created.current.service && create.error && (
-                <Banner>{t('wizard.partly_created')}</Banner>
-              )}
-            </div>
-          )}
+          <div key={step} className="enter space-y-6">
+            {step === 0 && source === 'git' && (
+              <GitSourceStep draft={draft} set={set} errors={errors} />
+            )}
+            {step === 0 && source === 'image' && (
+              <ImageSourceStep draft={draft} set={set} errors={errors} />
+            )}
+            {step === 1 && <BuildRunStep source={source} draft={draft} set={set} errors={errors} />}
+            {step === 2 && (
+              <DomainEnvStep draft={draft} set={set} errors={errors} showErrors={tried[2]} />
+            )}
+            {step === 3 && (
+              <div className="space-y-4">
+                <Card>
+                  <Summary source={source} draft={draft} />
+                </Card>
+                <CheckboxField
+                  label={t('wizard.deploy_now')}
+                  hint={t('wizard.deploy_now_hint')}
+                  checked={draft.deployNow}
+                  onChange={(e) => set({ deployNow: e.target.checked })}
+                />
+                {create.error && (
+                  <ErrorBanner error={create.error} title={t('service.create_failed')} />
+                )}
+                {created.current.service && create.error && (
+                  <Banner>{t('wizard.partly_created')}</Banner>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex flex-wrap justify-between gap-2 border-t border-border bg-bg py-3 max-sm:sticky max-sm:bottom-[calc(4rem+env(safe-area-inset-bottom))]">
             <Button
               onClick={() => setStep(Math.max(0, step - 1))}

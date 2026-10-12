@@ -10,7 +10,15 @@ import { ApiError, unwrap } from '@/api/errors'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { ConfirmDialog, TypedConfirmDialog } from '@/components/Modal'
 import { PageHeader } from '@/components/PageHeader'
-import { Banner, Button, CheckboxField, Card, Skeleton, TextField } from '@/components/ui'
+import {
+  Banner,
+  Button,
+  CheckboxField,
+  Card,
+  SectionTabs,
+  Skeleton,
+  TextField,
+} from '@/components/ui'
 import { t } from '@/i18n'
 import { useAccess } from '@/permissions'
 import { queryClient } from '@/queryClient'
@@ -370,17 +378,43 @@ function DangerZone({ org }: { org: Org }) {
 export function OrgSettingsPage() {
   const org = useQuery({ queryKey: ['org'], queryFn: () => unwrap(api.GET('/org')) })
   return (
-    <section>
+    <section className="max-w-5xl">
       <PageHeader title={t('org.title')} />
-      <div className="space-y-4">
-        {org.isPending && <Skeleton />}
-        {org.isError && <ErrorBanner error={org.error} onRetry={() => void org.refetch()} />}
-        {org.data && <GeneralForm org={org.data} />}
-        {org.data && <RetentionForm settings={org.data.settings ?? ({} as Settings)} />}
-        {org.data && <PreviewDomainForm settings={org.data.settings ?? ({} as Settings)} />}
-        <VersionCard />
-        {org.data && <DangerZone org={org.data} />}
-      </div>
+      {org.isPending && <Skeleton />}
+      {org.isError && <ErrorBanner error={org.error} onRetry={() => void org.refetch()} />}
+      {org.data && (
+        <SectionTabs
+          label={t('settings.sections')}
+          sections={[
+            {
+              id: 'general',
+              label: t('org.general'),
+              content: (
+                <>
+                  {org.data && <GeneralForm org={org.data} />}
+                  <VersionCard />
+                </>
+              ),
+            },
+            {
+              id: 'retention',
+              label: t('org.retention'),
+              content: <RetentionForm settings={org.data.settings ?? ({} as Settings)} />,
+            },
+            {
+              id: 'previews',
+              label: t('org.preview_domain'),
+              content: <PreviewDomainForm settings={org.data.settings ?? ({} as Settings)} />,
+            },
+            {
+              id: 'danger',
+              label: t('org.danger_title'),
+              danger: true,
+              content: <DangerZone org={org.data} />,
+            },
+          ]}
+        />
+      )}
     </section>
   )
 }

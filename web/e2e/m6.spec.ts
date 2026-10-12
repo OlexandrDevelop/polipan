@@ -26,6 +26,7 @@ test('REQ-UI-006 REQ-CAC-004 the plan shows the diff and apply sends the plan ha
   state.configPlan = changePlan
   await mockApi(page, state)
   await page.goto(configUrl)
+  await page.getByRole('tab', { name: 'Plan' }).click()
 
   await expect(page.getByRole('heading', { level: 1, name: 'Config as code' })).toBeVisible()
   await expect(page.getByText('In sync')).toBeVisible()
@@ -57,6 +58,7 @@ test('REQ-CAC-007 a file with errors shows the line and the path', async ({ page
   }
   await mockApi(page, state)
   await page.goto(configUrl)
+  await page.getByRole('tab', { name: 'Plan' }).click()
 
   await page.getByLabel('polipan.yaml', { exact: true }).fill('version: 1')
   await page.getByRole('button', { name: 'Plan now' }).click()
@@ -73,6 +75,7 @@ test('REQ-CAC-013 a pending plan shows a banner, and apply is refused after a ch
   state.applyConflict = 'plan_changed'
   await mockApi(page, state)
   await page.goto(configUrl)
+  await page.getByRole('tab', { name: 'Plan' }).click()
 
   await expect(page.getByText('A change from Git waits for an admin.')).toBeVisible()
   await page.getByLabel('polipan.yaml', { exact: true }).fill('version: 1')
@@ -94,6 +97,7 @@ test('REQ-UI-006 a viewer sees the state but cannot apply or change the source',
   await page.goto(configUrl)
 
   await expect(page.getByText('Only an admin can change the config source.')).toBeVisible()
+  await page.getByRole('tab', { name: 'Plan' }).click()
   await expect(page.getByRole('button', { name: 'Save' })).toHaveCount(0)
   await page.getByLabel('polipan.yaml', { exact: true }).fill('version: 1')
   await page.getByRole('button', { name: 'Plan now' }).click()

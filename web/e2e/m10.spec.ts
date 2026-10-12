@@ -55,6 +55,7 @@ test('UI-28 the owner saves the name and deletes the organization with the typed
   expect(calls[0].method).toBe('PATCH')
   expect((calls[0].body as { name: string }).name).toBe('Acme 2')
 
+  await page.getByRole('tab', { name: 'Delete organization' }).click()
   await page.getByRole('button', { name: 'Delete organization' }).click()
   const dialog = page.getByRole('dialog')
   const confirm = dialog.getByRole('button', { name: 'Delete organization' })
@@ -103,6 +104,7 @@ test('UI-27 a Git service shows the deploy key and the webhook once', async ({ p
     }),
   )
   await page.goto('/o/acme/p/shop/e/staging/s/api/settings')
+  await page.getByRole('tab', { name: 'Deploy key and webhook' }).click()
   await page.getByRole('button', { name: 'Create deploy key' }).click()
   await expect(page.getByText('ssh-ed25519 AAAAC3Nza polipan')).toBeVisible()
   await expect(page.getByText('whsec_once')).toBeVisible()

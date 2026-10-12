@@ -10,7 +10,18 @@ import { useMe } from '@/auth'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Time } from '@/components/Time'
 import { useUnsavedGuard } from '@/components/UnsavedGuard'
-import { Banner, Button, CheckboxField, SelectField, StatusBadge, TextField } from '@/components/ui'
+import {
+  Banner,
+  Button,
+  CheckboxField,
+  FieldGrid,
+  Pane,
+  Panel,
+  SectionNav,
+  SelectField,
+  StatusBadge,
+  TextField,
+} from '@/components/ui'
 import { obj, str, wholeNumber } from '@/configForm'
 import type { Config } from '@/configForm'
 import { joinCommand, splitCommand } from '@/envText'
@@ -116,6 +127,7 @@ export function ServiceHealth({
   const access = accessFor(me.data?.org_role, 'service:update', environmentProtected)
   const config = (service.config ?? {}) as Config
   const initial = readForm(config)
+  const [section, setSection] = useState('check')
   const [form, setForm] = useState<Form>(initial)
   const [submitted, setSubmitted] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -160,7 +172,13 @@ export function ServiceHealth({
   function submit(event: FormEvent) {
     event.preventDefault()
     setSubmitted(true)
-    if (Object.keys(validate(form)).length === 0) save.mutate()
+    const found = Object.keys(validate(form))
+    if (found.length === 0) save.mutate()
+    // Open the section that has the wrong value.
+    else
+      setSection(
+        found.some((k) => ['path', 'command', 'port', 'type'].includes(k)) ? 'check' : 'timing',
+      )
   }
 
   const fieldHint = (key: NumberField) => t('health.default_value', { value: DEFAULTS[key] })
@@ -181,125 +199,159 @@ export function ServiceHealth({
   const result = test.data
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,40rem)_minmax(0,1fr)]">
-      <form onSubmit={submit} noValidate className="max-w-2xl space-y-4">
-        {access === 'hidden' && <Banner>{t('settings.read_only')}</Banner>}
-        {access === 'blocked' && <Banner variant="warning">{t('common.needs_admin')}</Banner>}
-        {managed && <Banner>{t('settings.managed')}</Banner>}
-        {saved && <Banner>{t('settings.saved')}</Banner>}
-        {save.error && (
-          <ErrorBanner
-            error={save.error}
-            title={conflict ? t('variables.managed_by_git') : t('settings.save_failed')}
-          />
-        )}
-        <SelectField
-          label={t('health.type')}
-          hint={t('health.type_hint')}
-          disabled={readOnly || managed}
-          value={form.type}
-          onChange={(e) => set({ type: e.target.value })}
-        >
-          <option value="">{t('health.type_default')}</option>
-          <option value="http">{t('health.type.http')}</option>
-          <option value="tcp">{t('health.type.tcp')}</option>
-          <option value="command">{t('health.type.command')}</option>
-        </SelectField>
-        {form.type === 'http' && (
-          <TextField
-            label={t('health.path')}
-            hint={t('health.path_hint')}
-            placeholder="/healthz"
-            readOnly={readOnly || managed}
-            autoComplete="off"
-            spellCheck={false}
-            error={errors.path}
-            value={form.path}
-            onChange={(e) => set({ path: e.target.value })}
-          />
-        )}
-        {form.type === 'command' ? (
-          <TextField
-            label={t('health.command')}
-            hint={t('health.command_hint')}
-            readOnly={readOnly || managed}
-            autoComplete="off"
-            spellCheck={false}
-            error={errors.command}
-            value={form.command}
-            onChange={(e) => set({ command: e.target.value })}
-          />
-        ) : (
-          <TextField
-            label={t('service.port')}
-            hint={t('health.port_hint')}
-            readOnly={readOnly || managed}
-            type="number"
-            inputMode="numeric"
-            error={errors.port}
-            value={form.port}
-            onChange={(e) => set({ port: e.target.value })}
-          />
-        )}
-        {numberField('interval', t('health.interval'))}
-        {numberField('timeout', t('health.timeout'))}
-        {numberField('healthy_threshold', t('health.healthy_threshold'))}
-        {numberField('unhealthy_threshold', t('health.unhealthy_threshold'))}
-        {numberField('start_period', t('health.start_period'))}
-        {numberField('deploy_timeout', t('health.deploy_timeout'))}
-        <CheckboxField
-          label={t('health.restart')}
-          hint={t('health.restart_hint')}
-          disabled={readOnly || managed}
-          checked={form.restart}
-          onChange={(e) => set({ restart: e.target.checked })}
-        />
-        {access === 'allow' && (
-          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border bg-bg py-3 max-sm:sticky max-sm:bottom-[calc(4rem+env(safe-area-inset-bottom))]">
-            <span className="text-sm text-muted">{t('settings.next_deploy')}</span>
-            <Button
-              onClick={() => setForm(initial)}
-              reason={dirty ? undefined : t('settings.no_changes')}
-            >
-              {t('settings.reset')}
-            </Button>
-            <Button type="submit" variant="primary" loading={save.isPending}>
-              {t('common.save')}
-            </Button>
-          </div>
-        )}
-        {guard.dialog}
-      </form>
-      <section aria-labelledby="health-test" className="space-y-3">
-        <h2 id="health-test" className="text-lg font-semibold">
-          {t('health.test_title')}
-        </h2>
-        <p className="text-sm text-muted">{t('health.test_text')}</p>
-        <Button loading={test.isPending} onClick={() => test.mutate()}>
-          {t('health.test')}
-        </Button>
-        {test.error && <ErrorBanner error={test.error} title={t('health.test_failed')} />}
-        {result && (
-          <div className="space-y-2 rounded-md border border-border bg-surface p-4" role="status">
-            <StatusBadge
-              tone={result.healthy ? 'success' : 'danger'}
-              label={result.healthy ? t('health.result_healthy') : t('health.result_unhealthy')}
+    <div className="grid items-start gap-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
+      <SectionNav
+        items={[
+          { id: 'check', label: t('health.type') },
+          { id: 'timing', label: t('health.timing') },
+          { id: 'test', label: t('health.test_title') },
+        ]}
+        active={section}
+        onChange={setSection}
+        label={t('settings.sections')}
+      />
+      <div className="min-w-0 max-w-3xl space-y-6">
+        <form onSubmit={submit} noValidate className="space-y-6">
+          {access === 'hidden' && <Banner>{t('settings.read_only')}</Banner>}
+          {access === 'blocked' && <Banner variant="warning">{t('common.needs_admin')}</Banner>}
+          {managed && <Banner>{t('settings.managed')}</Banner>}
+          {saved && <Banner>{t('settings.saved')}</Banner>}
+          {save.error && (
+            <ErrorBanner
+              error={save.error}
+              title={conflict ? t('variables.managed_by_git') : t('settings.save_failed')}
             />
-            <p className="text-sm">
-              {result.status ? t('health.result_status', { status: result.status }) : ''}{' '}
-              {t('health.result_time', { ms: result.duration_ms ?? 0 })}
-            </p>
-            <p className="text-sm text-muted">
-              {t('health.tested_at')}: <Time value={testedAt} />
-            </p>
-            {result.body_excerpt && (
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-border bg-bg p-2 font-mono text-xs">
-                {result.body_excerpt}
-              </pre>
+          )}
+          <Pane id="check" active={section === 'check'}>
+            <Panel title={t('health.type')}>
+              <FieldGrid>
+                <div className="sm:col-span-2">
+                  <SelectField
+                    label={t('health.type')}
+                    hint={t('health.type_hint')}
+                    disabled={readOnly || managed}
+                    value={form.type}
+                    onChange={(e) => set({ type: e.target.value })}
+                  >
+                    <option value="">{t('health.type_default')}</option>
+                    <option value="http">{t('health.type.http')}</option>
+                    <option value="tcp">{t('health.type.tcp')}</option>
+                    <option value="command">{t('health.type.command')}</option>
+                  </SelectField>
+                </div>
+                {form.type === 'http' && (
+                  <div className="sm:col-span-2">
+                    <TextField
+                      label={t('health.path')}
+                      hint={t('health.path_hint')}
+                      placeholder="/healthz"
+                      readOnly={readOnly || managed}
+                      autoComplete="off"
+                      spellCheck={false}
+                      error={errors.path}
+                      value={form.path}
+                      onChange={(e) => set({ path: e.target.value })}
+                    />
+                  </div>
+                )}
+                {form.type === 'command' ? (
+                  <div className="sm:col-span-2">
+                    <TextField
+                      label={t('health.command')}
+                      hint={t('health.command_hint')}
+                      readOnly={readOnly || managed}
+                      autoComplete="off"
+                      spellCheck={false}
+                      error={errors.command}
+                      value={form.command}
+                      onChange={(e) => set({ command: e.target.value })}
+                    />
+                  </div>
+                ) : (
+                  <TextField
+                    label={t('service.port')}
+                    hint={t('health.port_hint')}
+                    readOnly={readOnly || managed}
+                    type="number"
+                    inputMode="numeric"
+                    error={errors.port}
+                    value={form.port}
+                    onChange={(e) => set({ port: e.target.value })}
+                  />
+                )}
+                <div className="sm:col-span-2">
+                  <CheckboxField
+                    label={t('health.restart')}
+                    hint={t('health.restart_hint')}
+                    disabled={readOnly || managed}
+                    checked={form.restart}
+                    onChange={(e) => set({ restart: e.target.checked })}
+                  />
+                </div>
+              </FieldGrid>
+            </Panel>
+          </Pane>
+          <Pane id="timing" active={section === 'timing'}>
+            <Panel title={t('health.timing')}>
+              <FieldGrid>
+                {numberField('interval', t('health.interval'))}
+                {numberField('timeout', t('health.timeout'))}
+                {numberField('healthy_threshold', t('health.healthy_threshold'))}
+                {numberField('unhealthy_threshold', t('health.unhealthy_threshold'))}
+                {numberField('start_period', t('health.start_period'))}
+                {numberField('deploy_timeout', t('health.deploy_timeout'))}
+              </FieldGrid>
+            </Panel>
+          </Pane>
+          {access === 'allow' && (
+            <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border bg-bg py-3 max-sm:sticky max-sm:bottom-[calc(4rem+env(safe-area-inset-bottom))]">
+              <span className="text-sm text-muted">{t('settings.next_deploy')}</span>
+              <Button
+                onClick={() => setForm(initial)}
+                reason={dirty ? undefined : t('settings.no_changes')}
+              >
+                {t('settings.reset')}
+              </Button>
+              <Button type="submit" variant="primary" loading={save.isPending}>
+                {t('common.save')}
+              </Button>
+            </div>
+          )}
+          {guard.dialog}
+        </form>
+        <Pane id="test" active={section === 'test'}>
+          <Panel title={t('health.test_title')} className="space-y-3">
+            <p className="text-sm text-muted">{t('health.test_text')}</p>
+            <Button loading={test.isPending} onClick={() => test.mutate()}>
+              {t('health.test')}
+            </Button>
+            {test.error && <ErrorBanner error={test.error} title={t('health.test_failed')} />}
+            {result && (
+              <div
+                className="space-y-2 rounded-md border border-border bg-surface p-4"
+                role="status"
+              >
+                <StatusBadge
+                  tone={result.healthy ? 'success' : 'danger'}
+                  label={result.healthy ? t('health.result_healthy') : t('health.result_unhealthy')}
+                />
+                <p className="text-sm">
+                  {result.status ? t('health.result_status', { status: result.status }) : ''}{' '}
+                  {t('health.result_time', { ms: result.duration_ms ?? 0 })}
+                </p>
+                <p className="text-sm text-muted">
+                  {t('health.tested_at')}: <Time value={testedAt} />
+                </p>
+                {result.body_excerpt && (
+                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-border bg-bg p-2 font-mono text-xs">
+                    {result.body_excerpt}
+                  </pre>
+                )}
+              </div>
             )}
-          </div>
-        )}
-      </section>
+          </Panel>
+        </Pane>
+      </div>
     </div>
   )
 }

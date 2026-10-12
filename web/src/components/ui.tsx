@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type {
   ButtonHTMLAttributes,
   HTMLAttributes,
@@ -427,6 +427,142 @@ export function Panel({
 // a wrapper with the class "sm:col-span-2".
 export function FieldGrid({ children }: { children: ReactNode }) {
   return <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">{children}</div>
+}
+
+export interface SectionItem {
+  id: string
+  label: string
+  // A red item, for a danger zone.
+  danger?: boolean
+}
+
+// The menu of the sections of a page. Only the chosen section is shown, so the page never opens with
+// every setting at once. A vertical list on a wide screen, a row on a phone. Arrow keys move.
+export function SectionNav({
+  items,
+  active,
+  onChange,
+  label,
+  horizontal,
+  controls = true,
+}: {
+  items: SectionItem[]
+  active: string
+  onChange: (id: string) => void
+  label: string
+  // Always a row, also on a wide screen (for a small choice inside a section).
+  horizontal?: boolean
+  // False when there are no sections with ids on the page (the tab only changes what one area shows).
+  controls?: boolean
+}) {
+  const refs = useRef<Record<string, HTMLButtonElement | null>>({})
+  function move(from: number, step: number) {
+    const next = items[(from + step + items.length) % items.length]
+    onChange(next.id)
+    refs.current[next.id]?.focus()
+  }
+  return (
+    <div
+      role="tablist"
+      aria-label={label}
+      aria-orientation={horizontal ? 'horizontal' : 'vertical'}
+      className={`font-term -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 ${
+        horizontal
+          ? ''
+          : 'lg:sticky lg:top-24 lg:mx-0 lg:flex-col lg:overflow-visible lg:border-l lg:border-border lg:px-0 lg:pb-0'
+      }`}
+    >
+      {items.map((item, i) => {
+        const on = item.id === active
+        return (
+          <button
+            key={item.id}
+            ref={(el) => {
+              refs.current[item.id] = el
+            }}
+            type="button"
+            role="tab"
+            id={`tab-${item.id}`}
+            aria-selected={on}
+            aria-controls={controls ? `pane-${item.id}` : undefined}
+            tabIndex={on ? 0 : -1}
+            onClick={() => onChange(item.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+                e.preventDefault()
+                move(i, 1)
+              } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+                e.preventDefault()
+                move(i, -1)
+              }
+            }}
+            className={`inline-flex min-h-9 shrink-0 items-center whitespace-nowrap border-b-2 px-3 py-1 text-left transition-colors duration-[200ms] coarse:min-h-11 ${
+              horizontal ? '' : 'lg:-ml-px lg:border-b-0 lg:border-l-2 lg:whitespace-normal'
+            } ${
+              on
+                ? `bg-selection font-bold ${item.danger ? 'border-danger text-danger' : 'border-primary text-primary'}`
+                : `border-transparent hover:bg-raised ${item.danger ? 'text-danger' : 'text-muted hover:text-text'}`
+            }`}
+          >
+            {item.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// A section of a page. Every section stays in the page, so a form keeps what you typed while you look
+// at another section. Only the active one is shown, and it fades in when you open it.
+export function Pane({
+  id,
+  active,
+  children,
+}: {
+  id: string
+  active: boolean
+  children: ReactNode
+}) {
+  return (
+    <div
+      role="tabpanel"
+      id={`pane-${id}`}
+      aria-labelledby={`tab-${id}`}
+      hidden={!active}
+      className={active ? 'enter min-w-0 space-y-6' : undefined}
+    >
+      {children}
+    </div>
+  )
+}
+
+export interface Section extends SectionItem {
+  content: ReactNode
+}
+
+// The menu and the sections of a simple page.
+export function SectionTabs({
+  sections,
+  label,
+  initial,
+}: {
+  sections: Section[]
+  label: string
+  initial?: string
+}) {
+  const [active, setActive] = useState(initial ?? sections[0]?.id ?? '')
+  return (
+    <div className="grid items-start gap-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
+      <SectionNav items={sections} active={active} onChange={setActive} label={label} />
+      <div className="min-w-0">
+        {sections.map((s) => (
+          <Pane key={s.id} id={s.id} active={s.id === active}>
+            {s.content}
+          </Pane>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 const METER_CELLS = 12

@@ -305,7 +305,8 @@ export function ProjectPage() {
             </ul>
           </nav>
           <div
-            className={`space-y-4 ${
+            key={environment.id}
+            className={`enter space-y-4 ${
               environment.kind === 'production' || environment.protected
                 ? 'border-t-4 border-danger pt-4'
                 : ''

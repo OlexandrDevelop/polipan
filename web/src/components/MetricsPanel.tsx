@@ -7,8 +7,9 @@ import { ApiError, unwrap } from '@/api/errors'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { MetricChart } from '@/components/MetricChart'
 import type { ChartMarker } from '@/components/MetricChart'
-import { Banner, Skeleton, TextField, SelectField } from '@/components/ui'
+import { Banner, SectionNav, Skeleton, TextField, SelectField } from '@/components/ui'
 import { hasKey, t } from '@/i18n'
+import type { MessageKey } from '@/i18n'
 import { autoStep, metricUnit, MAX_POINTS, RANGES, seriesName, stepAllowed, STEPS } from '@/metrics'
 import type { ChartSeries, MetricName, RangeId } from '@/metrics'
 
@@ -34,6 +35,16 @@ const NODE_GROUPS: Group[] = [
   { id: 'disk', metrics: ['disk'] },
   { id: 'load', metrics: ['load'] },
   { id: 'network', metrics: ['network_in', 'network_out'] },
+]
+
+const SERVICE_PAGES = [
+  { id: 'resources', charts: ['cpu', 'memory'] },
+  { id: 'traffic', charts: ['network', 'requests', 'errors', 'latency'] },
+  { id: 'stability', charts: ['restarts'] },
+]
+const NODE_PAGES = [
+  { id: 'resources', charts: ['cpu', 'memory', 'disk', 'load'] },
+  { id: 'traffic', charts: ['network'] },
 ]
 
 // <input type="datetime-local"> wants local time without a zone.
@@ -65,6 +76,10 @@ export function MetricsPanel({
   const org = useQuery({ queryKey: ['org'], queryFn: () => unwrap(api.GET('/org')) })
   const retentionDays = org.data?.settings?.metrics_retention_days ?? 90
   const groups = kind === 'service' ? SERVICE_GROUPS : NODE_GROUPS
+  // The charts are in pages, so the tab does not open with every chart at once.
+  const pages = kind === 'service' ? SERVICE_PAGES : NODE_PAGES
+  const [page, setPage] = useState('resources')
+  const shown = (pages.find((p) => p.id === page) ?? pages[0]).charts
   const names = [...new Set(groups.flatMap((g) => g.metrics))]
 
   const custom = range === 'custom'
@@ -190,18 +205,30 @@ export function MetricsPanel({
       )}
       {data.data && allEmpty && <p className="text-muted">{t('metrics.no_data')}</p>}
       {data.data && (
-        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-          {groups.map((g) => (
-            <MetricChart
-              key={g.id}
-              title={t(`metrics.chart.${g.id}`)}
-              unit={metricUnit[g.metrics[0]]}
-              series={seriesOf(g)}
-              from={data.data.from}
-              to={data.data.to}
-              markers={g.id === 'cpu' || g.id === 'errors' || g.id === 'latency' ? markers : []}
-            />
-          ))}
+        <SectionNav
+          horizontal
+          controls={false}
+          label={t('metrics.pages')}
+          items={pages.map((p) => ({ id: p.id, label: t(`metrics.page.${p.id}` as MessageKey) }))}
+          active={page}
+          onChange={setPage}
+        />
+      )}
+      {data.data && (
+        <div key={page} className="enter grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+          {groups
+            .filter((g) => shown.includes(g.id))
+            .map((g) => (
+              <MetricChart
+                key={g.id}
+                title={t(`metrics.chart.${g.id}`)}
+                unit={metricUnit[g.metrics[0]]}
+                series={seriesOf(g)}
+                from={data.data.from}
+                to={data.data.to}
+                markers={g.id === 'cpu' || g.id === 'errors' || g.id === 'latency' ? markers : []}
+              />
+            ))}
         </div>
       )}
     </div>

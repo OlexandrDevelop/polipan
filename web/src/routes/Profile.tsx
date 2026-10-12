@@ -17,6 +17,7 @@ import {
   Button,
   Card,
   CheckboxField,
+  SectionTabs,
   Skeleton,
   StatusBadge,
   TextField,
@@ -345,32 +346,57 @@ function TwoFactor({ enabled }: { enabled: boolean }) {
 export function ProfilePage() {
   const me = useMe()
   return (
-    <section className="max-w-3xl space-y-8">
+    <section className="max-w-5xl space-y-6">
       <PageHeader title={t('profile.title')} />
       {me.isPending && <Skeleton />}
       {me.data && (
-        <>
-          <Card className="space-y-1">
-            <p>{me.data.user?.email}</p>
-            <p className="text-sm text-muted">
-              {t('profile.role', { role: me.data.org_role ?? '' })}
-            </p>
-          </Card>
-          <NameForm key={me.data.user?.name} current={me.data.user?.name ?? ''} />
-          <PasswordForm />
-          <TwoFactor enabled={Boolean(me.data.user?.totp_enabled)} />
-          <Sessions />
-          <div className="space-y-2">
-            <h2 className="text-lg font-bold">{t('profile.appearance')}</h2>
-            <ThemeRadios />
-            <DisplaySettings />
-            <KeysSetting />
-            <label className="flex items-center gap-3">
-              {t('profile.language')}
-              <LanguageSelect />
-            </label>
-          </div>
-        </>
+        <SectionTabs
+          label={t('settings.sections')}
+          sections={[
+            {
+              id: 'account',
+              label: t('profile.section_account'),
+              content: (
+                <>
+                  <Card className="space-y-1">
+                    <p>{me.data.user?.email}</p>
+                    <p className="text-muted">
+                      {t('profile.role', { role: me.data.org_role ?? '' })}
+                    </p>
+                  </Card>
+                  <NameForm key={me.data.user?.name} current={me.data.user?.name ?? ''} />
+                </>
+              ),
+            },
+            {
+              id: 'security',
+              label: t('profile.section_security'),
+              content: (
+                <>
+                  <PasswordForm />
+                  <TwoFactor enabled={Boolean(me.data.user?.totp_enabled)} />
+                  <Sessions />
+                </>
+              ),
+            },
+            {
+              id: 'appearance',
+              label: t('profile.appearance'),
+              content: (
+                <div className="space-y-2">
+                  <h2 className="text-lg font-bold">{t('profile.appearance')}</h2>
+                  <ThemeRadios />
+                  <DisplaySettings />
+                  <KeysSetting />
+                  <label className="flex items-center gap-3">
+                    {t('profile.language')}
+                    <LanguageSelect />
+                  </label>
+                </div>
+              ),
+            },
+          ]}
+        />
       )}
     </section>
   )

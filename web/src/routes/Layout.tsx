@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Link, Navigate, Outlet, useNavigate, useParams } from '@tanstack/react-router'
+import {
+  Link,
+  Navigate,
+  Outlet,
+  useNavigate,
+  useParams,
+  useRouterState,
+} from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { api, setCsrfToken, TWO_FACTOR_KEY } from '@/api/client'
 import { unwrap } from '@/api/errors'
@@ -82,13 +89,14 @@ type NavTo =
   | '/o/$org/settings/profile'
 
 const navLink =
-  'flex min-h-8 items-center justify-center gap-0.5 whitespace-nowrap px-2 py-0.5 lowercase hover:bg-raised max-sm:min-h-12 max-sm:flex-col max-sm:px-1 max-sm:text-xs coarse:min-h-11 [&.active]:bg-selection [&.active]:font-bold [&.active]:text-primary [&.active]:underline [&.active]:underline-offset-4'
+  'flex min-h-8 transition-colors duration-[200ms] items-center justify-center gap-0.5 whitespace-nowrap px-2 py-0.5 lowercase hover:bg-raised max-sm:min-h-12 max-sm:flex-col max-sm:px-1 max-sm:text-xs coarse:min-h-11 [&.active]:bg-selection [&.active]:font-bold [&.active]:text-primary [&.active]:underline [&.active]:underline-offset-4'
 
 // The frame of every signed-in page: navigation, top bar and the sign-in check.
 export function AppShell() {
   const { org } = useParams({ from: '/o/$org' })
   const { project, env, deployment } = useParams({ strict: false })
   const me = useMe()
+  const pageKey = useRouterState({ select: (s) => s.matches[s.matches.length - 1]?.routeId })
   const [palette, setPalette] = useState(false)
   const userId = me.data?.user?.id
   const live = useLiveEvents(Boolean(me.data))
@@ -375,7 +383,11 @@ export function AppShell() {
           </div>
         )}
         <div data-stale={live.disconnected || undefined}>
-          {wrongOrg ? <NotFoundPage /> : <Outlet />}
+          {/* A new page fades in. The key is the page, so a change inside a page (a tab, a
+              project) does not start it again. */}
+          <div key={pageKey} className="enter">
+            {wrongOrg ? <NotFoundPage /> : <Outlet />}
+          </div>
         </div>
       </main>
       <StatusBar

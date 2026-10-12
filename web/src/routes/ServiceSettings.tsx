@@ -13,6 +13,7 @@ import {
   Button,
   CheckboxField,
   FieldGrid,
+  Pane,
   Panel,
   SelectField,
   TextField,
@@ -116,6 +117,18 @@ function writeConfig(config: Config, f: Form, git: boolean): Config {
   return next
 }
 
+// The section of each field that can have a wrong value.
+const SECTION_OF_FIELD: Partial<Record<keyof Form, string>> = {
+  repo: 'source',
+  branch: 'source',
+  image: 'source',
+  port: 'run',
+  replicas: 'run',
+  cpu: 'resources',
+  memory: 'resources',
+  drain: 'deploy',
+}
+
 function validate(f: Form, git: boolean) {
   const e: Partial<Record<keyof Form, string>> = {}
   if (git) {
@@ -142,10 +155,15 @@ export function ServiceSettings({
   service,
   environmentProtected,
   onChanged,
+  section,
+  onSection,
 }: {
   service: Service
   environmentProtected?: boolean
   onChanged: () => void
+  // The open section of the settings page. A section with a wrong value opens by itself.
+  section: string
+  onSection: (id: string) => void
 }) {
   const queryClient = useQueryClient()
   const me = useMe()
@@ -188,7 +206,10 @@ export function ServiceSettings({
   function submit(event: FormEvent) {
     event.preventDefault()
     setSubmitted(true)
-    if (Object.keys(validate(form, git)).length === 0) save.mutate()
+    const found = validate(form, git)
+    const first = Object.keys(found)[0] as keyof Form | undefined
+    if (!first) save.mutate()
+    else onSection(SECTION_OF_FIELD[first] ?? 'source')
   }
 
   const managedHint = (field: string) => (isManagedField(field) ? t('settings.managed') : undefined)
@@ -205,208 +226,218 @@ export function ServiceSettings({
           title={conflict ? t('variables.managed_by_git') : t('settings.save_failed')}
         />
       )}
-      <div className="grid gap-8 lg:grid-cols-2">
-        <Panel id="settings-source" title={t('settings.source')} className="lg:col-span-2">
-          <FieldGrid>
-            {git ? (
-              <>
+      <div className="max-w-3xl">
+        <Pane id="source" active={section === 'source'}>
+          <Panel id="settings-source" title={t('settings.source')}>
+            <FieldGrid>
+              {git ? (
+                <>
+                  <div className="sm:col-span-2">
+                    <TextField
+                      label={t('wizard.repo_url')}
+                      readOnly={lock('source')}
+                      hint={managedHint('source')}
+                      autoComplete="off"
+                      spellCheck={false}
+                      error={errors.repo}
+                      value={form.repo}
+                      onChange={(e) => set({ repo: e.target.value })}
+                    />
+                  </div>
+                  <TextField
+                    label={t('wizard.branch')}
+                    readOnly={lock('source')}
+                    autoComplete="off"
+                    spellCheck={false}
+                    error={errors.branch}
+                    value={form.branch}
+                    onChange={(e) => set({ branch: e.target.value })}
+                  />
+                  <TextField
+                    label={t('settings.build_path')}
+                    hint={t('settings.build_path_hint')}
+                    readOnly={lock('source')}
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={form.path}
+                    onChange={(e) => set({ path: e.target.value })}
+                  />
+                  <SelectField
+                    label={t('settings.builder')}
+                    hint={t('settings.builder_hint')}
+                    disabled={lock('source')}
+                    value={form.builder}
+                    onChange={(e) => set({ builder: e.target.value })}
+                  >
+                    <option value="railpack">{t('settings.builder.railpack')}</option>
+                    <option value="dockerfile">{t('settings.builder.dockerfile')}</option>
+                  </SelectField>
+                  {form.builder === 'dockerfile' && (
+                    <TextField
+                      label={t('settings.dockerfile')}
+                      readOnly={lock('source')}
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={form.dockerfile}
+                      onChange={(e) => set({ dockerfile: e.target.value })}
+                    />
+                  )}
+                </>
+              ) : (
                 <div className="sm:col-span-2">
                   <TextField
-                    label={t('wizard.repo_url')}
-                    readOnly={lock('source')}
-                    hint={managedHint('source')}
+                    label={t('service.image')}
+                    hint={managedHint('image') ?? t('service.image_hint')}
+                    readOnly={lock('image')}
                     autoComplete="off"
                     spellCheck={false}
-                    error={errors.repo}
-                    value={form.repo}
-                    onChange={(e) => set({ repo: e.target.value })}
+                    error={errors.image}
+                    value={form.image}
+                    onChange={(e) => set({ image: e.target.value })}
                   />
                 </div>
-                <TextField
-                  label={t('wizard.branch')}
-                  readOnly={lock('source')}
-                  autoComplete="off"
-                  spellCheck={false}
-                  error={errors.branch}
-                  value={form.branch}
-                  onChange={(e) => set({ branch: e.target.value })}
-                />
-                <TextField
-                  label={t('settings.build_path')}
-                  hint={t('settings.build_path_hint')}
-                  readOnly={lock('source')}
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={form.path}
-                  onChange={(e) => set({ path: e.target.value })}
-                />
-                <SelectField
-                  label={t('settings.builder')}
-                  hint={t('settings.builder_hint')}
-                  disabled={lock('source')}
-                  value={form.builder}
-                  onChange={(e) => set({ builder: e.target.value })}
-                >
-                  <option value="railpack">{t('settings.builder.railpack')}</option>
-                  <option value="dockerfile">{t('settings.builder.dockerfile')}</option>
-                </SelectField>
-                {form.builder === 'dockerfile' && (
-                  <TextField
-                    label={t('settings.dockerfile')}
-                    readOnly={lock('source')}
-                    autoComplete="off"
-                    spellCheck={false}
-                    value={form.dockerfile}
-                    onChange={(e) => set({ dockerfile: e.target.value })}
-                  />
-                )}
-              </>
-            ) : (
+              )}
+            </FieldGrid>
+          </Panel>
+        </Pane>
+        <Pane id="run" active={section === 'run'}>
+          <Panel id="settings-run" title={t('settings.run')}>
+            <FieldGrid>
+              <TextField
+                label={t('service.port')}
+                hint={managedHint('ports') ?? t('service.port_hint')}
+                readOnly={lock('ports')}
+                type="number"
+                inputMode="numeric"
+                error={errors.port}
+                value={form.port}
+                onChange={(e) => set({ port: e.target.value })}
+              />
+              <TextField
+                label={t('settings.replicas')}
+                hint={managedHint('replicas') ?? t('settings.replicas_hint')}
+                readOnly={lock('replicas')}
+                type="number"
+                inputMode="numeric"
+                error={errors.replicas}
+                value={form.replicas}
+                onChange={(e) => set({ replicas: e.target.value })}
+              />
               <div className="sm:col-span-2">
                 <TextField
-                  label={t('service.image')}
-                  hint={managedHint('image') ?? t('service.image_hint')}
-                  readOnly={lock('image')}
+                  label={t('settings.command')}
+                  hint={managedHint('command') ?? t('settings.command_hint')}
+                  readOnly={lock('command')}
                   autoComplete="off"
                   spellCheck={false}
-                  error={errors.image}
-                  value={form.image}
-                  onChange={(e) => set({ image: e.target.value })}
+                  value={form.command}
+                  onChange={(e) => set({ command: e.target.value })}
                 />
               </div>
-            )}
-          </FieldGrid>
-        </Panel>
-        <Panel id="settings-run" title={t('settings.run')}>
-          <FieldGrid>
-            <TextField
-              label={t('service.port')}
-              hint={managedHint('ports') ?? t('service.port_hint')}
-              readOnly={lock('ports')}
-              type="number"
-              inputMode="numeric"
-              error={errors.port}
-              value={form.port}
-              onChange={(e) => set({ port: e.target.value })}
-            />
-            <TextField
-              label={t('settings.replicas')}
-              hint={managedHint('replicas') ?? t('settings.replicas_hint')}
-              readOnly={lock('replicas')}
-              type="number"
-              inputMode="numeric"
-              error={errors.replicas}
-              value={form.replicas}
-              onChange={(e) => set({ replicas: e.target.value })}
-            />
-            <div className="sm:col-span-2">
+            </FieldGrid>
+          </Panel>
+        </Pane>
+        <Pane id="resources" active={section === 'resources'}>
+          <Panel id="settings-resources" title={t('settings.resources')}>
+            <FieldGrid>
               <TextField
-                label={t('settings.command')}
-                hint={managedHint('command') ?? t('settings.command_hint')}
-                readOnly={lock('command')}
+                label={t('settings.cpu')}
+                hint={managedHint('resources') ?? t('settings.cpu_hint')}
+                readOnly={lock('resources')}
                 autoComplete="off"
-                spellCheck={false}
-                value={form.command}
-                onChange={(e) => set({ command: e.target.value })}
+                error={errors.cpu}
+                value={form.cpu}
+                onChange={(e) => set({ cpu: e.target.value })}
               />
-            </div>
-          </FieldGrid>
-        </Panel>
-        <Panel id="settings-resources" title={t('settings.resources')}>
-          <FieldGrid>
-            <TextField
-              label={t('settings.cpu')}
-              hint={managedHint('resources') ?? t('settings.cpu_hint')}
-              readOnly={lock('resources')}
-              autoComplete="off"
-              error={errors.cpu}
-              value={form.cpu}
-              onChange={(e) => set({ cpu: e.target.value })}
-            />
-            <TextField
-              label={t('settings.memory')}
-              hint={managedHint('resources') ?? t('settings.memory_hint')}
-              readOnly={lock('resources')}
-              autoComplete="off"
-              error={errors.memory}
-              value={form.memory}
-              onChange={(e) => set({ memory: e.target.value })}
-            />
-          </FieldGrid>
-        </Panel>
-        <Panel id="settings-deploy" title={t('settings.deploy')}>
-          <FieldGrid>
-            <SelectField
-              label={t('settings.strategy')}
-              hint={managedHint('strategy') ?? t('settings.strategy_hint')}
-              disabled={lock('strategy')}
-              value={form.strategy}
-              onChange={(e) => set({ strategy: e.target.value })}
-            >
-              <option value="">{t('settings.strategy_default')}</option>
-              <option value="blue_green">{t('deploy.strategy_value.blue_green')}</option>
-              <option value="recreate">{t('deploy.strategy_value.recreate')}</option>
-            </SelectField>
-            <TextField
-              label={t('settings.drain')}
-              hint={t('settings.drain_hint')}
-              placeholder="30"
-              readOnly={lock('strategy')}
-              type="number"
-              inputMode="numeric"
-              error={errors.drain}
-              value={form.drain}
-              onChange={(e) => set({ drain: e.target.value })}
-            />
-            <div className="sm:col-span-2 space-y-2">
-              <CheckboxField
-                label={t('settings.allow_downtime')}
-                hint={t('settings.allow_downtime_hint')}
-                disabled={lock('strategy')}
-                checked={form.allowDowntime}
-                onChange={(e) => set({ allowDowntime: e.target.checked })}
-              />
-              <CheckboxField
-                label={t('settings.allow_overlap')}
-                hint={t('settings.allow_overlap_hint')}
-                disabled={lock('strategy')}
-                checked={form.allowOverlap}
-                onChange={(e) => set({ allowOverlap: e.target.checked })}
-              />
-            </div>
-          </FieldGrid>
-        </Panel>
-        <Panel id="settings-hooks" title={t('settings.hooks')}>
-          <FieldGrid>
-            <div className="sm:col-span-2">
               <TextField
-                label={t('settings.pre_deploy')}
-                hint={managedHint('pre_deploy') ?? t('settings.pre_deploy_hint')}
-                readOnly={lock('pre_deploy')}
+                label={t('settings.memory')}
+                hint={managedHint('resources') ?? t('settings.memory_hint')}
+                readOnly={lock('resources')}
                 autoComplete="off"
-                spellCheck={false}
-                value={form.preDeploy}
-                onChange={(e) => set({ preDeploy: e.target.value })}
+                error={errors.memory}
+                value={form.memory}
+                onChange={(e) => set({ memory: e.target.value })}
               />
-            </div>
-            {form.preDeploy.trim() !== '' && form.strategy !== 'recreate' && (
-              <div className="sm:col-span-2">
-                <Banner variant="warning">{t('settings.migration_warning')}</Banner>
+            </FieldGrid>
+          </Panel>
+        </Pane>
+        <Pane id="deploy" active={section === 'deploy'}>
+          <Panel id="settings-deploy" title={t('settings.deploy')}>
+            <FieldGrid>
+              <SelectField
+                label={t('settings.strategy')}
+                hint={managedHint('strategy') ?? t('settings.strategy_hint')}
+                disabled={lock('strategy')}
+                value={form.strategy}
+                onChange={(e) => set({ strategy: e.target.value })}
+              >
+                <option value="">{t('settings.strategy_default')}</option>
+                <option value="blue_green">{t('deploy.strategy_value.blue_green')}</option>
+                <option value="recreate">{t('deploy.strategy_value.recreate')}</option>
+              </SelectField>
+              <TextField
+                label={t('settings.drain')}
+                hint={t('settings.drain_hint')}
+                placeholder="30"
+                readOnly={lock('strategy')}
+                type="number"
+                inputMode="numeric"
+                error={errors.drain}
+                value={form.drain}
+                onChange={(e) => set({ drain: e.target.value })}
+              />
+              <div className="sm:col-span-2 space-y-2">
+                <CheckboxField
+                  label={t('settings.allow_downtime')}
+                  hint={t('settings.allow_downtime_hint')}
+                  disabled={lock('strategy')}
+                  checked={form.allowDowntime}
+                  onChange={(e) => set({ allowDowntime: e.target.checked })}
+                />
+                <CheckboxField
+                  label={t('settings.allow_overlap')}
+                  hint={t('settings.allow_overlap_hint')}
+                  disabled={lock('strategy')}
+                  checked={form.allowOverlap}
+                  onChange={(e) => set({ allowOverlap: e.target.checked })}
+                />
               </div>
-            )}
-            <div className="sm:col-span-2">
-              <TextField
-                label={t('settings.post_deploy')}
-                hint={managedHint('post_deploy') ?? t('settings.post_deploy_hint')}
-                readOnly={lock('post_deploy')}
-                autoComplete="off"
-                spellCheck={false}
-                value={form.postDeploy}
-                onChange={(e) => set({ postDeploy: e.target.value })}
-              />
-            </div>
-          </FieldGrid>
-        </Panel>
+            </FieldGrid>
+          </Panel>
+        </Pane>
+        <Pane id="hooks" active={section === 'hooks'}>
+          <Panel id="settings-hooks" title={t('settings.hooks')}>
+            <FieldGrid>
+              <div className="sm:col-span-2">
+                <TextField
+                  label={t('settings.pre_deploy')}
+                  hint={managedHint('pre_deploy') ?? t('settings.pre_deploy_hint')}
+                  readOnly={lock('pre_deploy')}
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={form.preDeploy}
+                  onChange={(e) => set({ preDeploy: e.target.value })}
+                />
+              </div>
+              {form.preDeploy.trim() !== '' && form.strategy !== 'recreate' && (
+                <div className="sm:col-span-2">
+                  <Banner variant="warning">{t('settings.migration_warning')}</Banner>
+                </div>
+              )}
+              <div className="sm:col-span-2">
+                <TextField
+                  label={t('settings.post_deploy')}
+                  hint={managedHint('post_deploy') ?? t('settings.post_deploy_hint')}
+                  readOnly={lock('post_deploy')}
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={form.postDeploy}
+                  onChange={(e) => set({ postDeploy: e.target.value })}
+                />
+              </div>
+            </FieldGrid>
+          </Panel>
+        </Pane>
       </div>
       {access === 'allow' && (
         <div

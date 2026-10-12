@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { Suspense, useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import { api } from '@/api/client'
 import { ApiError, unwrap } from '@/api/errors'
 import { DataList } from '@/components/DataList'
@@ -20,9 +20,12 @@ import {
   EmptyState,
   EnvironmentBadges,
   KeyHint,
+  Pane,
+  SectionNav,
   Skeleton,
   StatusBadge,
 } from '@/components/ui'
+import type { SectionItem } from '@/components/ui'
 import { t, tState } from '@/i18n'
 import { accessFor, effectiveRole } from '@/permissions'
 import { lazyNamed } from '@/lazy'
@@ -289,40 +292,69 @@ export function validateServiceSearch(search: Record<string, unknown>): {
 }
 
 // UI-06 (basic): state and control of one service, with the tabs of M1.
-// The sections of the settings tab. The list stays in view while the page scrolls.
-function SettingsNav({ git }: { git: boolean }) {
-  const items: [string, string][] = [
-    ['settings-source', t('settings.source')],
-    ['settings-run', t('settings.run')],
-    ['settings-resources', t('settings.resources')],
-    ['settings-deploy', t('settings.deploy')],
-    ['settings-hooks', t('settings.hooks')],
-    ...(git ? ([['settings-deploy-key', t('deploykey.title')]] as [string, string][]) : []),
-    ['settings-placement', t('placement.title')],
-    ['settings-danger', t('delete.title')],
+// The settings tab. A menu of sections, and only the open section is shown.
+function SettingsTab({
+  service,
+  environmentProtected,
+  base,
+  onChanged,
+}: {
+  service: Service
+  environmentProtected?: boolean
+  base: ComponentProps<typeof ServiceDelete>['base']
+  onChanged: () => void
+}) {
+  const git = service.source_type === 'git'
+  const [section, setSection] = useState('source')
+  const items: SectionItem[] = [
+    { id: 'source', label: t('settings.source') },
+    { id: 'run', label: t('settings.run') },
+    { id: 'resources', label: t('settings.resources') },
+    { id: 'deploy', label: t('settings.deploy') },
+    { id: 'hooks', label: t('settings.hooks') },
+    ...(git ? [{ id: 'deploy-key', label: t('deploykey.title') }] : []),
+    { id: 'placement', label: t('placement.title') },
+    { id: 'danger', label: t('delete.title'), danger: true },
   ]
   return (
-    <nav
-      aria-label={t('settings.sections')}
-      className="font-term hidden lg:sticky lg:top-24 lg:block"
-    >
-      <ul className="space-y-1 border-l border-border">
-        {items.map(([id, label]) => (
-          <li key={id}>
-            <a
-              href={`#${id}`}
-              className="block py-1 pl-4 text-muted hover:bg-raised hover:text-text"
-              onClick={(e) => {
-                e.preventDefault()
-                document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }}
-            >
-              {label}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </nav>
+    <div className="grid items-start gap-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
+      <SectionNav
+        items={items}
+        active={section}
+        onChange={setSection}
+        label={t('settings.sections')}
+      />
+      <div className="min-w-0 max-w-3xl">
+        <ServiceSettings
+          key={service.id}
+          service={service}
+          environmentProtected={environmentProtected}
+          onChanged={onChanged}
+          section={section}
+          onSection={setSection}
+        />
+        {git && (
+          <Pane id="deploy-key" active={section === 'deploy-key'}>
+            <ServiceDeployKey service={service} environmentProtected={environmentProtected} />
+          </Pane>
+        )}
+        <Pane id="placement" active={section === 'placement'}>
+          <ServicePlacement
+            key={`${service.id}-${service.failover}-${service.allow_data_loss_failover}`}
+            service={service}
+            environmentProtected={environmentProtected}
+            onChanged={onChanged}
+          />
+        </Pane>
+        <Pane id="danger" active={section === 'danger'}>
+          <ServiceDelete
+            service={service}
+            environmentProtected={environmentProtected}
+            base={base}
+          />
+        </Pane>
+      </div>
+    </div>
   )
 }
 
@@ -627,7 +659,7 @@ export function ServicePage() {
                 to="/o/$org/p/$project/e/$env/s/$service/$tab"
                 params={{ ...base, tab: id }}
                 aria-current={id === tab ? 'page' : undefined}
-                className="block min-h-11 whitespace-nowrap border-b-4 border-transparent px-4 py-2 text-muted hover:text-text aria-[current=page]:border-primary aria-[current=page]:font-semibold aria-[current=page]:text-text"
+                className="block min-h-11 whitespace-nowrap border-b-4 border-transparent px-4 py-2 text-muted transition-colors duration-[200ms] hover:text-text aria-[current=page]:border-primary aria-[current=page]:font-semibold aria-[current=page]:text-text"
               >
                 {t(`service.tab.${id}`)}
               </Link>
@@ -635,102 +667,87 @@ export function ServicePage() {
           ))}
         </ul>
       </nav>
-      {tab === 'overview' && (
-        <>
-          <div className="mb-4">
-            <FailoverBanner service={service} />
-          </div>
-          <Overview service={service} serviceId={serviceId} base={base} />
-        </>
-      )}
-      {tab === 'deployments' && <Deployments serviceId={serviceId} base={base} />}
-      {tab === 'releases' && (
-        <ServiceReleases
-          service={service}
-          environment={environment}
-          base={base}
-          onDeploy={() => setDialog('deploy')}
-        />
-      )}
-      {tab === 'domains' && (
-        <ServiceDomains service={service} environmentProtected={environment.protected} />
-      )}
-      {tab === 'env' && scope.project && (
-        <ServiceVariables
-          project={scope.project}
-          environment={environment}
-          service={service}
-          onChanged={changed}
-        />
-      )}
-      {tab === 'volumes' && (
-        <ServiceStorage service={service} environmentProtected={environment.protected} />
-      )}
-      {tab === 'health' && (
-        <ServiceHealth
-          key={service.id}
-          service={service}
-          environmentProtected={environment.protected}
-          onChanged={changed}
-        />
-      )}
-      {tab === 'backups' && (
-        <ServiceBackups service={service} environmentProtected={environment.protected} />
-      )}
-      {tab === 'logs' && (
-        <Suspense fallback={<Skeleton />}>
-          <ServiceLogs serviceId={serviceId} />
-        </Suspense>
-      )}
-      {tab === 'metrics' && (
-        <Suspense fallback={<Skeleton />}>
-          <MetricsPanel
-            kind="service"
-            id={serviceId}
-            markers={(releases.data?.items ?? [])
-              .filter((r) => r.created_at)
-              .map((r) => ({
-                time: Math.floor(new Date(r.created_at ?? '').getTime() / 1000),
-                label: `v${r.number}`,
-                onOpen: () =>
-                  void navigate({
-                    to: '/o/$org/p/$project/e/$env/s/$service/$tab',
-                    params: { ...base, tab: 'releases' },
-                  }),
-              }))}
+      <div key={tab} className="enter">
+        {tab === 'overview' && (
+          <>
+            <div className="mb-4">
+              <FailoverBanner service={service} />
+            </div>
+            <Overview service={service} serviceId={serviceId} base={base} />
+          </>
+        )}
+        {tab === 'deployments' && <Deployments serviceId={serviceId} base={base} />}
+        {tab === 'releases' && (
+          <ServiceReleases
+            service={service}
+            environment={environment}
+            base={base}
+            onDeploy={() => setDialog('deploy')}
           />
-        </Suspense>
-      )}
-      {tab === 'terminal' && (
-        <Suspense fallback={<Skeleton />}>
-          <ServiceTerminal service={service} environmentProtected={environment.protected} />
-        </Suspense>
-      )}
-      {tab === 'settings' && (
-        <div className="grid items-start gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]">
-          <SettingsNav git={service.source_type === 'git'} />
-          <div className="min-w-0 space-y-8">
-            <ServiceSettings
-              key={service.id}
-              service={service}
-              environmentProtected={environment.protected}
-              onChanged={changed}
+        )}
+        {tab === 'domains' && (
+          <ServiceDomains service={service} environmentProtected={environment.protected} />
+        )}
+        {tab === 'env' && scope.project && (
+          <ServiceVariables
+            project={scope.project}
+            environment={environment}
+            service={service}
+            onChanged={changed}
+          />
+        )}
+        {tab === 'volumes' && (
+          <ServiceStorage service={service} environmentProtected={environment.protected} />
+        )}
+        {tab === 'health' && (
+          <ServiceHealth
+            key={service.id}
+            service={service}
+            environmentProtected={environment.protected}
+            onChanged={changed}
+          />
+        )}
+        {tab === 'backups' && (
+          <ServiceBackups service={service} environmentProtected={environment.protected} />
+        )}
+        {tab === 'logs' && (
+          <Suspense fallback={<Skeleton />}>
+            <ServiceLogs serviceId={serviceId} />
+          </Suspense>
+        )}
+        {tab === 'metrics' && (
+          <Suspense fallback={<Skeleton />}>
+            <MetricsPanel
+              kind="service"
+              id={serviceId}
+              markers={(releases.data?.items ?? [])
+                .filter((r) => r.created_at)
+                .map((r) => ({
+                  time: Math.floor(new Date(r.created_at ?? '').getTime() / 1000),
+                  label: `v${r.number}`,
+                  onOpen: () =>
+                    void navigate({
+                      to: '/o/$org/p/$project/e/$env/s/$service/$tab',
+                      params: { ...base, tab: 'releases' },
+                    }),
+                }))}
             />
-            <ServiceDeployKey service={service} environmentProtected={environment.protected} />
-            <ServicePlacement
-              key={`${service.id}-${service.failover}-${service.allow_data_loss_failover}`}
-              service={service}
-              environmentProtected={environment.protected}
-              onChanged={changed}
-            />
-            <ServiceDelete
-              service={service}
-              environmentProtected={environment.protected}
-              base={base}
-            />
-          </div>
-        </div>
-      )}
+          </Suspense>
+        )}
+        {tab === 'terminal' && (
+          <Suspense fallback={<Skeleton />}>
+            <ServiceTerminal service={service} environmentProtected={environment.protected} />
+          </Suspense>
+        )}
+        {tab === 'settings' && (
+          <SettingsTab
+            service={service}
+            environmentProtected={environment.protected}
+            base={base}
+            onChanged={changed}
+          />
+        )}
+      </div>
       {dialog === 'deploy' && (
         <DeployDialog
           service={service}

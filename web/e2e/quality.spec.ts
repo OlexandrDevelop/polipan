@@ -155,6 +155,7 @@ test('REQ-UI-015 system theme follows the system live and the choice persists', 
   await page.emulateMedia({ colorScheme: 'light' })
   await page.goto('/o/acme/settings/profile')
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  await page.getByRole('tab', { name: 'Appearance' }).click()
   const theme = () => page.evaluate(() => document.documentElement.dataset.theme)
   expect(await theme()).toBe('light')
   await page.emulateMedia({ colorScheme: 'dark' })
