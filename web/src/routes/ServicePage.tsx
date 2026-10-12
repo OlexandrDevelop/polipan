@@ -130,7 +130,8 @@ function FailedBanner({
       ? 'source'
       : undefined
   const deploymentId = failure.deployment_id
-  const lines = failure.log_excerpt ?? []
+  // The last lines tell most. All of them are behind the "show logs" link.
+  const lines = (failure.log_excerpt ?? []).slice(-10)
   return (
     <Banner
       variant="danger"
