@@ -1,0 +1,23 @@
+{
+  "domain": "polipan.dev",
+  "getHost": "get.polipan.dev",
+  "docsUrl": "https://docs.polipan.dev",
+  "communityUrl": "https://community.polipan.dev",
+  "repo": "polipan/polipan",
+  "securityContact": "mailto:security@polipan.dev",
+  "installCommand": "curl -fsSL https://get.polipan.dev | sudo sh -s -- --domain panel.example.com",
+  "languages": [
+    { "code": "en", "name": "English" },
+    { "code": "uk", "name": "Українська" },
+    { "code": "it", "name": "Italiano" },
+    { "code": "pl", "name": "Polski" },
+    { "code": "de", "name": "Deutsch" },
+    { "code": "fr", "name": "Français" },
+    { "code": "es", "name": "Español" },
+    { "code": "nl", "name": "Nederlands" },
+    { "code": "nb", "name": "Norsk" },
+    { "code": "cs", "name": "Čeština" },
+    { "code": "el", "name": "Ελληνικά" },
+    { "code": "tr", "name": "Türkçe" }
+  ]
+}

@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: Apache-2.0
+# The nginx image fills ${SITE_GET_HOST} and ${SITE_REPO} from the environment when it starts.
+
+# The short install address: https://get.polipan.dev sends you to the script of the latest release.
+server {
+  listen 8080;
+  server_tokens off;
+  server_name ${SITE_GET_HOST};
+
+  location = /healthz {
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+  location = / {
+    return 302 https://github.com/${SITE_REPO}/releases/latest/download/install.sh;
+  }
+  location = /install.sh {
+    return 302 https://github.com/${SITE_REPO}/releases/latest/download/install.sh;
+  }
+  location = /install-agent.sh {
+    return 302 https://github.com/${SITE_REPO}/releases/latest/download/install-agent.sh;
+  }
+  location / {
+    return 404;
+  }
+}
+
+# The site.
+server {
+  listen 8080 default_server;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+  absolute_redirect off;
+  server_tokens off;
+
+  gzip on;
+  gzip_types text/css application/javascript image/svg+xml text/plain application/xml;
+
+  add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()" always;
+  add_header X-Frame-Options "DENY" always;
+
+  error_page 404 /404.html;
+
+  location = /healthz {
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+  # Files with a hash in the name never change. Add the headers again: add_header in a block hides the ones above.
+  location ~ "^/assets/.+\.[0-9a-f]{10}\.(css|js)$" {
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    add_header Content-Security-Policy "default-src 'self'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    try_files $uri =404;
+  }
+  location /assets/ {
+    add_header Cache-Control "public, max-age=86400";
+    add_header Content-Security-Policy "default-src 'self'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    try_files $uri =404;
+  }
+  location / {
+    add_header Cache-Control "no-cache";
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header X-Frame-Options "DENY" always;
+    try_files $uri $uri/ =404;
+  }
+}
