@@ -18,6 +18,7 @@ import (
 	"github.com/polipan/polipan/agent/internal/backup"
 	"github.com/polipan/polipan/agent/internal/docker"
 	"github.com/polipan/polipan/agent/internal/state"
+	"github.com/polipan/polipan/agent/internal/vip"
 	"github.com/polipan/polipan/proto/agentv1"
 	"google.golang.org/protobuf/proto"
 )
@@ -46,6 +47,11 @@ type Firewall interface {
 	Apply(ctx context.Context, ds *agentv1.DesiredState) error
 }
 
+// VIPs maps services to stable virtual addresses on the node. An error means: answer with container addresses.
+type VIPs interface {
+	Apply(ctx context.Context, services []vip.Service, localSubnet string) (map[string]string, error)
+}
+
 // Mesh keeps the WireGuard interface and the routes of the node (REQ-AGENT-008).
 type Mesh interface {
 	Apply(ctx context.Context, peers []*agentv1.WireguardPeer, meshCIDR string) error
@@ -63,6 +69,7 @@ type Engine struct {
 	Ingress  Ingress  // optional
 	DNS      DNSTable // optional
 	Firewall Firewall // optional
+	VIP      VIPs     // optional: stable addresses of the services
 	Mesh     Mesh     // optional
 	// NetSubnet is the subnet of the Docker network of the workloads. A fixed address of the server is used only
 	// when it is inside this subnet.
@@ -421,22 +428,79 @@ func (e *Engine) actual(ctx context.Context, ds *agentv1.DesiredState) *agentv1.
 		out.Containers = append(out.Containers, st)
 	}
 	sort.Slice(out.Containers, func(i, j int) bool { return out.Containers[i].PlacementId < out.Containers[j].PlacementId })
+	// Container names point to the container. A service name points to its live containers, through a stable
+	// virtual address when the node can map it (package vip), so a client that keeps the address survives a deploy.
 	table := map[string][]string{}
+	type svcNames struct {
+		names []string
+		ips   []string
+	}
+	services := map[string]*svcNames{}
+	service := func(id string, names []string, ip string) {
+		sv := services[id]
+		if sv == nil {
+			sv = &svcNames{}
+			services[id] = sv
+		}
+		sv.ips = append(sv.ips, ip)
+		for _, n := range names {
+			found := false
+			for _, o := range sv.names {
+				found = found || o == n
+			}
+			if !found {
+				sv.names = append(sv.names, n)
+			}
+		}
+	}
 	for _, w := range ds.Workloads {
 		if c, ok := byName[w.ContainerName]; ok && c.State == "running" && c.IP != "" {
 			table[w.ContainerName] = append(table[w.ContainerName], c.IP)
-			for _, a := range w.NetworkAliases {
-				// The name of the service points only to live containers: a new container is not used before the switch.
-				if a == w.ContainerName || w.Role == "live" {
-					table[a] = append(table[a], c.IP)
+			// The name of the service points only to live containers: a new container is not used before the switch.
+			if w.Role == "live" {
+				var names []string
+				for _, a := range w.NetworkAliases {
+					if a != w.ContainerName {
+						names = append(names, a)
+					}
 				}
+				service(w.ServiceId, names, c.IP)
 			}
 		}
 	}
 	// Replicas on other nodes: the names and mesh addresses the server lists (REQ-NODE-009).
+	// The first name is the container, the others are the names of the service.
 	for _, r := range ds.RemoteEndpoints {
-		for _, n := range r.Names {
-			table[n] = append(table[n], r.Ip)
+		for i, n := range r.Names {
+			if i == 0 {
+				table[n] = append(table[n], r.Ip)
+			} else {
+				service(r.ServiceId, []string{n}, r.Ip)
+			}
+		}
+	}
+	var vips map[string]string
+	if e.VIP != nil {
+		list := make([]vip.Service, 0, len(services))
+		for id, sv := range services {
+			list = append(list, vip.Service{ID: id, Backends: sv.ips})
+		}
+		subnet := ""
+		if e.NetSubnet != nil {
+			subnet = e.NetSubnet.String()
+		}
+		var err error
+		if vips, err = e.VIP.Apply(ctx, list, subnet); err != nil {
+			e.Log.Warn("virtual addresses not applied, the names answer with container addresses", "error", err)
+		}
+	}
+	for id, sv := range services {
+		for _, n := range sv.names {
+			if v := vips[id]; v != "" {
+				table[n] = append(table[n], v)
+			} else {
+				table[n] = append(table[n], sv.ips...)
+			}
 		}
 	}
 	switch d := e.DNS.(type) {

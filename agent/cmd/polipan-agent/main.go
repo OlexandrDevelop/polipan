@@ -41,6 +41,7 @@ import (
 	"github.com/polipan/polipan/agent/internal/stream"
 	"github.com/polipan/polipan/agent/internal/telemetry"
 	"github.com/polipan/polipan/agent/internal/version"
+	"github.com/polipan/polipan/agent/internal/vip"
 	"github.com/polipan/polipan/proto/agentv1"
 )
 
@@ -167,6 +168,7 @@ func runAgent(cfg config.Config) error {
 
 	eng := reconcile.New(d, store, cfg.Network, log)
 	eng.Ingress, eng.DNS, eng.Firewall, eng.Mesh = ing, dnsSrv, fw, mm
+	eng.VIP = &vip.Manager{Enabled: cfg.Firewall && cfg.VIP, CIDR: cfg.VIPCIDR, Log: log}
 	eng.FilesDir = filepath.Join(cfg.DataDir, "files")
 	eng.Backup = &backup.Runner{Docker: d, TmpDir: filepath.Join(cfg.DataDir, "tmp"), Log: log, PullAuth: eng.PullAuthFor, Scrub: eng.Scrub}
 	dnsStarted := false

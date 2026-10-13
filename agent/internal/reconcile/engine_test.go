@@ -5,8 +5,10 @@ package reconcile
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/polipan/polipan/agent/internal/docker"
 	"github.com/polipan/polipan/agent/internal/state"
+	"github.com/polipan/polipan/agent/internal/vip"
 	"github.com/polipan/polipan/proto/agentv1"
 )
 
@@ -460,5 +463,74 @@ func TestREQ_SEC_106_WorkloadDropsNetRaw(t *testing.T) {
 	sp := e.containerSpec(&agentv1.WorkloadSpec{ContainerName: "pp-1", ImageRef: "nginx@sha256:aa"})
 	if len(sp.CapDrop) != 1 || sp.CapDrop[0] != "NET_RAW" {
 		t.Fatalf("cap drop: %v", sp.CapDrop)
+	}
+}
+
+type dnsRec struct{ table map[string][]string }
+
+func (d *dnsRec) Set(map[string]string)          {}
+func (d *dnsRec) SetMulti(t map[string][]string) { d.table = t }
+
+type vipRec struct {
+	err      error
+	backends []string
+}
+
+func (v *vipRec) Apply(_ context.Context, s []vip.Service, subnet string) (map[string]string, error) {
+	if v.err != nil {
+		return nil, v.err
+	}
+	v.backends = nil
+	out := map[string]string{}
+	for _, sv := range s {
+		out[sv.ID] = "198.18.0.7"
+		v.backends = append(v.backends, sv.Backends...)
+	}
+	return out, nil
+}
+
+// The name of a service keeps one stable address while a deploy moves the live role from blue to green.
+func TestServiceNameKeepsVirtualAddressAcrossDeploy(t *testing.T) {
+	f := newFake()
+	e, _ := newEngine(t, t.TempDir(), f)
+	dns, v := &dnsRec{}, &vipRec{}
+	e.DNS, e.VIP = dns, v
+	e.NetSubnet = &net.IPNet{IP: net.IPv4(172, 30, 0, 0), Mask: net.CIDRMask(24, 32)}
+	ctx := context.Background()
+
+	e.SetDesired(&agentv1.DesiredState{Version: 1, Workloads: []*agentv1.WorkloadSpec{wl("blue", "live")}})
+	e.Reconcile(ctx)
+	f.cs["pp-blue"].IP = "172.30.0.10"
+	e.Reconcile(ctx)
+	if got := dns.table["web"]; len(got) != 1 || got[0] != "198.18.0.7" {
+		t.Fatalf("service name before the deploy: %v", got)
+	}
+	if got := dns.table["pp-blue"]; len(got) != 1 || got[0] != "172.30.0.10" {
+		t.Fatalf("container name must keep the container address: %v", got)
+	}
+
+	green := wl("green", "live")
+	blue := wl("blue", "draining")
+	e.SetDesired(&agentv1.DesiredState{Version: 2, Workloads: []*agentv1.WorkloadSpec{blue, green}})
+	e.Reconcile(ctx)
+	f.cs["pp-green"].IP = "172.30.0.11"
+	e.Reconcile(ctx)
+	if got := dns.table["web"]; len(got) != 1 || got[0] != "198.18.0.7" {
+		t.Fatalf("service name after the deploy: %v", got)
+	}
+	if len(v.backends) != 1 || v.backends[0] != "172.30.0.11" {
+		t.Fatalf("only the live container is a backend: %v", v.backends)
+	}
+}
+
+func TestServiceNameFallsBackToContainerAddress(t *testing.T) {
+	f := newFake()
+	e, _ := newEngine(t, t.TempDir(), f)
+	dns := &dnsRec{}
+	e.DNS, e.VIP = dns, &vipRec{err: errors.New("no nft")}
+	e.SetDesired(&agentv1.DesiredState{Version: 1, Workloads: []*agentv1.WorkloadSpec{wl("a", "live")}})
+	e.Reconcile(context.Background())
+	if got := dns.table["web"]; len(got) != 1 || got[0] != "172.30.0.9" {
+		t.Fatalf("fallback: %v", got)
 	}
 }

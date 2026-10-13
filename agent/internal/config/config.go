@@ -31,6 +31,10 @@ type Config struct {
 	WireguardPort int
 	// Firewall turns the nftables rules on or off.
 	Firewall bool
+	// VIP gives every service a stable virtual address that the node maps to its live containers (package vip).
+	// It needs the firewall (nftables). VIPCIDR is the pool of the addresses, empty = 198.18.0.0/15.
+	VIP     bool
+	VIPCIDR string
 	// Token and CAFingerprint let a new agent join when it has no identity yet.
 	Token         string
 	CAFingerprint string
@@ -62,7 +66,7 @@ type Config struct {
 // FromEnv returns the default config changed by the environment variables.
 func FromEnv(getenv func(string) string) Config {
 	c := Config{DataDir: DefaultDataDir, LogLevel: "info", Network: "polipan", WireguardPort: 51820,
-		Firewall: true, DockerSocket: "/var/run/docker.sock", MetricsAddr: "127.0.0.1:9445",
+		Firewall: true, VIP: true, DockerSocket: "/var/run/docker.sock", MetricsAddr: "127.0.0.1:9445",
 		Cleanup: true, CleanupInterval: time.Hour, CleanupHighPercent: 85}
 	set := func(dst *string, key string) {
 		if v := getenv(key); v != "" {
@@ -86,6 +90,7 @@ func FromEnv(getenv func(string) string) Config {
 	set(&c.DockerSocket, "POLIPAN_AGENT_DOCKER_SOCKET")
 	set(&c.MetricsAddr, "POLIPAN_AGENT_METRICS_ADDR")
 	set(&c.BuildKitRoot, "POLIPAN_AGENT_BUILDKIT_ROOT")
+	set(&c.VIPCIDR, "POLIPAN_AGENT_VIP_CIDR")
 	if v := getenv("POLIPAN_AGENT_WIREGUARD_PORT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n < 65536 {
 			c.WireguardPort = n
@@ -94,6 +99,11 @@ func FromEnv(getenv func(string) string) Config {
 	if v := getenv("POLIPAN_AGENT_FIREWALL"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			c.Firewall = b
+		}
+	}
+	if v := getenv("POLIPAN_AGENT_VIP"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			c.VIP = b
 		}
 	}
 	if v := getenv("POLIPAN_AGENT_CLEANUP"); v != "" {
