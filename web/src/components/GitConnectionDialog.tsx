@@ -147,6 +147,7 @@ export function AddGitConnectionDialog({
                 />
                 <SecretField
                   label={t('git.private_key')}
+                  multiline
                   value={privateKey}
                   onValue={setPrivateKey}
                 />

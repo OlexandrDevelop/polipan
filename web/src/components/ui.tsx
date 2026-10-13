@@ -220,11 +220,37 @@ interface SecretFieldProps extends Omit<
   // The current version when a value is already stored. The value itself is never read back.
   version?: number
   error?: string | null
+  // A multi-line value such as a PEM key. A one-line input would drop its line breaks.
+  multiline?: boolean
 }
 
 // A write-only input for a secret value (REQ-UI-005). It never shows a stored value and has no
 // reveal button. The parent clears the value after save.
-export function SecretField({ label, value, onValue, version, error, ...rest }: SecretFieldProps) {
+export function SecretField({
+  label,
+  value,
+  onValue,
+  version,
+  error,
+  multiline,
+  ...rest
+}: SecretFieldProps) {
+  if (multiline) {
+    return (
+      <TextAreaField
+        label={label}
+        autoComplete="off"
+        autoCapitalize="none"
+        spellCheck={false}
+        data-secret-input=""
+        className="font-mono [-webkit-text-security:disc]"
+        value={value}
+        onChange={(e) => onValue(e.target.value)}
+        error={error}
+        hint={version ? t('secret.set_version', { version }) : t('secret.write_only')}
+      />
+    )
+  }
   return (
     <TextField
       {...rest}
