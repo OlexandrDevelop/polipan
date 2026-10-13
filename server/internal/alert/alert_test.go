@@ -161,7 +161,8 @@ func setup(t *testing.T) *env {
 	e.node = e.newNode("node-1", "ready")
 	e.store = &alert.Store{DB: pool, Secrets: sec, MinRepeatS: 1}
 	e.eng = &alert.Engine{DB: pool, Store: e.store, Clock: e.clk, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		ExternalURL: "https://panel.example.com", RepeatDefault: time.Hour}
+		ExternalURL: "https://panel.example.com", RepeatDefault: time.Hour,
+		IncidentHold: -1} // the tests of messages do not wait for the incident hold
 	e.eng.Tick(ctx, true) // the first pass sets the event cursor: older events are not alerts
 	return e
 }

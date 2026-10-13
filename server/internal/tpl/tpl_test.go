@@ -4,6 +4,7 @@ package tpl_test
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -59,10 +60,62 @@ services:
 
 // AC-TPL-03: build: is refused with a clear message.
 func TestAC_TPL_03_ComposeBuild(t *testing.T) {
-	_, err := tpl.ImportCompose([]byte("services:\n  web:\n    build: .\n    image: x\n"))
+	_, err := tpl.ImportCompose([]byte("services:\n  web:\n    build: .\n"))
 	var ps tpl.Problems
 	if !errors.As(err, &ps) || !strings.Contains(err.Error(), "build: is not supported") || !strings.Contains(err.Error(), "Git service") {
 		t.Fatalf("got %v", err)
+	}
+	// With an image the file is still imported: the image is pulled, and the build is a warning and a loss.
+	res, err := tpl.ImportCompose([]byte("services:\n  web:\n    build: .\n    image: x\n"))
+	if err != nil || len(res.Warnings) == 0 || !strings.Contains(strings.Join(res.Warnings, " "), "build is not supported") {
+		t.Fatalf("build with an image: %v %v", res, err)
+	}
+}
+
+// AC-TPL-05: a Compose file from Git with an env_file in the repository and a bind mount of secrets. A plain
+// variable stays a variable, a variable that looks like a secret becomes a secret, the bind mount is a dropped
+// loss with a secrets: replacement, and no secret value is in the answer.
+func TestAC_TPL_05_ComposeGitEnvFile(t *testing.T) {
+	file := []byte("services:\n  app:\n    image: x:1\n    env_file: .env.example\n    volumes:\n      - ./secrets:/run/secrets:ro\n")
+	if got := tpl.ComposeEnvFiles(file, nil, ""); len(got) != 1 || got[0] != ".env.example" {
+		t.Fatalf("env files to read: %v", got)
+	}
+	const password = "hunter2-very-secret"
+	res, err := tpl.ImportComposeWith(file, tpl.ComposeOptions{
+		Repo:       &tpl.ComposeRepo{URL: "https://example.com/acme/app.git", Branch: "main"},
+		SkipUnsafe: true,
+		EnvFiles:   map[string][]byte{".env.example": []byte("APP_ENV=production\nDB_PASSWORD=" + password + "\n")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := res.Manifest.Services["app"].Env
+	if env["APP_ENV"] != "production" {
+		t.Errorf("APP_ENV is not a plain variable: %v", env)
+	}
+	if v := fmt.Sprint(env["DB_PASSWORD"]); !strings.HasPrefix(v, "${{inputs.") {
+		t.Errorf("DB_PASSWORD is not a secret input: %v", env)
+	}
+	found := false
+	for _, v := range res.Inputs {
+		found = found || fmt.Sprint(v) == password
+	}
+	if !found {
+		t.Errorf("the secret value is not kept as a secret input: %v", res.Inputs)
+	}
+	var dropped bool
+	for _, l := range res.Losses {
+		if l.Key == "volumes" && l.Disposition == tpl.LossDropped && strings.Contains(l.Replacement, "secrets:") {
+			dropped = true
+		}
+	}
+	if !dropped {
+		t.Errorf("the bind mount is not a dropped loss with a secrets: replacement: %+v", res.Losses)
+	}
+	// No value of DB_PASSWORD in a message, in a loss or in the replacement file.
+	shown := strings.Join(res.Warnings, "\n") + "\n" + res.ReplacementYAML + "\n" + fmt.Sprintf("%+v", res.Losses)
+	if strings.Contains(shown, password) {
+		t.Errorf("the secret value is in the answer:\n%s", shown)
 	}
 }
 

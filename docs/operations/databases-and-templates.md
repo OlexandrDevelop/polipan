@@ -23,7 +23,7 @@ environment this needs an admin. Ports 22, 53, 80, 443, 9443 and the ports of th
 
 ## Templates
 
-**Catalog** has 12 built-in templates (WordPress, Ghost, Plausible, n8n, Uptime Kuma, Gitea, Nextcloud, Metabase, Directus, Vaultwarden, MinIO, pgAdmin).
+**Catalog** has 13 built-in templates (WordPress, Ghost, Plausible, n8n, Uptime Kuma, Gitea, Nextcloud, Metabase, Directus, Vaultwarden, MinIO, pgAdmin, Laravel).
 A template makes all its services together or none. The manifests are in `/templates` of the repository and are built into the server.
 
 Custom templates (YAML, see `docs/spec/schemas/template.schema.json`) are added in the catalog. Inside a template:

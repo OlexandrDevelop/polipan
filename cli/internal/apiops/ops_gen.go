@@ -202,6 +202,9 @@ var calls = map[string]func(ctx context.Context, c *gen.Client, in Input, ed gen
 	"getHealth": func(ctx context.Context, c *gen.Client, in Input, ed gen.RequestEditorFn) (*http.Response, error) {
 		return c.GetHealth(ctx, ed)
 	},
+	"getIncident": func(ctx context.Context, c *gen.Client, in Input, ed gen.RequestEditorFn) (*http.Response, error) {
+		return c.GetIncident(ctx, in.Str(0), ed)
+	},
 	"getMe": func(ctx context.Context, c *gen.Client, in Input, ed gen.RequestEditorFn) (*http.Response, error) {
 		return c.GetMe(ctx, ed)
 	},
@@ -237,6 +240,9 @@ var calls = map[string]func(ctx context.Context, c *gen.Client, in Input, ed gen
 	},
 	"importCompose": func(ctx context.Context, c *gen.Client, in Input, ed gen.RequestEditorFn) (*http.Response, error) {
 		return c.ImportComposeWithBody(ctx, in.Str(0), &gen.ImportComposeParams{}, in.ContentType, bytes.NewReader(in.Body), ed)
+	},
+	"importComposeGit": func(ctx context.Context, c *gen.Client, in Input, ed gen.RequestEditorFn) (*http.Response, error) {
+		return c.ImportComposeGitWithBody(ctx, in.Str(0), &gen.ImportComposeGitParams{}, in.ContentType, bytes.NewReader(in.Body), ed)
 	},
 	"instantiateTemplate": func(ctx context.Context, c *gen.Client, in Input, ed gen.RequestEditorFn) (*http.Response, error) {
 		return c.InstantiateTemplateWithBody(ctx, in.Str(0), &gen.InstantiateTemplateParams{}, in.ContentType, bytes.NewReader(in.Body), ed)

@@ -246,7 +246,14 @@ func TestAC_DEPLOY_07_BlueGreenKeepsStoppedBlue(t *testing.T) {
 	}
 	// A third deploy keeps one stopped set: the container of v1 is removed.
 	m.mustDeploy(t)
-	if got := m.q(t, `SELECT count(*) FROM placements WHERE release_id = $1`, m.releaseID(t, 1)); got != "0" {
+	// The deployment is live before the old containers are pruned, so wait for the prune.
+	var got string
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(25 * time.Millisecond) {
+		if got = m.q(t, `SELECT count(*) FROM placements WHERE release_id = $1`, m.releaseID(t, 1)); got == "0" {
+			break
+		}
+	}
+	if got != "0" {
 		t.Fatalf("old containers of v1: %s", got)
 	}
 	if m.sim.index("remove:"+v1) < 0 || m.q(t, `SELECT role FROM placements WHERE id = $1`, v2) != "stopped" {

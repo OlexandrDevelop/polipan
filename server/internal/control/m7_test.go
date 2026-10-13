@@ -585,9 +585,10 @@ func TestAC_NODE_06_FailoverVolumeRestore(t *testing.T) {
 	if got := m.q(t, `SELECT count(*) FROM deployment_steps ds JOIN deployments d ON d.id = ds.deployment_id WHERE d.trigger = 'failover' AND ds.message LIKE '%is lost%'`); got == "0" {
 		t.Fatal("the warning about lost data must be recorded in the deployment")
 	}
-	if got := m.q(t, `SELECT count(*) FROM audit_events WHERE action = 'service.failover' AND diff->>'data_copy' = 'true'`); got != "1" {
-		t.Fatalf("audit: %s", got)
-	}
+	// The deployment is live before the move is recorded, so wait for the audit event.
+	waitFor(t, "the failover is in the audit log", func() bool {
+		return m.q(t, `SELECT count(*) FROM audit_events WHERE action = 'service.failover' AND diff->>'data_copy' = 'true'`) == "1"
+	})
 }
 
 // Move of a service with a local volume: stopped, snapshot, restore on the target, start. The data copy is
@@ -741,7 +742,8 @@ func TestAC_NODE_09_RemoteEndpointsSameEnvironmentOnly(t *testing.T) {
 		}
 		if e.Ip == webIP {
 			found = true
-			if e.EnvironmentId != envID || len(e.Names) != 2 || !strings.HasPrefix(e.Names[1], "svc-") {
+			// The names are the replica, the service id and the stable name of the service (service.environment).
+			if e.EnvironmentId != envID || len(e.Names) != 3 || !strings.HasPrefix(e.Names[1], "svc-") || e.Names[2] != "web.prod" {
 				t.Fatalf("endpoint: %v", e)
 			}
 		}

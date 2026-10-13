@@ -121,13 +121,13 @@ func TestGate5_UnknownKeyFails(t *testing.T) {
 	}
 }
 
-// Gate 5 and AC-TPL: the 12 built-in templates in /templates validate against the template schema,
+// Gate 5 and AC-TPL: the 13 built-in templates in /templates validate against the template schema,
 // and every service entry validates against the service shape of polipan.schema.json.
 func TestGate5_BuiltinTemplatesValidate(t *testing.T) {
 	tplSchema := compile(t, templateSchema)
 	cfgSchema := compile(t, polipanSchema)
 	files, err := filepath.Glob("../../templates/*.yaml")
-	if err != nil || len(files) != 12 {
+	if err != nil || len(files) != 13 {
 		t.Fatalf("templates: %d files, %v", len(files), err)
 	}
 	for _, f := range files {

@@ -1,6 +1,6 @@
 module github.com/polipan/terraform-provider-polipan
 
-go 1.26.0
+go 1.26.9
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.13.0

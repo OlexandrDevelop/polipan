@@ -403,10 +403,10 @@ func TestAC_TPL_04_AllOrNothing(t *testing.T) {
 	}
 }
 
-// The 12 built-in templates pass the checks and expand with sample inputs (REQ-TPL-004).
+// The 13 built-in templates pass the checks and expand with sample inputs (REQ-TPL-004).
 func TestREQ_TPL_004_BuiltinTemplatesAreValid(t *testing.T) {
 	list, err := tpl.Builtin()
-	if err != nil || len(list) != 12 {
+	if err != nil || len(list) != 13 {
 		t.Fatalf("builtin: %d %v", len(list), err)
 	}
 	for _, m := range list {

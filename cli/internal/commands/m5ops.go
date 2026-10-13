@@ -122,7 +122,40 @@ func (a *app) templateCommands() []*cobra.Command {
 	})
 	imp.Flags().StringVar(&env, "env", "", "environment to create the services in")
 	imp.Flags().BoolVar(&dry, "dry-run", false, "show the result and create nothing")
-	return []*cobra.Command{tpl, group("compose", "Docker Compose", imp)}
+
+	var branch, path, connection string
+	var skipUnsafe bool
+	impGit := a.cmd("import-git <repo> --env E", "Read a Compose file from a Git repository and convert it to services", "importComposeGit", exactArgs(1), func(cmd *cobra.Command, args []string) error {
+		eid, err := a.envID(env)
+		if err != nil {
+			return err
+		}
+		body := map[string]any{"repo": args[0]}
+		if branch != "" {
+			body["branch"] = branch
+		}
+		if path != "" {
+			body["path"] = path
+		}
+		if connection != "" {
+			body["connection_id"] = connection
+		}
+		if skipUnsafe {
+			body["skip_unsafe"] = true
+		}
+		q := url.Values{}
+		if dry {
+			q.Set("dry_run", "true")
+		}
+		return a.send("importComposeGit", []string{eid}, q, body)
+	})
+	impGit.Flags().StringVar(&env, "env", "", "environment to create the services in")
+	impGit.Flags().BoolVar(&dry, "dry-run", false, "show the result and create nothing")
+	impGit.Flags().StringVar(&branch, "branch", "", "branch of the repository (default main)")
+	impGit.Flags().StringVar(&path, "path", "", "the Compose file in the repository (default docker-compose.yml)")
+	impGit.Flags().StringVar(&connection, "connection", "", "id of a Git connection, for a private repository")
+	impGit.Flags().BoolVar(&skipUnsafe, "skip-unsafe", false, "drop what is not allowed, with a warning, instead of refusing the file")
+	return []*cobra.Command{tpl, group("compose", "Docker Compose", imp, impGit)}
 }
 
 // ---- backups ----
@@ -562,8 +595,11 @@ func (a *app) alertCmd() *cobra.Command {
 	})
 	ls.Flags().BoolVar(&firing, "firing", false, "only alerts that fire now")
 	ls.Flags().StringVar(&state, "state", "", "firing or resolved")
+	incident := a.cmd("incident <id>", "Show one incident of a node with its alerts, the probable cause first", "getIncident", exactArgs(1), func(cmd *cobra.Command, args []string) error {
+		return a.send("getIncident", []string{args[0]}, nil, nil)
+	})
 	root := group("alert", "Alerts", channel, rule)
-	root.AddCommand(ls)
+	root.AddCommand(ls, incident)
 	return root
 }
 
