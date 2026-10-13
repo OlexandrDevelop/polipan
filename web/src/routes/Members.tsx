@@ -8,7 +8,6 @@ import { api } from '@/api/client'
 import { ApiError, unwrap } from '@/api/errors'
 import { useMe } from '@/auth'
 import { CodeBlock } from '@/components/Copy'
-import { DataList } from '@/components/DataList'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { ConfirmDialog, Modal } from '@/components/Modal'
 import { PageHeader } from '@/components/PageHeader'
@@ -148,109 +147,102 @@ function MembersTable({ members, canManage }: { members: Member[]; canManage: bo
   return (
     <>
       {change.error && <MemberError error={change.error} title={t('members.change_failed')} />}
-      <DataList
-        caption={t('members.caption')}
-        rows={members}
-        rowKey={(m) => m.user_id ?? m.email ?? ''}
-        columns={[
-          {
-            header: t('login.email'),
-            primary: true,
-            cell: (m) => (
-              <span className="break-all">
-                {m.email}
-                {m.name ? <span className="block text-muted">{m.name}</span> : null}
+      <ul className="people" aria-label={t('members.caption')}>
+        {members.map((m) => {
+          const id = m.user_id ?? ''
+          const locked = isAdminOnly && m.role === 'owner'
+          const reason = locked ? t('members.admin_owner') : undefined
+          const invite = isInvitation(m)
+          return (
+            <li key={m.user_id ?? m.email} className="person">
+              <span
+                aria-hidden="true"
+                className="tile-letter avatar"
+                data-hue={hueOf(m.email ?? '')}
+              >
+                {(m.name || m.email || '?').trim().charAt(0).toUpperCase()}
               </span>
-            ),
-          },
-          {
-            header: t('members.role'),
-            cell: (m) => {
-              const locked = isAdminOnly && m.role === 'owner'
-              if (!canManage || isInvitation(m)) return tState('role', m.role)
-              return (
-                <select
-                  aria-label={t('members.role_of', { email: m.email ?? '' })}
-                  title={locked ? t('members.admin_owner') : undefined}
-                  disabled={locked}
-                  value={m.role}
-                  onChange={(e) =>
-                    change.mutate({ id: m.user_id ?? '', body: { role: e.target.value as Role } })
+              <div className="person-who">
+                <p className="person-name">{m.name || m.email}</p>
+                {m.name && <p className="person-sub">{m.email}</p>}
+              </div>
+              <div className="person-role">
+                {!canManage || invite ? (
+                  tState('role', m.role)
+                ) : (
+                  <select
+                    aria-label={t('members.role_of', { email: m.email ?? '' })}
+                    title={locked ? t('members.admin_owner') : undefined}
+                    disabled={locked}
+                    value={m.role}
+                    onChange={(e) => change.mutate({ id, body: { role: e.target.value as Role } })}
+                    className="pill-select"
+                  >
+                    {ROLES.filter((r) => r !== 'owner' || !isAdminOnly || m.role === 'owner').map(
+                      (r) => (
+                        <option key={r} value={r}>
+                          {tState('role', r)}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                )}
+              </div>
+              <div className="person-status">
+                <StatusBadge
+                  tone={
+                    m.status === 'active' ? 'success' : m.status === 'invited' ? 'info' : 'muted'
                   }
-                  className="min-h-8 rounded-sm border border-border-strong bg-bg px-2 text-sm coarse:min-h-11"
-                >
-                  {ROLES.filter((r) => r !== 'owner' || !isAdminOnly || m.role === 'owner').map(
-                    (r) => (
-                      <option key={r} value={r}>
-                        {tState('role', r)}
-                      </option>
-                    ),
-                  )}
-                </select>
-              )
-            },
-          },
-          {
-            header: t('members.status'),
-            cell: (m) => (
-              <StatusBadge
-                tone={m.status === 'active' ? 'success' : m.status === 'invited' ? 'info' : 'muted'}
-                label={tState('members.status', m.status)}
-              />
-            ),
-          },
-          {
-            header: t('members.last_login'),
-            cell: (m) => (m.last_login_at ? <Time value={m.last_login_at} /> : '-'),
-            cardHidden: true,
-          },
-        ]}
-        actionsHeader={canManage ? t('common.actions') : undefined}
-        actions={
-          canManage
-            ? (m) => {
-                const id = m.user_id ?? ''
-                if (isInvitation(m)) {
-                  return (
+                  label={tState('members.status', m.status)}
+                />
+                <p className="person-sub">
+                  {m.last_login_at ? <Time value={m.last_login_at} /> : ''}
+                </p>
+              </div>
+              <div className="person-actions">
+                {canManage &&
+                  (invite ? (
                     <Button
                       variant="destructive"
                       onClick={() => setAction({ kind: 'remove', member: m })}
                     >
                       {t('members.cancel_invite')}
                     </Button>
-                  )
-                }
-                const locked = isAdminOnly && m.role === 'owner'
-                const reason = locked ? t('members.admin_owner') : undefined
-                return (
-                  <>
-                    <Button
-                      reason={reason}
-                      onClick={() =>
-                        change.mutate({ id, body: { disabled: m.status !== 'disabled' } })
-                      }
-                    >
-                      {m.status === 'disabled' ? t('members.enable') : t('members.disable')}
-                    </Button>
-                    <Button
-                      reason={reason}
-                      onClick={() => setAction({ kind: 'sessions', member: m })}
-                    >
-                      {t('members.revoke_sessions')}
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      reason={reason ?? (id === myId ? t('members.remove_self') : undefined)}
-                      onClick={() => setAction({ kind: 'remove', member: m })}
-                    >
-                      {t('common.remove')}
-                    </Button>
-                  </>
-                )
-              }
-            : undefined
-        }
-      />
+                  ) : (
+                    <details className="more more-inline">
+                      <summary className="more-toggle">{t('service.more')}</summary>
+                      <div className="more-menu">
+                        <Button
+                          variant="ghost"
+                          reason={reason}
+                          onClick={() =>
+                            change.mutate({ id, body: { disabled: m.status !== 'disabled' } })
+                          }
+                        >
+                          {m.status === 'disabled' ? t('members.enable') : t('members.disable')}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          reason={reason}
+                          onClick={() => setAction({ kind: 'sessions', member: m })}
+                        >
+                          {t('members.revoke_sessions')}
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          reason={reason ?? (id === myId ? t('members.remove_self') : undefined)}
+                          onClick={() => setAction({ kind: 'remove', member: m })}
+                        >
+                          {t('common.remove')}
+                        </Button>
+                      </div>
+                    </details>
+                  ))}
+              </div>
+            </li>
+          )
+        })}
+      </ul>
       {action?.kind === 'remove' && (
         <ConfirmDialog
           title={
@@ -294,6 +286,13 @@ function MembersTable({ members, canManage }: { members: Member[]; canManage: bo
   )
 }
 
+// A stable number for the color of an avatar.
+export function hueOf(text: string): number {
+  let h = 0
+  for (const c of text) h = (h * 31 + c.charCodeAt(0)) % 6
+  return h
+}
+
 // UI-23 and UI-45: members and open invitations.
 export function MembersPage() {
   const members = useMembers()
@@ -301,7 +300,7 @@ export function MembersPage() {
   const [inviting, setInviting] = useState(false)
   const canManage = manage === 'allow'
   return (
-    <section className="max-w-5xl">
+    <section>
       <PageHeader
         title={t('members.title')}
         actions={

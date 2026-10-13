@@ -218,7 +218,7 @@ export function Onboarding() {
   const doneCount = ids.filter((id) => done[id]).length
   // One line until you open it.
   return (
-    <div className="border border-[var(--card-line)] bg-[var(--card-bg)] px-5 py-2">
+    <div className="sheet px-5 py-2">
       <Optional label={`${t('onboarding.title')} · ${doneCount}/${ids.length}`} filled={showAll}>
         <div className="space-y-4 pb-3">
           <p className="text-muted">{t('onboarding.text')}</p>
@@ -232,7 +232,7 @@ export function Onboarding() {
               return (
                 <li
                   key={id}
-                  className={`flex flex-col gap-2 border border-border p-3 ${isDone ? 'bg-bg' : 'bg-surface'}`}
+                  className={`flex flex-col gap-2 rounded-[8px] border border-border p-3 ${isDone ? 'bg-bg' : 'bg-raised'}`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="font-semibold">{t(`onboarding.step.${id}`)}</h3>

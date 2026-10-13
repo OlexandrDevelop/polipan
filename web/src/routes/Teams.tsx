@@ -10,10 +10,10 @@ import { ErrorBanner } from '@/components/ErrorBanner'
 import { ConfirmDialog, Modal } from '@/components/Modal'
 import { PageHeader } from '@/components/PageHeader'
 import { MembersTabs } from '@/components/SettingsTabs'
-import { Button, Card, EmptyState, SelectField, Skeleton, TextField } from '@/components/ui'
+import { Button, EmptyState, SelectField, Skeleton, TextField } from '@/components/ui'
 import { t } from '@/i18n'
 import { useAccess } from '@/permissions'
-import { isInvitation, useMembers } from '@/routes/Members'
+import { hueOf, isInvitation, useMembers } from '@/routes/Members'
 
 type Team = components['schemas']['Team']
 
@@ -108,16 +108,21 @@ function TeamCard({ team, canManage }: { team: Team; canManage: boolean }) {
   }
   const candidates = all.filter((m) => !memberIds.includes(m.user_id ?? ''))
   return (
-    <Card className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="break-words text-lg font-semibold">{team.name}</h2>
+    <div className="tile team">
+      <div className="team-top">
+        <h2 className="tile-name">{team.name}</h2>
         {canManage && (
-          <div className="flex gap-2">
-            <Button onClick={() => setRenaming(true)}>{t('teams.rename')}</Button>
-            <Button variant="destructive" onClick={() => setDeleting(true)}>
-              {t('common.delete')}
-            </Button>
-          </div>
+          <details className="more more-inline">
+            <summary className="more-toggle">{t('service.more')}</summary>
+            <div className="more-menu">
+              <Button variant="ghost" onClick={() => setRenaming(true)}>
+                {t('teams.rename')}
+              </Button>
+              <Button variant="destructive" onClick={() => setDeleting(true)}>
+                {t('common.delete')}
+              </Button>
+            </div>
+          </details>
         )}
       </div>
       {(add.error || drop.error) && (
@@ -126,17 +131,22 @@ function TeamCard({ team, canManage }: { team: Team; canManage: boolean }) {
       {memberIds.length === 0 ? (
         <p className="text-sm text-muted">{t('teams.no_members')}</p>
       ) : (
-        <ul className="space-y-1">
+        <ul className="team-members">
           {memberIds.map((id) => (
-            <li key={id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span className="break-all">{label(id)}</span>
+            <li key={id} className="team-chip">
+              <span aria-hidden="true" className="tile-letter avatar" data-hue={hueOf(label(id))}>
+                {label(id).trim().charAt(0).toUpperCase()}
+              </span>
+              <span className="team-chip-name">{label(id)}</span>
               {canManage && (
-                <Button
+                <button
+                  type="button"
+                  className="team-chip-x"
                   onClick={() => drop.mutate(id)}
                   aria-label={t('teams.remove_member', { name: label(id) })}
                 >
-                  {t('common.remove')}
-                </Button>
+                  ×
+                </button>
               )}
             </li>
           ))}
@@ -180,7 +190,7 @@ function TeamCard({ team, canManage }: { team: Team; canManage: boolean }) {
           onClose={() => setDeleting(false)}
         />
       )}
-    </Card>
+    </div>
   )
 }
 
@@ -191,7 +201,7 @@ export function TeamsPage() {
   const [creating, setCreating] = useState(false)
   const canManage = manage === 'allow'
   return (
-    <section className="max-w-5xl">
+    <section>
       <PageHeader
         title={t('teams.title')}
         actions={
@@ -219,7 +229,7 @@ export function TeamsPage() {
             }
           />
         ) : (
-          <ul className="grid gap-4 lg:grid-cols-2">
+          <ul className="tiles tiles-wide">
             {teams.data.map((team) => (
               <li key={team.id}>
                 <TeamCard team={team} canManage={canManage} />

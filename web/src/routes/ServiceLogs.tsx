@@ -83,7 +83,7 @@ function LiveTail({ serviceId }: { serviceId: string }) {
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="sheet grid gap-3 p-5 sm:grid-cols-3">
         <TextField
           id={SEARCH_ID}
           label={t('logs.filter_text')}
@@ -175,7 +175,7 @@ function SearchMode({ serviceId }: { serviceId: string }) {
   return (
     <div className="space-y-3">
       <form onSubmit={submit} className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="sheet grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3">
           <CommonFieldsForm
             value={form}
             onChange={setForm}
@@ -197,7 +197,7 @@ export function ServiceLogs({ serviceId }: { serviceId: string }) {
   const [mode, setMode] = useState<'live' | 'search'>('live')
   return (
     <div className="space-y-4">
-      <div role="group" aria-label={t('logs.mode')} className="flex gap-2">
+      <div role="group" aria-label={t('logs.mode')} className="segmented">
         <Button aria-pressed={mode === 'live'} onClick={() => setMode('live')}>
           {t('logs.mode_live')}
         </Button>

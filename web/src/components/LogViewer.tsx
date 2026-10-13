@@ -37,7 +37,7 @@ function Level({ level }: { level?: string }) {
             : '□'
   const color = name === 'error' ? 'text-danger' : name === 'warn' ? 'text-warning' : 'text-muted'
   return (
-    <span className={`inline-flex w-16 shrink-0 items-center gap-1 text-xs uppercase ${color}`}>
+    <span className={`inline-flex w-16 shrink-0 items-center gap-1 text-xs ${color}`}>
       <span aria-hidden="true">{shape}</span>
       {t(`logs.level.${name as 'error'}`)}
     </span>
@@ -128,12 +128,7 @@ const LogRow = memo(function LogRow({
       </span>
       <span className="flex shrink-0 gap-1 opacity-0 focus-within:opacity-100 group-focus:opacity-100 group-hover:opacity-100 coarse:opacity-100">
         {onContext && l.match !== false && (
-          <button
-            type="button"
-            tabIndex={-1}
-            onClick={() => onContext(l)}
-            className="border border-border-strong px-1 text-xs"
-          >
+          <button type="button" tabIndex={-1} onClick={() => onContext(l)} className="log-btn">
             {t('logs.context')}
           </button>
         )}
@@ -142,7 +137,7 @@ const LogRow = memo(function LogRow({
           tabIndex={-1}
           onClick={() => onCopy(l)}
           aria-label={t('logs.copy_line')}
-          className="border border-border-strong px-1 text-xs"
+          className="log-btn"
         >
           {t('common.copy')}
         </button>
@@ -308,7 +303,7 @@ export function LogViewer({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="log-toolbar flex flex-wrap items-center gap-x-4 gap-y-2">
         {live && (
           <CheckboxField
             label={t('logs.follow')}
@@ -361,7 +356,7 @@ export function LogViewer({
           </span>
         )}
       </div>
-      <p id={`${id}-keys`} className="text-muted max-sm:hidden">
+      <p id={`${id}-keys`} className="log-keys text-muted max-sm:hidden">
         {t('logs.keys')}
       </p>
       <span role="status" className="sr-only">
@@ -375,7 +370,7 @@ export function LogViewer({
           tabIndex={0}
           role="region"
           aria-label={t('logs.table_label', { label })}
-          className="max-h-[60vh] overflow-auto border border-border-strong"
+          className="console max-h-[70vh] overflow-auto"
         >
           <table className="w-full border-collapse text-left text-sm">
             <caption className="sr-only">{t('logs.table_label', { label })}</caption>
@@ -438,7 +433,7 @@ export function LogViewer({
             tabIndex={0}
             onKeyDown={onKeyDown}
             onScroll={onScroll}
-            className={`font-term max-h-[60vh] min-h-24 overflow-auto border border-border-strong bg-surface py-1 ${
+            className={`console font-term max-h-[70vh] min-h-24 overflow-auto py-2 ${
               wrap ? '' : 'whitespace-pre'
             }`}
           >

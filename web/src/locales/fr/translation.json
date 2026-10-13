@@ -702,6 +702,7 @@
   "service.tab.releases": "Releases",
   "service.tab.health": "Contrôle de santé",
   "service.rollback": "Rollback",
+  "service.more": "Plus",
   "service.no_previous": "Il n'y a pas de release précédente pour un rollback.",
   "service.restart": "Redémarrer",
   "service.restart_started": "Le service redémarre.",

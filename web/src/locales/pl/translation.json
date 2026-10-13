@@ -702,6 +702,7 @@
   "service.tab.releases": "Wydania",
   "service.tab.health": "Health check",
   "service.rollback": "Rollback",
+  "service.more": "Więcej",
   "service.no_previous": "Brak wcześniejszego wydania do rollbacku.",
   "service.restart": "Restartuj",
   "service.restart_started": "Serwis się restartuje.",

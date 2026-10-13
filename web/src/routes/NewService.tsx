@@ -936,7 +936,7 @@ export function NewServicePage() {
               connectionId={draft.connectionId}
             />
           ) : (
-            <div className="flex flex-wrap justify-between gap-2 border-t border-border bg-bg py-3 max-sm:sticky max-sm:bottom-[calc(4rem+env(safe-area-inset-bottom))]">
+            <div className="flex flex-wrap justify-between gap-2 py-3 max-sm:sticky max-sm:bottom-[calc(4rem+env(safe-area-inset-bottom))]">
               <Button
                 onClick={() => setStep(Math.max(0, step - 1))}
                 reason={step === 0 ? t('wizard.first_step') : undefined}

@@ -7,13 +7,11 @@ import type { FormEvent } from 'react'
 import type { components } from '@api/schema'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
-import { DataList } from '@/components/DataList'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { ConfirmDialog, Modal } from '@/components/Modal'
 import { PageHeader } from '@/components/PageHeader'
 import { Time } from '@/components/Time'
 import {
-  Banner,
   Button,
   EmptyState,
   Optional,
@@ -326,83 +324,81 @@ export function BackupTargetsPage() {
     body = <EmptyState title={t('target.empty_title')} text={t('target.empty_text')} action={add} />
   else
     body = (
-      <DataList
-        caption={t('target.caption')}
-        rows={targets.data}
-        rowKey={(x) => x.id ?? ''}
-        columns={[
-          {
-            header: t('target.name'),
-            primary: true,
-            cell: (x) => <span className="break-all">{x.name}</span>,
-          },
-          { header: t('target.kind'), cell: (x) => t(`target.kind.${x.kind ?? 's3'}`) },
-          {
-            header: t('target.where'),
-            cell: (x) => (
-              <span className="break-all font-mono text-xs">
-                {[
-                  x.config?.endpoint,
-                  x.config?.host,
-                  x.config?.bucket ?? x.config?.container,
-                  x.config?.path,
-                ]
-                  .filter(Boolean)
-                  .map(String)
-                  .join(' / ')}
-              </span>
-            ),
-          },
-          {
-            header: t('target.last_test'),
-            cell: (x) => {
-              const r = results[x.id ?? '']
-              if (r) {
-                return r.ok ? (
-                  <StatusBadge tone="success" label={t('target.test_ok')} />
-                ) : (
-                  <span className="space-y-1">
-                    <StatusBadge tone="danger" label={t('target.test_failed')} />
-                    {r.error && (
-                      <span className="block break-words text-xs text-danger">{r.error}</span>
-                    )}
-                  </span>
-                )
-              }
-              if (x.last_test_at) {
-                return (
-                  <span className="flex flex-wrap items-center gap-2">
-                    <StatusBadge
-                      tone={x.last_test_ok ? 'success' : 'danger'}
-                      label={x.last_test_ok ? t('target.test_ok') : t('target.test_failed')}
-                    />
-                    <Time value={x.last_test_at} />
-                  </span>
-                )
-              }
-              return <span className="text-muted">{t('target.never_tested')}</span>
-            },
-          },
-        ]}
-        actions={
-          manage
-            ? (x) => (
-                <>
-                  <Button
-                    loading={test.isPending && test.variables?.id === x.id}
-                    onClick={() => test.mutate(x)}
-                  >
-                    {t('target.test')}
-                  </Button>
-                  <Button onClick={() => setEditing(x)}>{t('backup.edit')}</Button>
-                  <Button variant="destructive" onClick={() => setDeleting(x)}>
-                    {t('backup.delete')}
-                  </Button>
-                </>
-              )
-            : undefined
-        }
-      />
+      <ul className="tiles" aria-label={t('target.caption')}>
+        {targets.data.map((x) => {
+          const r = results[x.id ?? '']
+          const where = [
+            x.config?.endpoint,
+            x.config?.host,
+            x.config?.bucket ?? x.config?.container,
+            x.config?.path,
+          ]
+            .filter(Boolean)
+            .map(String)
+            .join(' / ')
+          return (
+            <li key={x.id}>
+              <div className="tile tile-template">
+                <span
+                  aria-hidden="true"
+                  className="tile-letter"
+                  data-hue={(x.kind ?? 's3').length % 6}
+                >
+                  {(x.name ?? '?').trim().charAt(0).toUpperCase()}
+                </span>
+                <h2 className="tile-name break-all">{x.name}</h2>
+                <p className="tile-slug">{t(`target.kind.${x.kind ?? 's3'}`)}</p>
+                {where && <p className="target-where">{where}</p>}
+                <div className="tile-foot">
+                  {r ? (
+                    r.ok ? (
+                      <StatusBadge tone="success" label={t('target.test_ok')} />
+                    ) : (
+                      <>
+                        <StatusBadge tone="danger" label={t('target.test_failed')} />
+                        {r.error && <p className="target-error">{r.error}</p>}
+                      </>
+                    )
+                  ) : x.last_test_at ? (
+                    <>
+                      <StatusBadge
+                        tone={x.last_test_ok ? 'success' : 'danger'}
+                        label={x.last_test_ok ? t('target.test_ok') : t('target.test_failed')}
+                      />
+                      <p className="backup-last">
+                        <Time value={x.last_test_at} />
+                      </p>
+                    </>
+                  ) : (
+                    <p className="backup-last">{t('target.never_tested')}</p>
+                  )}
+                  {manage && (
+                    <div className="tile-buttons">
+                      <Button
+                        loading={test.isPending && test.variables?.id === x.id}
+                        onClick={() => test.mutate(x)}
+                      >
+                        {t('target.test')}
+                      </Button>
+                      <details className="more more-inline">
+                        <summary className="more-toggle">{t('service.more')}</summary>
+                        <div className="more-menu">
+                          <Button variant="ghost" onClick={() => setEditing(x)}>
+                            {t('backup.edit')}
+                          </Button>
+                          <Button variant="destructive" onClick={() => setDeleting(x)}>
+                            {t('backup.delete')}
+                          </Button>
+                        </div>
+                      </details>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
     )
 
   return (
@@ -412,7 +408,7 @@ export function BackupTargetsPage() {
         actions={targets.data && targets.data.length > 0 ? add : undefined}
       />
       <div className="space-y-4">
-        <Banner>{t('target.intro')}</Banner>
+        <p className="page-sub">{t('target.intro')}</p>
         {test.error && <ErrorBanner error={test.error} title={t('target.test_failed')} />}
         {body}
       </div>

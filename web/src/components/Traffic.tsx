@@ -53,7 +53,7 @@ function Lane({ label, percent, kind, packets, moving }: LaneProps) {
           aria-valuemax={100}
           aria-valuenow={percent}
           aria-valuetext={text}
-          className="packet-track h-4 min-w-0 flex-1 border border-border-strong bg-bg"
+          className="packet-track h-3 min-w-0 flex-1 rounded-full bg-surface"
         >
           {/* The share is a scaled fill: transform only, no width. */}
           <div

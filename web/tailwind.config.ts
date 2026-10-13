@@ -43,7 +43,7 @@ export default {
         xl: ['var(--fs-xl)', 'var(--lh-xl)'],
         '2xl': ['var(--fs-2xl)', 'var(--lh-2xl)'],
       },
-      borderRadius: { none: '0', sm: '0', md: '0', lg: '2px', full: '0' },
+      borderRadius: { none: '0', sm: '6px', md: '8px', lg: '12px', full: '9999px' },
       fontFamily: {
         sans: ['Inter Variable', 'system-ui', 'sans-serif'],
         mono: [

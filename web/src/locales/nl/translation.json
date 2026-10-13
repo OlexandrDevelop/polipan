@@ -702,6 +702,7 @@
   "service.tab.releases": "Releases",
   "service.tab.health": "Healthcheck",
   "service.rollback": "Terugdraaien",
+  "service.more": "Meer",
   "service.no_previous": "Er is geen eerdere release om naar terug te draaien.",
   "service.restart": "Herstarten",
   "service.restart_started": "De service wordt herstart.",

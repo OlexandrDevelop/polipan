@@ -146,7 +146,7 @@ function BuildLog({ lines }: { lines: BuildLine[] }) {
         aria-live="off"
         aria-label={t('build.log')}
         tabIndex={0}
-        className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-sm border border-border bg-surface p-3 font-mono text-sm"
+        className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-[8px] bg-bg p-3 font-mono text-sm"
       >
         {lines.length === 0
           ? t('build.empty')
@@ -371,25 +371,37 @@ export function DeploymentPage() {
           <CanaryBar deployment={d} gate={gate} access={deployAccess} />
         </div>
       )}
-      <div className="mb-8">
-        <DeployProgress
-          state={d.state}
-          failedAfter={[...steps].reverse().find((x) => x.state !== 'failed')?.state}
-        />
+      <div className="hero" data-tone={deploymentTone(d.state)}>
+        <div>
+          <p className="hero-label">{t('deployment.state')}</p>
+          <p className="hero-value">{tState('status.deployment', d.state)}</p>
+        </div>
+        <div>
+          <p className="hero-label">{t('deployment.started')}</p>
+          <p className="hero-value hero-value-small">
+            <Time value={d.started_at} />
+          </p>
+        </div>
+        <div className="hero-wide">
+          <DeployProgress
+            state={d.state}
+            failedAfter={[...steps].reverse().find((x) => x.state !== 'failed')?.state}
+          />
+        </div>
       </div>
-      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
         <Panel title={t('deployment.steps')} className="space-y-3">
           {steps.length === 0 ? (
             <p className="text-muted">{tState('status.deployment', d.state)}</p>
           ) : (
-            <ol className="space-y-2">
+            <ol className="space-y-0.5">
               {steps.map((s, i) => {
                 const current = i === steps.length - 1 && live
                 return (
                   <li
                     key={`${s.state}-${i}`}
                     aria-current={current ? 'step' : undefined}
-                    className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-l-2 px-3 py-2 ${current ? 'border-primary bg-selection' : 'border-border'}`}
+                    className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-[8px] px-3 py-2 ${current ? 'bg-selection' : ''}`}
                   >
                     <StatusBadge
                       tone={
@@ -413,11 +425,8 @@ export function DeploymentPage() {
               })}
             </ol>
           )}
-          <p className="text-muted">
-            {t('deployment.started')}: <Time value={d.started_at} />
-          </p>
         </Panel>
-        <div className="min-w-0 space-y-8">
+        <div className="min-w-0 space-y-4">
           <Panel title={t('deployment.replicas')} className="space-y-2">
             {service.isPending && Boolean(serviceId) && <Skeleton lines={2} />}
             {service.data && placements.length === 0 && (
@@ -447,7 +456,7 @@ export function DeploymentPage() {
               </div>
             )}
           </Panel>
-          <details open className="space-y-2 border border-border-strong bg-surface p-4">
+          <details open className="space-y-2 rounded-[12px] bg-surface p-3">
             <summary className="min-h-11 cursor-pointer font-semibold">{t('build.log')}</summary>
             {log.stored.isError && (
               <ErrorBanner error={log.stored.error} onRetry={() => void log.stored.refetch()} />

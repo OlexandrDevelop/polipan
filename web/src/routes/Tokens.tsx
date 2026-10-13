@@ -169,7 +169,7 @@ export function TokensPage() {
   const projectName = (id?: string) =>
     id ? (projects.data?.find((p) => p.id === id)?.name ?? id) : t('tokens.all_projects')
   return (
-    <section className="max-w-5xl space-y-4">
+    <section className="space-y-4">
       <PageHeader
         title={t('tokens.title')}
         actions={

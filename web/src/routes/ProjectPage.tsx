@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
@@ -14,7 +14,6 @@ import { PageHeader } from '@/components/PageHeader'
 import {
   BusyBar,
   Button,
-  Card,
   CheckboxField,
   Optional,
   EmptyState,
@@ -253,33 +252,35 @@ function ServiceCards({ environment, project }: { environment: Environment; proj
       {deployingAll && (
         <DeployAllDialog services={notDeployed} onClose={() => setDeployingAll(false)} />
       )}
-      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+      <ul className="svc-list">
         {services.data.map((service) => (
-          <li key={service.id}>
-            <Card className="space-y-2">
-              <h3 className="break-words text-lg font-semibold">
-                <Link
-                  to="/o/$org/p/$project/e/$env/s/$service"
-                  params={{
-                    org,
-                    project,
-                    env: environment.slug ?? '',
-                    service: service.name ?? '',
-                  }}
-                  className="text-primary underline"
-                >
-                  {service.name}
-                </Link>
-              </h3>
-              <StatusBadge
-                tone={serviceTone(service.status)}
-                label={tState('status.service', service.status)}
-              />
-              {service.status === 'deploying' && <BusyBar />}
-              {typeof service.config?.image === 'string' && (
-                <p className="break-all font-mono text-sm text-muted">{service.config.image}</p>
-              )}
-            </Card>
+          <li key={service.id} className="svc-row">
+            <h3 className="min-w-0 break-words text-lg font-semibold">
+              <Link
+                to="/o/$org/p/$project/e/$env/s/$service"
+                params={{
+                  org,
+                  project,
+                  env: environment.slug ?? '',
+                  service: service.name ?? '',
+                }}
+                className="svc-link"
+              >
+                {service.name}
+              </Link>
+            </h3>
+            <StatusBadge
+              tone={serviceTone(service.status)}
+              label={tState('status.service', service.status)}
+            />
+            {typeof service.config?.image === 'string' && (
+              <p className="svc-image">{service.config.image}</p>
+            )}
+            {service.status === 'deploying' && (
+              <div className="svc-busy">
+                <BusyBar />
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -299,6 +300,7 @@ export function ProjectPage() {
   const promoteAccess = useAccess('service:promote', false, scope.project?.id)
   const canDelete = useAccess('project:delete', false, scope.project?.id)
   const [deleting, setDeleting] = useState(false)
+  const moreRef = useRef<HTMLDetailsElement>(null)
 
   if (scope.state === 'pending') return <Skeleton />
   if (scope.state === 'error') return <ErrorBanner error={scope.error} onRetry={scope.retry} />
@@ -314,30 +316,32 @@ export function ProjectPage() {
         title={project.name ?? ''}
         actions={
           <>
-            {canManageRoles === 'allow' && (
-              <Link
-                to="/o/$org/p/$project/roles"
-                params={{ org: orgSlug, project: project.slug ?? '' }}
-                className="inline-flex min-h-8 items-center rounded-sm border border-border-strong px-3 py-1 text-sm coarse:min-h-11"
-              >
-                {t('roles.link')}
-              </Link>
-            )}
-            <Link
-              to="/o/$org/p/$project/config"
-              params={{ org: orgSlug, project: project.slug ?? '' }}
-              className="inline-flex min-h-8 items-center rounded-sm border border-border-strong px-3 py-1 text-sm coarse:min-h-11"
-            >
-              {t('config.link')}
-            </Link>
-            <Link
-              to="/o/$org/previews"
-              params={{ org: orgSlug }}
-              search={{ project: project.slug ?? '' }}
-              className="inline-flex min-h-8 items-center rounded-sm border border-border-strong px-3 py-1 text-sm coarse:min-h-11"
-            >
-              {t('nav.previews')}
-            </Link>
+            <details className="more" ref={moreRef}>
+              <summary className="more-toggle">{t('service.more')}</summary>
+              <div className="more-menu" onClick={() => moreRef.current?.removeAttribute('open')}>
+                {canManageRoles === 'allow' && (
+                  <Link
+                    to="/o/$org/p/$project/roles"
+                    params={{ org: orgSlug, project: project.slug ?? '' }}
+                  >
+                    {t('roles.link')}
+                  </Link>
+                )}
+                <Link
+                  to="/o/$org/p/$project/config"
+                  params={{ org: orgSlug, project: project.slug ?? '' }}
+                >
+                  {t('config.link')}
+                </Link>
+                <Link
+                  to="/o/$org/previews"
+                  params={{ org: orgSlug }}
+                  search={{ project: project.slug ?? '' }}
+                >
+                  {t('nav.previews')}
+                </Link>
+              </div>
+            </details>
             {canCreateEnv === 'allow' && (
               <Button onClick={() => setCreating(true)}>{t('env.create')}</Button>
             )}
@@ -377,14 +381,14 @@ export function ProjectPage() {
                 ))}
               </SelectField>
             </div>
-            <ul className="hidden gap-1 overflow-x-auto border-b border-border sm:flex">
+            <ul className="hidden gap-2 overflow-x-auto border-b border-border sm:flex">
               {environments.map((e) => (
                 <li key={e.id}>
                   <Link
                     to="/o/$org/p/$project/e/$env"
                     params={{ org: orgSlug, project: project.slug ?? '', env: e.slug ?? '' }}
                     aria-current={e.id === environment.id ? 'page' : undefined}
-                    className="block min-h-8 whitespace-nowrap px-3 py-1 text-muted hover:bg-raised hover:text-text coarse:min-h-11 aria-[current=page]:bg-selection aria-[current=page]:font-bold aria-[current=page]:text-primary aria-[current=page]:underline aria-[current=page]:underline-offset-4"
+                    className="block min-h-10 whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-muted hover:text-text coarse:min-h-11 aria-[current=page]:border-primary aria-[current=page]:font-semibold aria-[current=page]:text-text"
                   >
                     {e.name}
                   </Link>

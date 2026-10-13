@@ -7,12 +7,9 @@ import type { FormEvent } from 'react'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { CodeBlock } from '@/components/Copy'
-import { DataList } from '@/components/DataList'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { Modal } from '@/components/Modal'
-import { NodeBars } from '@/components/NodeBars'
 import { PageHeader } from '@/components/PageHeader'
-import { Time } from '@/components/Time'
 import {
   Banner,
   Button,
@@ -196,6 +193,31 @@ export function AddNodeDialog({ onClose }: { onClose: () => void }) {
 
 // UI-19 (basic): the servers and the "Add node" command. The list reads every 5 s,
 // so a new node turns from pending to ready without a reload.
+// One thin bar of a node card: the label, the percent and the fill. The tone follows the load.
+function Bar({ label, used, total }: { label: string; used?: number; total?: number }) {
+  const value = used !== undefined && total ? Math.round((used / total) * 100) : undefined
+  const pct = Math.min(100, Math.max(0, value ?? 0))
+  const tone = pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : 'ok'
+  return (
+    <div className="bar" data-tone={value === undefined ? 'none' : tone}>
+      <div className="bar-top">
+        <span>{label}</span>
+        <b>{value === undefined ? '-' : `${value}%`}</b>
+      </div>
+      <div
+        className="bar-track"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={value}
+      >
+        <span className="bar-fill" style={{ transform: `scaleX(${pct / 100})` }} />
+      </div>
+    </div>
+  )
+}
+
 export function NodesPage() {
   const { org } = useParams({ strict: false })
   const nodes = useNodes(5_000)
@@ -235,53 +257,62 @@ export function NodesPage() {
         />
       )}
       {nodes.data && nodes.data.length > 0 && (
-        <DataList
-          caption={t('nodes.caption')}
-          rows={nodes.data}
-          rowKey={(n) => n.id ?? ''}
-          columns={[
-            {
-              header: t('nodes.name'),
-              primary: true,
-              cell: (n) => (
-                <Link
-                  to="/o/$org/nodes/$node"
-                  params={{ org: org ?? '', node: n.id ?? '' }}
-                  className="text-primary underline"
-                >
-                  {n.name}
-                </Link>
-              ),
-            },
-            {
-              header: t('nodes.state'),
-              cell: (n) => (
-                <StatusBadge tone={nodeTone(n.state)} label={tState('status.node', n.state)} />
-              ),
-            },
-            { header: t('nodes.public_ip'), cell: (n) => n.public_ip ?? '-' },
-            { header: t('nodes.load'), cell: (n) => <NodeBars node={n} /> },
-            { header: t('nodes.workloads'), cell: (n) => n.workload_count ?? 0 },
-            {
-              header: t('nodes.labels_column'),
-              cardHidden: true,
-              cell: (n) =>
-                Object.entries(n.labels ?? {})
-                  .map(([k, v]) => `${k}=${v}`)
-                  .join(', ') || '-',
-            },
-            {
-              header: t('nodes.heartbeat'),
-              cardHidden: true,
-              cell: (n) =>
-                n.last_heartbeat_at ? (
-                  <span title={n.last_heartbeat_at}>{formatRelative(n.last_heartbeat_at)}</span>
-                ) : (
-                  <Time />
-                ),
-            },
-          ]}
-        />
+        <ul className="node-cards" aria-label={t('nodes.caption')}>
+          {nodes.data.map((n) => {
+            const labels = Object.entries(n.labels ?? {})
+            return (
+              <li key={n.id} className="node-card">
+                <div className="node-card-top">
+                  <h3>
+                    <Link
+                      to="/o/$org/nodes/$node"
+                      params={{ org: org ?? '', node: n.id ?? '' }}
+                      className="node-card-link"
+                    >
+                      {n.name}
+                    </Link>
+                  </h3>
+                  <StatusBadge tone={nodeTone(n.state)} label={tState('status.node', n.state)} />
+                </div>
+                <p className="node-card-sub">
+                  {n.public_ip ?? '-'}
+                  {' · '}
+                  {t('nodes.workloads')}: {n.workload_count ?? 0}
+                  {n.last_heartbeat_at && (
+                    <>
+                      {' · '}
+                      <span title={n.last_heartbeat_at}>{formatRelative(n.last_heartbeat_at)}</span>
+                    </>
+                  )}
+                </p>
+                <Bar
+                  label={t('nodes.cpu')}
+                  used={n.usage?.cpu_millis}
+                  total={n.capacity?.cpu_millis}
+                />
+                <Bar
+                  label={t('nodes.memory')}
+                  used={n.usage?.memory_bytes}
+                  total={n.capacity?.memory_bytes}
+                />
+                <Bar
+                  label={t('nodes.disk')}
+                  used={n.usage?.disk_bytes}
+                  total={n.capacity?.disk_bytes}
+                />
+                {labels.length > 0 && (
+                  <ul className="tile-envs">
+                    {labels.map(([k, v]) => (
+                      <li key={k}>
+                        {k}={v}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            )
+          })}
+        </ul>
       )}
       {adding && <AddNodeDialog onClose={() => setAdding(false)} />}
     </section>

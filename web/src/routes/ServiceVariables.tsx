@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import type { components } from '@api/schema'
 import { api } from '@/api/client'
@@ -718,7 +718,7 @@ function VersionsPanel({
 
 function Chip({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-border-strong px-2 py-0.5 text-xs">
+    <span className="inline-flex items-center rounded-full bg-raised px-2 py-0.5 text-xs">
       {children}
     </span>
   )
@@ -754,6 +754,7 @@ export function ServiceVariables({
 
   const [editing, setEditing] = useState<EditTarget | null>(null)
   const [importing, setImporting] = useState(false)
+  const moreRef = useRef<HTMLDetailsElement>(null)
   const [deleting, setDeleting] = useState<Row | null>(null)
   const [whereUsed, setWhereUsed] = useState<Row | null>(null)
   const [versionsOf, setVersionsOf] = useState<Extract<Row, { kind: 'secret' }> | null>(null)
@@ -806,20 +807,30 @@ export function ServiceVariables({
           {t('variables.add')}
         </Button>
       )}
-      {secretWrite !== 'hidden' && (
-        <Button reason={blocked(secretWrite)} onClick={() => setEditing({ kind: 'secret' })}>
-          {t('secret.add')}
-        </Button>
-      )}
-      {varWrite !== 'hidden' && (
-        <Button
-          className="max-sm:hidden"
-          reason={blocked(varWrite)}
-          onClick={() => setImporting(true)}
-        >
-          {t('import.open')}
-        </Button>
-      )}
+      <details className="more" ref={moreRef}>
+        <summary className="more-toggle">{t('service.more')}</summary>
+        <div className="more-menu" onClick={() => moreRef.current?.removeAttribute('open')}>
+          {secretWrite !== 'hidden' && (
+            <Button
+              variant="ghost"
+              reason={blocked(secretWrite)}
+              onClick={() => setEditing({ kind: 'secret' })}
+            >
+              {t('secret.add')}
+            </Button>
+          )}
+          {varWrite !== 'hidden' && (
+            <Button
+              variant="ghost"
+              className="max-sm:hidden"
+              reason={blocked(varWrite)}
+              onClick={() => setImporting(true)}
+            >
+              {t('import.open')}
+            </Button>
+          )}
+        </div>
+      </details>
     </div>
   )
 
@@ -836,100 +847,92 @@ export function ServiceVariables({
     )
   else
     body = (
-      <DataList
-        caption={t('variables.caption')}
-        rows={rows}
-        rowKey={(r) => `${r.kind}-${r.id}`}
-        columns={[
-          {
-            header: t('variables.name'),
-            primary: true,
-            cell: (r) => (
-              <span className="flex flex-wrap items-center gap-1">
-                <span className="break-all font-mono">{r.name}</span>
-                {r.kind === 'secret' && <Chip>{t('variables.secret')}</Chip>}
-                {r.item.build_time && <Chip>{t('variables.build_time_short')}</Chip>}
-                {r.item.preview && <Chip>{t('variables.preview_short')}</Chip>}
-                {r.item.git_managed && (
-                  <Chip>
-                    <LockIcon /> {t('variables.git_managed')}
-                  </Chip>
-                )}
-              </span>
-            ),
-          },
-          {
-            header: t('variables.value'),
-            cell: (r) =>
-              r.kind === 'secret' ? (
-                <span className="text-muted" data-secret-row="">
-                  {t('secret.set_version', { version: r.item.current_version ?? 0 })}
-                  {r.item.updated_at && (
-                    <>
-                      {' · '}
-                      {t('secret.updated')} <Time value={r.item.updated_at} />
-                    </>
+      <ul className="vars" aria-label={t('variables.caption')}>
+        {rows.map((r) => {
+          const access = r.kind === 'secret' ? secretWrite : varWrite
+          const locked = r.item.git_managed
+          return (
+            <li key={`${r.kind}-${r.id}`} className="var">
+              <div className="var-key">
+                <span className="var-name">{r.name}</span>
+                <span className="var-chips">
+                  {r.kind === 'secret' && <Chip>{t('variables.secret')}</Chip>}
+                  {r.item.build_time && <Chip>{t('variables.build_time_short')}</Chip>}
+                  {r.item.preview && <Chip>{t('variables.preview_short')}</Chip>}
+                  {r.item.git_managed && (
+                    <Chip>
+                      <LockIcon /> {t('variables.git_managed')}
+                    </Chip>
                   )}
-                  {r.item.updated_by && <> · {t('secret.by', { who: r.item.updated_by })}</>}
                 </span>
-              ) : (
-                <span className="break-all font-mono">{r.item.value}</span>
-              ),
-          },
-          {
-            header: t('variables.scope'),
-            cell: (r) => (
-              <span>
-                {t(`variables.scope.${r.scope}`)}
+              </div>
+              <div className="var-value">
+                {r.kind === 'secret' ? (
+                  <span className="text-muted" data-secret-row="">
+                    {t('secret.set_version', { version: r.item.current_version ?? 0 })}
+                    {r.item.updated_at && (
+                      <>
+                        {' · '}
+                        {t('secret.updated')} <Time value={r.item.updated_at} />
+                      </>
+                    )}
+                    {r.item.updated_by && <> · {t('secret.by', { who: r.item.updated_by })}</>}
+                  </span>
+                ) : (
+                  <span className="break-all font-mono">{r.item.value}</span>
+                )}
+              </div>
+              <div className="var-scope">
+                <span>{t(`variables.scope.${r.scope}`)}</span>
                 {winner.get(r.name) !== r && (
-                  <span className="block text-muted">
+                  <span className="text-muted">
                     {t('variables.overridden', {
                       scope: t(`variables.scope.${winner.get(r.name)?.scope ?? 'service'}`),
                     })}
                   </span>
                 )}
-              </span>
-            ),
-          },
-        ]}
-        actions={(r) => {
-          const access = r.kind === 'secret' ? secretWrite : varWrite
-          const locked = r.item.git_managed
-          return (
-            <div className="flex flex-wrap gap-2">
-              {access !== 'hidden' && !locked && (
-                <Button
-                  reason={blocked(access)}
-                  onClick={() => setEditing({ kind: r.kind, row: r })}
-                >
-                  {r.kind === 'secret' ? t('secret.set_new') : t('common.edit')}
-                </Button>
-              )}
-              {r.kind === 'secret' && (
-                <Button onClick={() => setVersionsOf(r)}>{t('versions.open')}</Button>
-              )}
-              <Button variant="ghost" onClick={() => setWhereUsed(r)}>
-                {t('where_used.open')}
-              </Button>
-              {access !== 'hidden' && !locked && (
-                <Button
-                  variant="destructive"
-                  reason={blocked(access)}
-                  onClick={() => setDeleting(r)}
-                >
-                  {t('common.delete')}
-                </Button>
-              )}
-            </div>
+              </div>
+              <div className="var-actions">
+                {access !== 'hidden' && !locked && (
+                  <Button
+                    reason={blocked(access)}
+                    onClick={() => setEditing({ kind: r.kind, row: r })}
+                  >
+                    {r.kind === 'secret' ? t('secret.set_new') : t('common.edit')}
+                  </Button>
+                )}
+                <details className="more more-inline">
+                  <summary className="more-toggle">{t('service.more')}</summary>
+                  <div className="more-menu">
+                    {r.kind === 'secret' && (
+                      <Button variant="ghost" onClick={() => setVersionsOf(r)}>
+                        {t('versions.open')}
+                      </Button>
+                    )}
+                    <Button variant="ghost" onClick={() => setWhereUsed(r)}>
+                      {t('where_used.open')}
+                    </Button>
+                    {access !== 'hidden' && !locked && (
+                      <Button
+                        variant="destructive"
+                        reason={blocked(access)}
+                        onClick={() => setDeleting(r)}
+                      >
+                        {t('common.delete')}
+                      </Button>
+                    )}
+                  </div>
+                </details>
+              </div>
+            </li>
           )
-        }}
-      />
+        })}
+      </ul>
     )
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Hint>{t('variables.intro')}</Hint>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {rows.length > 0 && toolbar}
       </div>
       {loadError !== undefined && loadError !== null && (

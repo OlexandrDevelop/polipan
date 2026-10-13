@@ -211,7 +211,25 @@ export function AlertsPage() {
           <ErrorBanner error={channels.error} onRetry={() => void channels.refetch()} />
         )}
 
-        <h2 className="text-lg font-semibold">{t('alerts.firing')}</h2>
+        <div className="hero" data-tone={firing.length > 0 ? 'danger' : 'success'}>
+          <div>
+            <p className="hero-label">{t('alerts.firing')}</p>
+            <p className="hero-value">{instances.isPending ? '-' : firing.length}</p>
+            {instances.data && firing.length === 0 && (
+              <p className="hero-note">{t('dashboard.all_quiet')}</p>
+            )}
+          </div>
+          <div>
+            <p className="hero-label">{t('alerts.resolved')}</p>
+            <p className="hero-value hero-plain">{instances.isPending ? '-' : resolved.length}</p>
+          </div>
+          <div>
+            <p className="hero-label">{t('alerts.rules')}</p>
+            <p className="hero-value hero-plain">
+              {rules.isPending ? '-' : (rules.data?.length ?? 0)}
+            </p>
+          </div>
+        </div>
         {instances.isPending && <Skeleton />}
         {instances.isError && (
           <ErrorBanner error={instances.error} onRetry={() => void instances.refetch()} />
@@ -229,19 +247,31 @@ export function AlertsPage() {
           />
         ))}
         {single.length > 0 && (
-          <DataList
-            caption={t('alerts.firing')}
-            rows={single}
-            rowKey={(a) => a.id ?? ''}
-            columns={instanceColumns}
-            actionsHeader={t('common.actions')}
-            actions={(a) => muteButton(a.rule_id, a.rule_name)}
-          />
+          <ul className="alert-list" aria-label={t('alerts.firing')}>
+            {single.map((a) => (
+              <li key={a.id} className="alert-row" data-tone={severityTone(a.severity)}>
+                <span aria-hidden="true" className="alert-dot" />
+                <div className="alert-main">
+                  <p className="alert-name">{a.rule_name}</p>
+                  <p className="alert-meta">
+                    {tState('alerts.type', a.rule_type)} · <Time value={a.first_fired_at} />
+                  </p>
+                  {detailsText(a.details) && (
+                    <p className="alert-details">{detailsText(a.details)}</p>
+                  )}
+                </div>
+                <AlertBadges alert={a} />
+                {muteButton(a.rule_id, a.rule_name)}
+              </li>
+            ))}
+          </ul>
         )}
 
         {resolved.length > 0 && (
-          <>
-            <h2 className="text-lg font-semibold">{t('alerts.resolved')}</h2>
+          <details className="fold">
+            <summary>
+              {t('alerts.resolved')} <b>{resolved.length}</b>
+            </summary>
             <DataList
               caption={t('alerts.resolved')}
               rows={resolved}
@@ -254,71 +284,75 @@ export function AlertsPage() {
                 },
               ]}
             />
-          </>
+          </details>
         )}
 
-        <h2 className="text-lg font-semibold">{t('alerts.rules')}</h2>
         {rules.isPending && <Skeleton />}
         {rules.isError && <ErrorBanner error={rules.error} onRetry={() => void rules.refetch()} />}
         {rules.data && rules.data.length === 0 && (
           <p className="text-muted">{t('alerts.no_rules')}</p>
         )}
         {rules.data && rules.data.length > 0 && (
-          <DataList
-            caption={t('alerts.rules')}
-            rows={rules.data}
-            rowKey={(r) => r.id ?? ''}
-            columns={[
-              { header: t('alerts.col_rule'), primary: true, cell: (r: AlertRule) => r.name },
-              {
-                header: t('alerts.col_type'),
-                cell: (r: AlertRule) => tState('alerts.type', r.type),
-              },
-              {
-                header: t('alerts.col_scope'),
-                cell: (r: AlertRule) => {
-                  const s = scopeOf(r)
-                  return s.id ? `${t(`alerts.scope.${s.kind}`)}: ${s.id}` : t('alerts.scope.org')
+          <details className="fold">
+            <summary>
+              {t('alerts.rules')} <b>{rules.data.length}</b>
+            </summary>
+            <DataList
+              caption={t('alerts.rules')}
+              rows={rules.data}
+              rowKey={(r) => r.id ?? ''}
+              columns={[
+                { header: t('alerts.col_rule'), primary: true, cell: (r: AlertRule) => r.name },
+                {
+                  header: t('alerts.col_type'),
+                  cell: (r: AlertRule) => tState('alerts.type', r.type),
                 },
-              },
-              {
-                header: t('alerts.col_severity'),
-                cell: (r: AlertRule) => (
-                  <StatusBadge
-                    tone={severityTone(r.severity)}
-                    label={tState('alerts.severity', r.severity)}
-                  />
-                ),
-              },
-              {
-                header: t('alerts.col_channels'),
-                cell: (r: AlertRule) =>
-                  (r.channel_ids ?? []).length === 0 ? (
-                    <span className="text-warning">{t('alerts.no_channel_short')}</span>
-                  ) : (
-                    (r.channel_ids ?? []).map(channelName).join(', ')
+                {
+                  header: t('alerts.col_scope'),
+                  cell: (r: AlertRule) => {
+                    const s = scopeOf(r)
+                    return s.id ? `${t(`alerts.scope.${s.kind}`)}: ${s.id}` : t('alerts.scope.org')
+                  },
+                },
+                {
+                  header: t('alerts.col_severity'),
+                  cell: (r: AlertRule) => (
+                    <StatusBadge
+                      tone={severityTone(r.severity)}
+                      label={tState('alerts.severity', r.severity)}
+                    />
                   ),
-              },
-              {
-                header: t('alerts.col_state'),
-                cell: (r: AlertRule) =>
-                  r.muted_until && new Date(r.muted_until).getTime() > Date.now() ? (
-                    <span>
-                      {t('alerts.muted_until')} <Time value={r.muted_until} />
-                      {r.mute_reason && (
-                        <span className="block text-sm text-muted">{r.mute_reason}</span>
-                      )}
-                    </span>
-                  ) : r.enabled === false ? (
-                    t('alerts.disabled')
-                  ) : (
-                    t('alerts.enabled')
-                  ),
-              },
-            ]}
-            actionsHeader={t('common.actions')}
-            actions={(r) => muteButton(r.id, r.name)}
-          />
+                },
+                {
+                  header: t('alerts.col_channels'),
+                  cell: (r: AlertRule) =>
+                    (r.channel_ids ?? []).length === 0 ? (
+                      <span className="text-warning">{t('alerts.no_channel_short')}</span>
+                    ) : (
+                      (r.channel_ids ?? []).map(channelName).join(', ')
+                    ),
+                },
+                {
+                  header: t('alerts.col_state'),
+                  cell: (r: AlertRule) =>
+                    r.muted_until && new Date(r.muted_until).getTime() > Date.now() ? (
+                      <span>
+                        {t('alerts.muted_until')} <Time value={r.muted_until} />
+                        {r.mute_reason && (
+                          <span className="block text-sm text-muted">{r.mute_reason}</span>
+                        )}
+                      </span>
+                    ) : r.enabled === false ? (
+                      t('alerts.disabled')
+                    ) : (
+                      t('alerts.enabled')
+                    ),
+                },
+              ]}
+              actionsHeader={t('common.actions')}
+              actions={(r) => muteButton(r.id, r.name)}
+            />
+          </details>
         )}
       </div>
       {muting && (

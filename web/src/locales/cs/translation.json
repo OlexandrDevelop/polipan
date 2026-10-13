@@ -702,6 +702,7 @@
   "service.tab.releases": "Vydání",
   "service.tab.health": "Kontrola zdraví",
   "service.rollback": "Rollback",
+  "service.more": "Více",
   "service.no_previous": "Neexistuje starší vydání pro rollback.",
   "service.restart": "Restartovat",
   "service.restart_started": "Služba se restartuje.",

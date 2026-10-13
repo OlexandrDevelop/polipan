@@ -55,8 +55,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:8080',
-      '/healthz': 'http://localhost:8080',
+      '/api': process.env.POLIPAN_API ?? 'http://localhost:8080',
+      '/healthz': process.env.POLIPAN_API ?? 'http://localhost:8080',
     },
   },
 })

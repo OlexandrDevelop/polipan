@@ -386,7 +386,7 @@ function DangerZone({ org }: { org: Org }) {
 export function OrgSettingsPage() {
   const org = useQuery({ queryKey: ['org'], queryFn: () => unwrap(api.GET('/org')) })
   return (
-    <section className="max-w-5xl">
+    <section>
       <PageHeader title={t('org.title')} />
       {org.isPending && <Skeleton />}
       {org.isError && <ErrorBanner error={org.error} onRetry={() => void org.refetch()} />}

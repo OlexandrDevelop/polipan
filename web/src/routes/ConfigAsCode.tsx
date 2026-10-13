@@ -393,7 +393,7 @@ export function ConfigAsCodePage() {
   const errors = plan?.valid === false ? (plan.errors ?? []) : planErrors(run.error)
 
   return (
-    <section className="max-w-5xl space-y-4">
+    <section className="space-y-4">
       <PageHeader
         title={t('config.title')}
         context={[scope.project.name ?? '']}

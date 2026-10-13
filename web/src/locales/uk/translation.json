@@ -702,6 +702,7 @@
   "service.tab.releases": "Релізи",
   "service.tab.health": "Перевірка здоров’я",
   "service.rollback": "Відкотити",
+  "service.more": "Ще",
   "service.no_previous": "Немає раніших релізів для відкату.",
   "service.restart": "Перезапустити",
   "service.restart_started": "Сервіс перезапускається.",

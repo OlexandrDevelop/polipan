@@ -702,6 +702,7 @@
   "service.tab.releases": "Releaser",
   "service.tab.health": "Helsesjekk",
   "service.rollback": "Rull tilbake",
+  "service.more": "Mer",
   "service.no_previous": "Det finnes ingen tidligere release å rulle tilbake til.",
   "service.restart": "Start på nytt",
   "service.restart_started": "Tjenesten starter på nytt.",

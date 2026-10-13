@@ -346,7 +346,7 @@ function TwoFactor({ enabled }: { enabled: boolean }) {
 export function ProfilePage() {
   const me = useMe()
   return (
-    <section className="max-w-5xl space-y-6">
+    <section className="space-y-6">
       <PageHeader title={t('profile.title')} />
       {me.isPending && <Skeleton />}
       {me.data && (

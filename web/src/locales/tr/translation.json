@@ -702,6 +702,7 @@
   "service.tab.releases": "Release'ler",
   "service.tab.health": "Sağlık denetimi",
   "service.rollback": "Geri al",
+  "service.more": "Daha fazla",
   "service.no_previous": "Geri alınacak daha eski bir release yok.",
   "service.restart": "Yeniden başlat",
   "service.restart_started": "Servis yeniden başlıyor.",

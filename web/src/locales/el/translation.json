@@ -702,6 +702,7 @@
   "service.tab.releases": "Εκδόσεις",
   "service.tab.health": "Έλεγχος υγείας",
   "service.rollback": "Rollback",
+  "service.more": "Περισσότερα",
   "service.no_previous": "Δεν υπάρχει προηγούμενη έκδοση για rollback.",
   "service.restart": "Επανεκκίνηση",
   "service.restart_started": "Το service επανεκκινείται.",

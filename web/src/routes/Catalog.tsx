@@ -11,9 +11,7 @@ import { ErrorBanner } from '@/components/ErrorBanner'
 import { Modal } from '@/components/Modal'
 import { PageHeader } from '@/components/PageHeader'
 import {
-  Banner,
   Button,
-  Card,
   CheckboxField,
   EmptyState,
   Hint,
@@ -340,6 +338,13 @@ function CustomTemplateDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
+// A stable number for the color of a template tile.
+function hueOf(slug: string): number {
+  let h = 0
+  for (const c of slug) h = (h * 31 + c.charCodeAt(0)) % 6
+  return h
+}
+
 // UI-21: the catalog of templates.
 export function CatalogPage() {
   const { org } = useParams({ from: '/o/$org/catalog' })
@@ -374,26 +379,29 @@ export function CatalogPage() {
     )
   else
     body = (
-      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+      <ul className="tiles">
         {list.map((x) => (
           <li key={x.slug}>
-            <Card className="flex h-full flex-col gap-3">
-              <div className="flex items-start justify-between gap-2">
-                <h2 className="break-words text-lg font-semibold">{x.name}</h2>
-                <span className="shrink-0 text-xs text-muted">
-                  {x.builtin ? t('template.builtin') : t('template.custom')} · v{x.version}
-                </span>
+            <div className="tile tile-template">
+              <span aria-hidden="true" className="tile-letter" data-hue={hueOf(x.slug ?? '')}>
+                {(x.name ?? '?').trim().charAt(0).toUpperCase()}
+              </span>
+              <h2 className="tile-name">{x.name}</h2>
+              <p className="tile-desc">{x.description}</p>
+              <p className="tile-slug">
+                {x.builtin ? t('template.builtin') : t('template.custom')} · v{x.version}
+              </p>
+              <div className="tile-services">
+                <TemplateServices template={x} />
               </div>
-              <p className="flex-1 text-sm text-muted">{x.description}</p>
-              <TemplateServices template={x} />
               {canCreate && (
-                <div>
+                <div className="tile-foot">
                   <Button variant="primary" onClick={() => setUsing(x)}>
                     {t('template.use')}
                   </Button>
                 </div>
               )}
-            </Card>
+            </div>
           </li>
         ))}
       </ul>
@@ -410,7 +418,7 @@ export function CatalogPage() {
         }
       />
       <div className="space-y-4">
-        <Banner>{t('template.intro')}</Banner>
+        <p className="page-sub">{t('template.intro')}</p>
         <TextField
           label={t('template.search')}
           type="search"

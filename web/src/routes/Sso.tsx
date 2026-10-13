@@ -475,7 +475,7 @@ export function SsoPage() {
   if (access === 'hidden') return null
   const current = list.find((p) => p.id === selected)
   return (
-    <div className="space-y-4 p-4 sm:p-6">
+    <div className="space-y-4">
       <PageHeader title={t('sso.title')} />
       {search.sso_test === 'ok' && <Banner variant="info">{t('sso.test_ok')}</Banner>}
       {search.sso_test === 'error' && (

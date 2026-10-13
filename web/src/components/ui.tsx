@@ -16,10 +16,10 @@ import type { Tone } from '@/status'
 const touch = 'coarse:min-h-11 coarse:min-w-11'
 
 const variants = {
-  primary: 'border-primary bg-primary font-bold text-on-primary hover:brightness-110',
-  secondary: 'border-border-strong bg-bg text-text hover:bg-raised',
+  primary: 'border-primary bg-primary font-semibold text-on-primary hover:brightness-110',
+  secondary: 'border-border bg-bg text-text hover:bg-raised',
   ghost: 'border-transparent bg-transparent text-text hover:bg-raised',
-  destructive: 'border-danger bg-bg text-danger hover:bg-raised',
+  destructive: 'border-border bg-bg text-danger hover:bg-raised',
 }
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -56,7 +56,7 @@ export function Button({
           }
           onClick?.(event)
         }}
-        className={`inline-flex min-h-8 items-center justify-center gap-2 border px-3 py-1 transition-colors duration-[120ms] ${touch} ${variants[variant]} aria-pressed:border-primary aria-pressed:bg-selection aria-pressed:font-bold disabled:cursor-not-allowed disabled:opacity-60 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 ${className}`}
+        className={`btn inline-flex min-h-9 items-center justify-center gap-2 rounded-md border px-4 py-1 transition-colors duration-[120ms] ${touch} ${variants[variant]} aria-pressed:border-primary aria-pressed:bg-selection aria-pressed:font-bold disabled:cursor-not-allowed disabled:opacity-60 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 ${className}`}
       >
         {children}
       </button>
@@ -70,7 +70,7 @@ export function Button({
 }
 
 const inputClass =
-  'block min-h-10 w-full border border-border-strong bg-bg px-3 py-1 text-text max-sm:text-base coarse:min-h-11 aria-[invalid=true]:border-danger'
+  'block min-h-10 w-full rounded-md border border-border-strong bg-bg px-3 py-1 text-text max-sm:text-base coarse:min-h-11 aria-[invalid=true]:border-danger'
 
 // A small [?] that shows an explanation when you press it. Nothing is shown until you ask. The text stays in the
 // page, hidden, so a screen reader can still read it for the field.
@@ -90,9 +90,9 @@ export function HintButton({
       aria-controls={controls}
       aria-label={t('common.more_info')}
       onClick={onToggle}
-      className="font-term ml-2 inline-flex min-h-6 min-w-6 items-center justify-center text-muted transition-colors duration-[200ms] hover:text-primary coarse:min-h-11 coarse:min-w-11"
+      className="hint-btn ml-2 inline-flex min-h-6 min-w-6 items-center justify-center text-muted transition-colors duration-[200ms] hover:text-primary coarse:min-h-11 coarse:min-w-11"
     >
-      {open ? '[x]' : '[?]'}
+      {open ? '×' : '?'}
     </button>
   )
 }
@@ -316,14 +316,10 @@ export function CheckboxField({
   )
 }
 
-const bannerStyles = {
-  info: 'border-info',
-  warning: 'border-warning',
-  danger: 'border-danger',
-}
+type BannerVariant = 'info' | 'warning' | 'danger'
 
 interface BannerProps {
-  variant?: keyof typeof bannerStyles
+  variant?: BannerVariant
   title?: string
   children?: ReactNode
   action?: ReactNode
@@ -334,10 +330,11 @@ export function Banner({ variant = 'info', title, children, action }: BannerProp
   return (
     <div
       role={variant === 'danger' ? 'alert' : 'status'}
-      className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border border-l-[4px] bg-[var(--card-bg)] px-4 py-2.5 ${bannerStyles[variant]}`}
+      data-variant={variant}
+      className="banner flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3"
     >
       <div className="min-w-0 space-y-0.5">
-        {title && <p className="font-bold">{title}</p>}
+        {title && <p className="font-semibold">{title}</p>}
         {children && <div className="break-words text-muted">{children}</div>}
       </div>
       {action}
@@ -429,7 +426,7 @@ function kindKey(kind: string) {
 }
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`border border-border-strong bg-surface p-4 ${className}`}>{children}</div>
+  return <div className={`card p-5 ${className}`}>{children}</div>
 }
 
 export function Skeleton({ lines = 3 }: { lines?: number }) {
@@ -458,7 +455,7 @@ interface EmptyStateProps {
 // Says what the screen is for and gives one action (REQ-UI-010).
 export function EmptyState({ title, text, action }: EmptyStateProps) {
   return (
-    <div className="border border-dashed border-border-strong p-6 text-center">
+    <div className="rounded-[20px] bg-surface p-8 text-center">
       <h2 className="text-lg font-bold">{title}</h2>
       <p className="prose-text mx-auto mt-1 max-w-prose text-muted">{text}</p>
       {action && <div className="mt-4 flex justify-center">{action}</div>}
@@ -786,7 +783,7 @@ export function Meter({ value, label }: { value: number; label: string }) {
 // A key chip. It is hidden from screen readers: the button carries aria-keyshortcuts.
 export function KeyHint({ k, children }: { k: string; children?: ReactNode }) {
   return (
-    <span className="hidden whitespace-nowrap text-muted sm:inline">
+    <span className="key-hint hidden whitespace-nowrap text-muted sm:inline">
       <kbd aria-hidden="true" className="key">
         {k}
       </kbd>

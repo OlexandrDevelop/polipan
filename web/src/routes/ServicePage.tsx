@@ -2,11 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import type { ComponentProps, ReactNode } from 'react'
 import { api } from '@/api/client'
 import { ApiError, unwrap } from '@/api/errors'
-import { DataList } from '@/components/DataList'
 import { DeployDialog } from '@/components/DeployDialog'
 import { MoveDialog } from '@/components/MoveDialog'
 import { ErrorBanner } from '@/components/ErrorBanner'
@@ -71,6 +70,8 @@ const tabs = [
   'settings',
 ] as const
 type Tab = (typeof tabs)[number]
+// The tabs that are always in the row. The others are under "More".
+const mainTabIds: readonly Tab[] = ['overview', 'deployments', 'logs', 'env', 'settings']
 
 function useDeployments(serviceId: string) {
   return useQuery({
@@ -257,113 +258,136 @@ function Overview({
       {failure && !(latest && isDeploymentActive(latest.state)) && (
         <FailedBanner failure={failure} base={base} />
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Panel
-          title={service.source_type === 'git' ? t('service.source_git') : t('service.source')}
-          className="space-y-1"
-        >
-          <p className="break-all font-mono text-sm">{sourceText(service)}</p>
-          <p className="text-sm text-muted">
-            {t('service.port')}: {config.port ? String(config.port) : '-'}
+      <div className="hero" data-tone={serviceTone(service.status)}>
+        <div>
+          <p className="hero-label">{t('deployment.state')}</p>
+          <p className="hero-value">{tState('status.service', service.status)}</p>
+          <p className="hero-note">
+            {t('service.desired')}: {tState('status.desired', service.desired_state)}
           </p>
-        </Panel>
-        <Panel title={t('service.release')} className="space-y-1">
+        </div>
+        <div>
+          <p className="hero-label">{t('service.release')}</p>
           {releases.isPending && Boolean(service.live_release_id) ? (
             <Skeleton lines={1} />
           ) : (
-            <p className="break-all text-sm">
-              {liveRelease
-                ? `v${liveRelease.number ?? ''}${liveRelease.source?.commit_sha ? ` · ${liveRelease.source.commit_sha.slice(0, 7)}` : ''}`
-                : (service.live_release_id ?? t('service.no_release'))}
+            <p className="hero-value">
+              {liveRelease ? `v${liveRelease.number ?? ''}` : t('service.no_release')}
             </p>
           )}
-          {liveRelease?.created_at && (
-            <p className="text-sm text-muted">
-              <Time value={liveRelease.created_at} />
-            </p>
-          )}
+          <p className="hero-note">
+            {liveRelease?.source?.commit_sha && `${liveRelease.source.commit_sha.slice(0, 7)} · `}
+            {liveRelease?.created_at && <Time value={liveRelease.created_at} />}
+          </p>
           {releases.isError && (
             <ErrorBanner error={releases.error} onRetry={() => void releases.refetch()} />
           )}
-          <p className="text-sm text-muted">
-            {t('service.desired')}: {tState('status.desired', service.desired_state)}
+        </div>
+        <div className="min-w-0">
+          <p className="hero-label">
+            {service.source_type === 'git' ? t('service.source_git') : t('service.source')}
           </p>
-        </Panel>
-        <Panel
-          title={t('containers.title')}
-          className="sm:col-span-2 lg:col-span-3"
-          hint={String((service.placements ?? []).length)}
-        >
-          {(service.placements ?? []).length === 0 ? (
-            <p className="text-muted">{t('service.no_placements')}</p>
-          ) : (
-            <DataList
-              caption={t('containers.title')}
-              rows={service.placements ?? []}
-              rowKey={(p) => p.id ?? ''}
-              columns={[
-                {
-                  header: t('containers.replica'),
-                  primary: true,
-                  cell: (p) => `#${(p.replica_index ?? 0) + 1}`,
-                },
-                {
-                  header: t('containers.id'),
-                  cell: (p) =>
-                    p.container_id ? (
-                      <code title={p.container_id}>{p.container_id.slice(0, 12)}</code>
-                    ) : (
-                      <span className="text-muted">{t('containers.waiting')}</span>
-                    ),
-                },
-                { header: t('containers.node'), cell: (p) => nodeName(p.node_id) },
-                {
-                  header: t('containers.release'),
-                  cell: (p) => {
-                    const r = releases.data?.items?.find((x) => x.id === p.release_id)
-                    return r?.number ? `v${r.number}` : '-'
-                  },
-                },
-                { header: t('containers.role'), cell: (p) => tState('status.role', p.role) },
-                {
-                  header: t('containers.health'),
-                  cell: (p) => (
-                    <StatusBadge
-                      tone={healthTone(p.health)}
-                      label={tState('status.health', p.health)}
-                    />
-                  ),
-                },
-                { header: t('containers.address'), cell: (p) => p.ip || '-' },
-                {
-                  header: t('containers.created'),
-                  cell: (p) => (p.created_at ? <Time value={p.created_at} /> : '-'),
-                },
-              ]}
-            />
-          )}
-        </Panel>
-        <Panel title={t('service.urls')} className="space-y-1 sm:col-span-2 lg:col-span-3">
+          <p className="hero-code">{sourceText(service)}</p>
+          <p className="hero-note">
+            {t('service.port')}: {config.port ? String(config.port) : '-'}
+          </p>
+        </div>
+        <div className="min-w-0">
+          <p className="hero-label">{t('service.urls')}</p>
           {domains.isPending && <Skeleton lines={1} />}
           {domains.isError && (
             <ErrorBanner error={domains.error} onRetry={() => void domains.refetch()} />
           )}
-          {domains.data?.length === 0 && <p className="text-muted">{t('service.no_urls')}</p>}
-          <ul className="space-y-1">
-            {(domains.data ?? []).map((d) => (
-              <li key={d.id} className="flex flex-wrap items-center gap-2">
-                <a
-                  href={`${d.https === false ? 'http' : 'https'}://${d.host}${d.path_prefix ?? ''}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="break-all text-primary underline"
-                >
-                  {d.host}
-                  {d.path_prefix && d.path_prefix !== '/' ? d.path_prefix : ''}
-                </a>
-              </li>
-            ))}
-          </ul>
+          {domains.data && domains.data.length > 0 && (
+            <>
+              <a
+                className="hero-link"
+                href={`${domains.data[0].https === false ? 'http' : 'https'}://${domains.data[0].host}${domains.data[0].path_prefix ?? ''}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {domains.data[0].host}
+                {domains.data[0].path_prefix && domains.data[0].path_prefix !== '/'
+                  ? domains.data[0].path_prefix
+                  : ''}
+              </a>
+              {domains.data.length > 1 && (
+                <p className="hero-note">
+                  <Link
+                    to="/o/$org/p/$project/e/$env/s/$service/$tab"
+                    params={{ ...base, tab: 'domains' }}
+                  >
+                    +{domains.data.length - 1}
+                  </Link>
+                </p>
+              )}
+            </>
+          )}
+          {domains.data?.length === 0 && (
+            <p className="hero-note">
+              <Link
+                to="/o/$org/p/$project/e/$env/s/$service/$tab"
+                params={{ ...base, tab: 'domains' }}
+              >
+                {t('service.no_urls')}
+              </Link>
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="grid gap-4">
+        <Panel title={t('containers.title')} hint={String((service.placements ?? []).length)}>
+          {(service.placements ?? []).length === 0 ? (
+            <p className="text-muted">{t('service.no_placements')}</p>
+          ) : (
+            <ul className="replicas">
+              {(service.placements ?? []).map((p) => {
+                const r = releases.data?.items?.find((x) => x.id === p.release_id)
+                return (
+                  <li key={p.id} className="replica">
+                    <div className="replica-top">
+                      <span className="replica-n">#{(p.replica_index ?? 0) + 1}</span>
+                      <StatusBadge
+                        tone={healthTone(p.health)}
+                        label={tState('status.health', p.health)}
+                      />
+                    </div>
+                    <dl>
+                      <div>
+                        <dt>{t('containers.release')}</dt>
+                        <dd>{r?.number ? `v${r.number}` : '-'}</dd>
+                      </div>
+                      <div>
+                        <dt>{t('containers.role')}</dt>
+                        <dd>{tState('status.role', p.role)}</dd>
+                      </div>
+                      <div>
+                        <dt>{t('containers.node')}</dt>
+                        <dd>{nodeName(p.node_id)}</dd>
+                      </div>
+                      <div>
+                        <dt>{t('containers.address')}</dt>
+                        <dd>{p.ip || '-'}</dd>
+                      </div>
+                    </dl>
+                    <p className="replica-foot">
+                      {p.container_id ? (
+                        <code title={p.container_id}>{p.container_id.slice(0, 12)}</code>
+                      ) : (
+                        t('containers.waiting')
+                      )}
+                      {p.created_at && (
+                        <>
+                          {' · '}
+                          <Time value={p.created_at} />
+                        </>
+                      )}
+                    </p>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
         </Panel>
       </div>
     </div>
@@ -387,57 +411,49 @@ function Deployments({
     return <EmptyState title={t('deployment.empty_title')} text={t('deployment.empty_text')} />
   }
   return (
-    <DataList
-      caption={t('deployment.caption')}
-      rows={rows}
-      rowKey={(d) => d.id ?? ''}
-      columns={[
-        {
-          header: t('deployment.started'),
-          cell: (d) => (
-            <Link
-              to="/o/$org/p/$project/e/$env/s/$service/deployments/$deployment"
-              params={{ ...base, deployment: d.id ?? '' }}
-              className="text-primary underline"
-            >
-              <Time value={d.started_at} />
-            </Link>
-          ),
-          primary: true,
-        },
-        {
-          header: t('deployment.state'),
-          cell: (d) => (
-            <StatusBadge
-              tone={deploymentTone(d.state)}
-              label={tState('status.deployment', d.state)}
-            />
-          ),
-        },
-        {
-          header: t('deployment.trigger'),
-          cell: (d) => tState('deployment.trigger_value', d.trigger),
-        },
-        {
-          header: t('deployment.result'),
-          cell: (d) =>
-            d.state === 'failed' ? (
-              <span>
-                {tState('deployment.reason', d.failure_reason)}
-                {d.failure_detail && <span className="block text-muted">{d.failure_detail}</span>}
-              </span>
-            ) : (
-              '-'
-            ),
-        },
-        {
-          header: t('deployment.finished'),
-          cell: (d) => <Time value={d.finished_at} />,
-          cardHidden: true,
-        },
-      ]}
-    />
+    <ol className="timeline" aria-label={t('deployment.caption')}>
+      {rows.map((d) => {
+        const tone = deploymentTone(d.state)
+        const spent = duration(d.started_at, d.finished_at)
+        return (
+          <li key={d.id} className="tl-item" data-tone={tone}>
+            <span aria-hidden="true" className="tl-dot" />
+            <div className="tl-main">
+              <Link
+                to="/o/$org/p/$project/e/$env/s/$service/deployments/$deployment"
+                params={{ ...base, deployment: d.id ?? '' }}
+                className="tl-link"
+              >
+                <Time value={d.started_at} />
+              </Link>
+              <p className="tl-meta">
+                {tState('deployment.trigger_value', d.trigger)}
+                {spent && ` · ${spent}`}
+              </p>
+              {d.state === 'failed' && (
+                <p className="tl-fail">
+                  {tState('deployment.reason', d.failure_reason)}
+                  {d.failure_detail && <span>{d.failure_detail}</span>}
+                </p>
+              )}
+            </div>
+            <StatusBadge tone={tone} label={tState('status.deployment', d.state)} />
+          </li>
+        )
+      })}
+    </ol>
   )
+}
+
+// "2 min 14 s" for a deployment that has started and finished.
+function duration(from?: string, to?: string): string {
+  if (!from || !to) return ''
+  const seconds = Math.max(
+    0,
+    Math.round((new Date(to).getTime() - new Date(from).getTime()) / 1000),
+  )
+  const m = Math.floor(seconds / 60)
+  return m > 0 ? `${m} min ${seconds % 60} s` : `${seconds} s`
 }
 
 // The palette opens a dialog with "?dialog=deploy" or "?dialog=rollback". The page removes it.
@@ -537,6 +553,8 @@ export function ServicePage() {
   // A change made on this page shows the banner at once, before the server reports it.
   const [localPending, setLocalPending] = useState(false)
   const [dialog, setDialog] = useState<'deploy' | 'rollback' | 'move' | null>(null)
+  const moreRef = useRef<HTMLDetailsElement>(null)
+  const tabsMoreRef = useRef<HTMLDetailsElement>(null)
   const releases = useReleases(serviceId)
   const wanted = (useSearch({ strict: false }) as { dialog?: 'deploy' | 'rollback' }).dialog
 
@@ -680,70 +698,86 @@ export function ServicePage() {
           <KeyHint k="d" />
         </Button>
       )}
-      {rollbackAccess !== 'hidden' && (
-        <Button
-          reason={rollbackReason}
-          onClick={() => {
-            setNotice(null)
-            setDialog('rollback')
-          }}
-        >
-          {t('service.rollback')}
-        </Button>
-      )}
-      {moveAccess !== 'hidden' && (service.placements ?? []).length > 0 && (
-        <Button
-          reason={moveAccess === 'blocked' ? protectedReason : busy ? busyReason : undefined}
-          onClick={() => {
-            setNotice(null)
-            setDialog('move')
-          }}
-        >
-          {t('service.move')}
-        </Button>
-      )}
-      {restartAccess !== 'hidden' && (
-        <Button
-          loading={restart.isPending}
-          reason={busy ? busyReason : undefined}
-          onClick={() => {
-            setNotice(null)
-            restart.mutate()
-          }}
-        >
-          {t('service.restart')}
-        </Button>
-      )}
-      {updateAccess !== 'hidden' &&
-        (service.desired_state === 'stopped' ? (
-          <Button
-            loading={start.isPending}
-            reason={updateAccess === 'blocked' ? protectedReason : busy ? busyReason : undefined}
-            onClick={() => {
-              setNotice(null)
-              start.mutate()
-            }}
-          >
-            {t('service.start')}
-          </Button>
-        ) : (
-          <Button
-            loading={stop.isPending}
-            reason={updateAccess === 'blocked' ? protectedReason : busy ? busyReason : undefined}
-            onClick={() => {
-              setNotice(null)
-              stop.mutate()
-            }}
-          >
-            {t('service.stop')}
-          </Button>
-        ))}
+      <details className="more" ref={moreRef}>
+        <summary className="more-toggle">{t('service.more')}</summary>
+        <div className="more-menu" onClick={() => moreRef.current?.removeAttribute('open')}>
+          {rollbackAccess !== 'hidden' && (
+            <Button
+              variant="ghost"
+              reason={rollbackReason}
+              onClick={() => {
+                setNotice(null)
+                setDialog('rollback')
+              }}
+            >
+              {t('service.rollback')}
+            </Button>
+          )}
+          {moveAccess !== 'hidden' && (service.placements ?? []).length > 0 && (
+            <Button
+              variant="ghost"
+              reason={moveAccess === 'blocked' ? protectedReason : busy ? busyReason : undefined}
+              onClick={() => {
+                setNotice(null)
+                setDialog('move')
+              }}
+            >
+              {t('service.move')}
+            </Button>
+          )}
+          {restartAccess !== 'hidden' && (
+            <Button
+              variant="ghost"
+              loading={restart.isPending}
+              reason={busy ? busyReason : undefined}
+              onClick={() => {
+                setNotice(null)
+                restart.mutate()
+              }}
+            >
+              {t('service.restart')}
+            </Button>
+          )}
+          {updateAccess !== 'hidden' &&
+            (service.desired_state === 'stopped' ? (
+              <Button
+                variant="ghost"
+                loading={start.isPending}
+                reason={
+                  updateAccess === 'blocked' ? protectedReason : busy ? busyReason : undefined
+                }
+                onClick={() => {
+                  setNotice(null)
+                  start.mutate()
+                }}
+              >
+                {t('service.start')}
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                loading={stop.isPending}
+                reason={
+                  updateAccess === 'blocked' ? protectedReason : busy ? busyReason : undefined
+                }
+                onClick={() => {
+                  setNotice(null)
+                  stop.mutate()
+                }}
+              >
+                {t('service.stop')}
+              </Button>
+            ))}
+        </div>
+      </details>
     </>
   )
 
   const base = { org, project: projectSlug, env: envSlug, service: name }
   const execAccess = accessFor(role, 'service:exec', environment.protected)
   const visibleTabs = tabs.filter((id) => id !== 'terminal' || execAccess !== 'hidden')
+  const mainTabs = visibleTabs.filter((id) => mainTabIds.includes(id) || id === tab)
+  const moreTabs = visibleTabs.filter((id) => !mainTabs.includes(id))
   const changed = () => setLocalPending(true)
   return (
     <section
@@ -807,20 +841,41 @@ export function ServicePage() {
         )}
         {live.isError && <ErrorBanner error={live.error} onRetry={() => void live.refetch()} />}
       </div>
-      <nav aria-label={t('service.tabs')} className="mb-4">
-        <ul className="flex gap-1 overflow-x-auto border-b border-border-strong">
-          {visibleTabs.map((id) => (
+      <nav aria-label={t('service.tabs')} className="mb-3">
+        <ul className="tabs">
+          {mainTabs.map((id) => (
             <li key={id}>
               <Link
                 to="/o/$org/p/$project/e/$env/s/$service/$tab"
                 params={{ ...base, tab: id }}
                 aria-current={id === tab ? 'page' : undefined}
-                className="block min-h-11 whitespace-nowrap border-b-4 border-transparent px-4 py-2 text-muted transition-colors duration-[200ms] hover:text-text aria-[current=page]:border-primary aria-[current=page]:font-semibold aria-[current=page]:text-text"
+                className="block min-h-11 whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-muted transition-colors duration-[200ms] hover:text-text aria-[current=page]:border-primary aria-[current=page]:font-semibold aria-[current=page]:text-text"
               >
                 {t(`service.tab.${id}`)}
               </Link>
             </li>
           ))}
+          {moreTabs.length > 0 && (
+            <li className="more">
+              <details ref={tabsMoreRef}>
+                <summary className="more-toggle">{t('service.more')}</summary>
+                <div
+                  className="more-menu"
+                  onClick={() => tabsMoreRef.current?.removeAttribute('open')}
+                >
+                  {moreTabs.map((id) => (
+                    <Link
+                      key={id}
+                      to="/o/$org/p/$project/e/$env/s/$service/$tab"
+                      params={{ ...base, tab: id }}
+                    >
+                      {t(`service.tab.${id}`)}
+                    </Link>
+                  ))}
+                </div>
+              </details>
+            </li>
+          )}
         </ul>
       </nav>
       <div key={tab} className="enter">
