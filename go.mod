@@ -2,6 +2,8 @@ module github.com/polipan/polipan
 
 go 1.26.0
 
+toolchain go1.26.9
+
 require (
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/golang/snappy v0.0.4

@@ -1306,10 +1306,21 @@ paths:
       summary: Convert a Docker Compose file to services (safety validated). dry_run returns the result only.
       tags: [templates]
       x-permission: service:create
-      parameters: [{$ref: '#/components/parameters/EnvironmentId'}, {name: dry_run, in: query, schema: {type: boolean}}]
+      parameters: [{$ref: '#/components/parameters/EnvironmentId'}, {name: dry_run, in: query, schema: {type: boolean}}, {name: skip_unsafe, in: query, description: "Drop the services and the bind mounts that are not allowed, with a warning, instead of refusing the file.", schema: {type: boolean}}]
       requestBody: {required: true, content: {application/yaml: {schema: {type: string}}}}
       responses:
-        '200': {description: Conversion result, content: {application/json: {schema: {type: object, properties: {services: {type: array, items: {$ref: '#/components/schemas/ServiceCreate'}}, warnings: {type: array, items: {type: string}}}}}}}
+        '200': {description: Conversion result, content: {application/json: {schema: {$ref: '#/components/schemas/ComposeImportResult'}}}}
+        '422': {$ref: '#/components/responses/Error'}
+  /environments/{environment_id}/import-compose-git:
+    post:
+      operationId: importComposeGit
+      summary: Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. The env_file files that are in the repository are imported as variables, and the ones that look like secrets as secrets. dry_run returns the result only.
+      tags: [templates]
+      x-permission: service:create
+      parameters: [{$ref: '#/components/parameters/EnvironmentId'}, {name: dry_run, in: query, schema: {type: boolean}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ComposeGitRequest'}}}}
+      responses:
+        '200': {description: Conversion result, content: {application/json: {schema: {$ref: '#/components/schemas/ComposeImportResult'}}}}
         '422': {$ref: '#/components/responses/Error'}
 
   /git-connections:
@@ -1628,6 +1639,15 @@ paths:
       parameters: [{name: state, in: query, schema: {type: string, enum: [firing, resolved]}}, {$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Cursor'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/AlertInstance'}}, next_cursor: {type: [string, 'null']}}}}}}
+  /incidents/{incident_id}:
+    get:
+      operationId: getIncident
+      summary: One incident of a node with its alerts, the probable cause first
+      tags: [alerts]
+      x-permission: alert:read
+      parameters: [{$ref: '#/components/parameters/IncidentId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Incident'}}}}
 
 components:
   securitySchemes:
@@ -1660,6 +1680,7 @@ components:
     TargetId: {name: target_id, in: path, required: true, schema: {type: string}}
     PolicyId: {name: policy_id, in: path, required: true, schema: {type: string}}
     ChannelId: {name: channel_id, in: path, required: true, schema: {type: string}}
+    IncidentId: {name: incident_id, in: path, required: true, schema: {type: string}}
     RuleId: {name: rule_id, in: path, required: true, schema: {type: string}}
   responses:
     Error:
@@ -1825,6 +1846,21 @@ components:
         live_release_id: {type: string}
         placements: {type: array, items: {$ref: '#/components/schemas/Placement'}}
         pending_changes: {type: boolean}
+        last_failure: {$ref: '#/components/schemas/ServiceFailure'}
+    ServiceFailure:
+      type: object
+      description: "GET /services/{service_id} only: why the service failed. Set when the last deployment failed or a container is unhealthy. Secrets in the log lines are masked."
+      properties:
+        reason: {type: string, description: "The failure reason code of the deployment, or unhealthy"}
+        detail: {type: string}
+        deployment_id: {type: string, description: "The failed deployment. Empty when only a container is unhealthy."}
+        incident_id: {type: string, description: "Only when no alert of the incident belongs to a service of another project"}
+        node_id: {type: string}
+        node_name: {type: string}
+        root_cause: {type: string, description: "The probable cause on the node, when it is another alert than the one of this service: a node level alert, or an alert of a service in the same project. Never an alert of another project."}
+        root_type: {type: string}
+        log_source: {type: string, enum: [deployment, container]}
+        log_excerpt: {type: array, items: {type: string}, description: "The last lines of the deployment log or of the container log, oldest first (at most 20)"}
     ServiceBackup:
       type: object
       description: "Database services only. none: no policy and not skipped (the UI shows the suggestion). skipped: the user skipped the suggestion. configured: a policy exists."
@@ -1833,7 +1869,34 @@ components:
         suggestion: {type: object, properties: {schedule: {type: string}, retention: {type: object, additionalProperties: {type: integer}}, restore_check_schedule: {type: string}}}
     Placement:
       type: object
-      properties: {id: {type: string}, node_id: {type: string}, release_id: {type: string}, replica_index: {type: integer}, color: {type: string, enum: [blue, green]}, role: {type: string, enum: [live, candidate, draining, stopped]}, weight: {type: integer}, health: {type: string, enum: [unknown, starting, healthy, unhealthy]}}
+      properties: {id: {type: string}, node_id: {type: string}, release_id: {type: string}, replica_index: {type: integer}, color: {type: string, enum: [blue, green]}, role: {type: string, enum: [live, candidate, draining, stopped]}, weight: {type: integer}, health: {type: string, enum: [unknown, starting, healthy, unhealthy]}, container_id: {type: string, description: "The Docker container. Empty until the agent reports it."}, ip: {type: string, description: "The address of the container in the mesh."}, created_at: {type: string, format: date-time}}
+    ComposeImportResult:
+      type: object
+      required: [services, warnings, losses, replacement_yaml]
+      properties:
+        services: {type: array, items: {$ref: '#/components/schemas/ServiceCreate'}}
+        warnings: {type: array, items: {type: string}}
+        losses: {type: array, items: {$ref: '#/components/schemas/ComposeLoss'}, description: "The parts of the file that are not imported as they are, each with its replacement."}
+        replacement_yaml: {type: string, description: "The import as a polipan.yaml with the replacements of the dropped parts. Secrets are only named, never with a value. No host path is in it."}
+    ComposeLoss:
+      type: object
+      required: [path, key, disposition, lost, replacement]
+      properties:
+        path: {type: string, description: "Where in the Compose file, for example services.app.env_file."}
+        key: {type: string, description: "The Compose key, for example env_file, volumes, build, ports."}
+        disposition: {type: string, description: "One of imported, replaced, ignored, dropped, manual. imported: the content is imported in another form. replaced: Polipan does it in its own way. ignored: not imported. dropped: removed because it is not allowed. manual: a step for the user."}
+        lost: {type: string, description: "What is lost. Never a variable value or a host path."}
+        replacement: {type: string, description: "A polipan.yaml part, or one manual step."}
+    ComposeGitRequest:
+      type: object
+      required: [repo]
+      properties:
+        repo: {type: string, description: "A full https URL, or owner/name with a Git connection."}
+        branch: {type: string, default: main}
+        path: {type: string, default: docker-compose.yml, description: "The Compose file inside the repository."}
+        connection_id: {type: string}
+        skip_unsafe: {type: boolean, description: "Drop what is not allowed, with a warning, instead of refusing the file."}
+        variables: {type: object, additionalProperties: {type: string}, description: "Values of ${NAME} in the file."}
     ServiceCreate:
       type: object
       required: [name, type]
@@ -2030,7 +2093,22 @@ components:
       properties: {name: {type: string}, type: {type: string}, scope: {type: object, additionalProperties: {type: string}}, params: {type: object, additionalProperties: true}, severity: {type: string, enum: [info, warning, critical]}, channel_ids: {type: array, items: {type: string}}, repeat_interval_seconds: {type: integer}, enabled: {type: boolean}}
     AlertInstance:
       type: object
-      properties: {id: {type: string}, rule_id: {type: string}, rule_name: {type: string}, rule_type: {type: string}, severity: {type: string, enum: [info, warning, critical]}, fingerprint: {type: string}, state: {type: string, enum: [firing, resolved]}, first_fired_at: {type: string, format: date-time}, last_notified_at: {type: string, format: date-time}, resolved_at: {type: string, format: date-time}, muted: {type: boolean, description: "The rule is muted: no message is sent"}, suppressed: {type: boolean, description: "A node_down alert of the node hides this one"}, details: {type: object, additionalProperties: true}}
+      properties: {id: {type: string}, rule_id: {type: string}, rule_name: {type: string}, rule_type: {type: string}, severity: {type: string, enum: [info, warning, critical]}, fingerprint: {type: string}, state: {type: string, enum: [firing, resolved]}, first_fired_at: {type: string, format: date-time}, last_notified_at: {type: string, format: date-time}, resolved_at: {type: string, format: date-time}, muted: {type: boolean, description: "The rule is muted: no message is sent"}, suppressed: {type: boolean, description: "A node_down alert of the node hides this one"}, details: {type: object, additionalProperties: true}, incident_id: {type: string, description: "The incident of the node this alert belongs to. Empty when the alert has no node."}, root_cause: {type: string, description: "The one line text of the probable cause of the incident"}, related_count: {type: integer, description: "The number of the other alerts of the incident"}}
+    Incident:
+      type: object
+      description: "Alerts that fired close together on one node (12-observability section 5.1)."
+      properties:
+        id: {type: string}
+        node_id: {type: string}
+        node_name: {type: string}
+        state: {type: string, enum: [open, resolved]}
+        opened_at: {type: string, format: date-time}
+        last_alert_at: {type: string, format: date-time}
+        resolved_at: {type: string, format: date-time}
+        root_instance_id: {type: string}
+        root_type: {type: string}
+        root_cause: {type: string}
+        alerts: {type: array, items: {$ref: '#/components/schemas/AlertInstance'}, description: "The probable cause first"}
     ConfigPlan:
       type: object
       properties:

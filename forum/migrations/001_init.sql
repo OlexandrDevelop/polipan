@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 CREATE TABLE users (
   id bigserial PRIMARY KEY,
   username text NOT NULL,
