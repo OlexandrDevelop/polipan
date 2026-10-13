@@ -195,15 +195,16 @@ func (c *Control) fillWorkload(ctx context.Context, q dbq, nodeID string, w *pb.
 
 // maskStep hides the secret values of the service of a deployment in a log line (REQ-SEC-007).
 // When the values cannot be read the line is replaced, so no secret can leak.
-func (c *Control) maskStep(ctx context.Context, depID, line string) string {
+// q is the transaction of the caller when it has one: the lookups must not take a second connection of the pool.
+func (c *Control) maskStep(ctx context.Context, q dbq, depID, line string) string {
 	if c.Secrets == nil {
 		return line
 	}
 	var serviceID string
-	if err := c.DB.QueryRow(ctx, `SELECT service_id FROM deployments WHERE id = $1`, depID).Scan(&serviceID); err != nil {
+	if err := q.QueryRow(ctx, `SELECT service_id FROM deployments WHERE id = $1`, depID).Scan(&serviceID); err != nil {
 		return line // no deployment row yet: the line is one of ours, without secrets
 	}
-	values, err := c.Secrets.ValuesForService(ctx, serviceID)
+	values, err := c.Secrets.ValuesForServiceQ(ctx, q, serviceID)
 	if err != nil {
 		c.Log.Error("secret masker", "deployment", depID, "err", err)
 		return "[line hidden: secret values could not be read]"

@@ -623,7 +623,7 @@ func (r *run) oneOff(ctx context.Context, kind string, cmd []string, reason stri
 		if line == "" {
 			continue
 		}
-		line = c.maskStep(ctx, d.id, line)
+		line = c.maskStep(ctx, c.DB, d.id, line)
 		if err := addLog(ctx, c.DB, d.id, "pre_deploy", line); err == nil {
 			c.event(ctx, d.id, map[string]any{"type": "log", "data": map[string]any{"stream": kind, "line": line}})
 		}

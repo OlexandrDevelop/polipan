@@ -450,7 +450,7 @@ func (c *Control) addStep(ctx context.Context, tx pgx.Tx, depID, state, msg stri
 	if data != nil {
 		d, _ = json.Marshal(data)
 	}
-	msg = c.maskStep(ctx, depID, msg) // stored log lines never hold a secret value
+	msg = c.maskStep(ctx, tx, depID, msg) // stored log lines never hold a secret value
 	if _, err := tx.Exec(ctx, `INSERT INTO deployment_steps (deployment_id, state, message, data) VALUES ($1,$2,$3,$4)`, depID, state, msg, d); err != nil {
 		return err
 	}
@@ -495,7 +495,7 @@ func (c *Control) endDeployment(ctx context.Context, depID string, e *deployErr)
 	if state == "" {
 		state = "failed"
 	}
-	e = &deployErr{reason: e.reason, detail: c.maskStep(ctx, depID, e.detail), state: state} // the detail goes to the database and the log
+	e = &deployErr{reason: e.reason, detail: c.maskStep(ctx, c.DB, depID, e.detail), state: state} // the detail goes to the database and the log
 	tx, err := c.DB.Begin(ctx)
 	if err != nil {
 		c.Log.Error("end deployment", "deployment", depID, "err", err)

@@ -202,17 +202,27 @@ func (m *Manager) ValuesForService(ctx context.Context, serviceID string) ([]str
 	if m == nil {
 		return nil, nil
 	}
-	scope, err := vars.LoadScope(ctx, m.DB, serviceID)
+	return m.ValuesForServiceQ(ctx, m.DB, serviceID)
+}
+
+// ValuesForServiceQ is ValuesForService on the connection or the transaction of the caller. A caller that holds
+// a transaction must use this one: reading through the pool needs a second connection, and when every
+// connection of the pool is held by such a caller, none of them can go on.
+func (m *Manager) ValuesForServiceQ(ctx context.Context, q Querier, serviceID string) ([]string, error) {
+	if m == nil {
+		return nil, nil
+	}
+	scope, err := vars.LoadScope(ctx, q, serviceID)
 	if err != nil {
 		return nil, err
 	}
-	entries, err := vars.LoadEntries(ctx, m.DB, scope.ProjectID)
+	entries, err := vars.LoadEntries(ctx, q, scope.ProjectID)
 	if err != nil {
 		return nil, err
 	}
 	want := map[Ref]bool{}
 	// All secrets of the service scope (also those hidden from previews), current version.
-	dbEntries, err := vars.DatabaseEntries(ctx, m.DB, scope.EnvironmentID)
+	dbEntries, err := vars.DatabaseEntries(ctx, q, scope.EnvironmentID)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +235,7 @@ func (m *Manager) ValuesForService(ctx context.Context, serviceID string) ([]str
 			want[Ref{e.ID, e.Version}] = true
 		}
 	}
-	rows, err := m.DB.Query(ctx, `SELECT COALESCE(config_snapshot->'`+vars.KeySecretRefs+`', '{}'::jsonb), secret_versions
+	rows, err := q.Query(ctx, `SELECT COALESCE(config_snapshot->'`+vars.KeySecretRefs+`', '{}'::jsonb), secret_versions
 		FROM releases WHERE service_id = $1 AND pruned_at IS NULL`, serviceID)
 	if err != nil {
 		return nil, err
@@ -250,7 +260,7 @@ func (m *Manager) ValuesForService(ctx context.Context, serviceID string) ([]str
 	}
 	var out []string
 	for r := range want {
-		v, err := m.Provider.Get(ctx, m.DB, scope.ProjectID, r.SecretID, r.Version)
+		v, err := m.Provider.Get(ctx, q, scope.ProjectID, r.SecretID, r.Version)
 		if errors.Is(err, ErrVersionDestroyed) {
 			continue
 		}
