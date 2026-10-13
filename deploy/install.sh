@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Installs the Polipan control plane and the agent of this host.
 #
-#   curl -fsSL https://github.com/polipan/polipan/releases/latest/download/install.sh | sudo sh -s -- --domain panel.example.com
-#   curl -fsSL https://get.polipan.dev | sudo sh -s -- --domain panel.example.com   (same script, short address)
+#   curl -fsSL https://raw.githubusercontent.com/OlexandrDevelop/polipan/main/deploy/install.sh | sudo sh -s -- --domain panel.example.com
+#   curl -fsSL https://github.com/OlexandrDevelop/polipan/releases/latest/download/install.sh | sudo sh -s -- --domain panel.example.com   (a release)
 #
 # The script of a release installs exactly the files of that release: the images are pinned by digest, the other
 # files are checked against the checksums in this script, and the signatures of the images are checked when
@@ -17,7 +17,7 @@
 #                        forwarded port: --address 127.0.0.1:8088
 #   --acme-email EMAIL   contact address for the certificate authority (optional)
 #   --version TAG        image tag (default: the release of this script, or latest in a development build)
-#   --registry NAME      image registry prefix (default: ghcr.io/polipan)
+#   --registry NAME      image registry prefix (default: ghcr.io/olexandrdevelop)
 #   --server-image REF   full server image reference (overrides --registry and --version)
 #   --agent-image REF    full agent image reference (overrides --registry and --version)
 #   --acme-ca-url URL    ACME directory for the agent (tests use a staging CA)
@@ -39,7 +39,7 @@ domain=""
 address=""
 acme_email=""
 version="latest"
-registry="ghcr.io/polipan"
+registry="ghcr.io/olexandrdevelop"
 server_image=""
 agent_image=""
 acme_ca_url=""
@@ -97,11 +97,11 @@ done
 
 # Files of a release come from the release page and must match the checksums in this script.
 if [ -n "$pinned" ]; then
-  base_url="${POLIPAN_BASE_URL:-https://github.com/polipan/polipan/releases/download/$stamped_version}"
+  base_url="${POLIPAN_BASE_URL:-https://github.com/OlexandrDevelop/polipan/releases/download/$stamped_version}"
   compose_url="$base_url/docker-compose.yml"
   firewall_url="$base_url/polipan-build.sh"
 else
-  base_url="${POLIPAN_BASE_URL:-https://raw.githubusercontent.com/polipan/polipan/main/deploy}"
+  base_url="${POLIPAN_BASE_URL:-https://raw.githubusercontent.com/OlexandrDevelop/polipan/main/deploy}"
   compose_url="$base_url/compose/docker-compose.yml"
   firewall_url="$base_url/nftables/polipan-build.sh"
 fi
@@ -117,7 +117,7 @@ verify_image() {
   if command -v cosign >/dev/null 2>&1; then
     say "Checking the signature of $1"
     cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-      --certificate-identity-regexp '^https://github\.com/polipan/polipan/\.github/workflows/release\.yml@refs/tags/v' \
+      --certificate-identity-regexp '^https://github\.com/OlexandrDevelop/polipan/\.github/workflows/release\.yml@refs/tags/v' \
       "$1" >/dev/null 2>&1 || fail "the signature of $1 is not valid"
   elif [ -n "$require_signature" ]; then
     fail "--require-signature needs cosign. Install it from https://docs.sigstore.dev/cosign/installation/"

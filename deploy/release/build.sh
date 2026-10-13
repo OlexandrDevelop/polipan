@@ -37,7 +37,7 @@ cleanup() {
 trap cleanup EXIT
 
 if [ -n "${AGENT_IMAGE_DIGEST:-}" ]; then
-  sh deploy/release/stamp.sh "$script" AGENT_IMAGE_DIGEST="$AGENT_IMAGE_DIGEST" AGENT_IMAGE_REPO="${AGENT_IMAGE_REPO:-ghcr.io/polipan/polipan-agent}"
+  sh deploy/release/stamp.sh "$script" AGENT_IMAGE_DIGEST="$AGENT_IMAGE_DIGEST" AGENT_IMAGE_REPO="${AGENT_IMAGE_REPO:-ghcr.io/olexandrdevelop/polipan-agent}"
 fi
 
 mod=github.com/polipan/polipan

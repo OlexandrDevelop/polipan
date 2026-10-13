@@ -11,27 +11,38 @@ Polipan needs one Linux server with systemd, root access and a public IP. Docker
 
 ## Install the control plane
 
+One command, on the server, as root. Use your domain:
+
 ```sh
-curl -fsSL https://github.com/polipan/polipan/releases/latest/download/install.sh | sudo sh -s -- --domain panel.example.com
+curl -fsSL https://raw.githubusercontent.com/OlexandrDevelop/polipan/main/deploy/install.sh | sudo sh -s -- --domain panel.example.com
 ```
+
+Without a domain the panel runs over plain HTTP on the address of the server. Use this only for a test:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/OlexandrDevelop/polipan/main/deploy/install.sh | sudo sh
+```
+
+If the browser reaches the server through another address, for example a forwarded port, add `--address HOST[:PORT]`.
+
+This command installs the newest `main`. Its images are built by the `publish` workflow of this repository and
+stored in `ghcr.io/olexandrdevelop`. For a fixed version, use a release (see below).
 
 The script does these steps:
 
-1. Checks the checksums of the files of the release. If `cosign` is installed, it also checks the signature of the images.
-   Add `--require-signature` to stop when it cannot check.
-2. Installs Docker, nftables and WireGuard tools if they are missing.
-3. Creates the master key in `/etc/polipan/master.key`. **Back this file up.** Without it the secrets cannot be read.
-4. Starts PostgreSQL, the server, the registry, BuildKit and the metric and log stores with Docker Compose in `/opt/polipan`.
-5. Installs the agent of this server and joins it to the panel.
-6. Prints a one-time link. Open it and create the first user. This user is the owner of the organization.
+1. Installs Docker, nftables and WireGuard tools if they are missing.
+2. Creates the master key in `/etc/polipan/master.key`. **Back this file up.** Without it the secrets cannot be read.
+3. Starts PostgreSQL, the server, the registry, BuildKit and the metric and log stores with Docker Compose in `/opt/polipan`.
+4. Installs the agent of this server and joins it to the panel.
+5. Prints a one-time link. Open it and create the first user. This user is the owner of the organization.
 
-### Short address
+### A fixed version (release)
 
-`https://get.polipan.dev` sends you to the `install.sh` of the latest release. These two commands do the same:
+A tag like `v1.0.0` runs the `release` workflow. It builds signed images, pins them by digest and puts `install.sh`
+on the release page. Then this command installs exactly that release:
 
 ```sh
-curl -fsSL https://get.polipan.dev | sudo sh -s -- --domain panel.example.com
-curl -fsSL https://github.com/polipan/polipan/releases/latest/download/install.sh | sudo sh -s -- --domain panel.example.com
+curl -fsSL https://github.com/OlexandrDevelop/polipan/releases/latest/download/install.sh | sudo sh -s -- --domain panel.example.com
 ```
 
 To pin a version, download the `install.sh` of that release from GitHub and check its signature (see
@@ -40,7 +51,7 @@ To pin a version, download the `install.sh` of that release from GitHub and chec
 ### Install when the server is created (cloud-init)
 
 Most hosting providers have a field named "user data" or "cloud-init" when you create a server. Paste the file
-[`deploy/cloud-init/polipan.yaml`](https://github.com/polipan/polipan/blob/main/deploy/cloud-init/polipan.yaml)
+[`deploy/cloud-init/polipan.yaml`](https://github.com/OlexandrDevelop/polipan/blob/main/deploy/cloud-init/polipan.yaml)
 there. First change `PANEL_DOMAIN` and `ACME_EMAIL` in the file.
 
 When the server starts for the first time, it installs Polipan with the same script. After a few minutes:
@@ -67,6 +78,11 @@ If the profile cannot be loaded (for example `apparmor_parser` is missing), the 
 package `apparmor` and run the script again. If you accept the risk, run the script with `--allow-userns-sysctl`.
 It sets `kernel.apparmor_restrict_unprivileged_userns=0` for the whole server and saves it in
 `/etc/sysctl.d/60-polipan-userns.conf`. Every program may then use user namespaces.
+
+### Before the first install
+
+The images are stored in GitHub Packages. After the first run of the `publish` workflow, open your GitHub profile,
+**Packages**, and set `polipan-server` and `polipan-agent` to **Public**. Then a server can pull them without a login.
 
 ## Add another server
 

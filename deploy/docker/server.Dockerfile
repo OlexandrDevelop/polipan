@@ -18,7 +18,7 @@ ARG TARGETOS=linux
 ARG TARGETARCH
 # The release build gives the digest of the agent image, and the install script of the panel pins it (REQ-OSS-004).
 ARG AGENT_IMAGE_DIGEST=
-ARG AGENT_IMAGE_REPO=ghcr.io/polipan/polipan-agent
+ARG AGENT_IMAGE_REPO=ghcr.io/olexandrdevelop/polipan-agent
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

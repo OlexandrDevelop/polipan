@@ -13,7 +13,7 @@ inputs:
     description: Dockerfile
     required: true
   namespace:
-    description: Registry and owner in lower case, for example ghcr.io/polipan
+    description: Registry and owner in lower case, for example ghcr.io/olexandrdevelop
     required: true
   version:
     description: The release tag, for example v1.0.0

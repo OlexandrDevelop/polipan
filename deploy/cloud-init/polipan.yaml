@@ -32,7 +32,7 @@ write_files:
       args="--domain $PANEL_DOMAIN"
       [ -n "$ACME_EMAIL" ] && args="$args --acme-email $ACME_EMAIL"
       # shellcheck disable=SC2086
-      curl -fsSL https://get.polipan.dev | sh -s -- $args >"$log" 2>&1
+      curl -fsSL https://raw.githubusercontent.com/OlexandrDevelop/polipan/main/deploy/install.sh | sh -s -- $args >"$log" 2>&1
       grep -Eo 'https?://[^ ]+/setup\?token=[A-Za-z0-9._~-]+' "$log" | tail -n 1 >"$link"
 runcmd:
   - [/usr/local/sbin/polipan-first-boot]

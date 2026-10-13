@@ -2,6 +2,16 @@
 
 Self-hosted, open source server panel (Apache-2.0). Spec: [docs/spec/README.md](docs/spec/README.md).
 
+## Install
+
+On a Linux server with systemd, as root:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/OlexandrDevelop/polipan/main/deploy/install.sh | sudo sh -s -- --domain panel.example.com
+```
+
+Leave out `--domain` to test over plain HTTP on the server address. More: [docs/guide/install.md](docs/guide/install.md).
+
 ## Repository
 
 | Folder | Content |

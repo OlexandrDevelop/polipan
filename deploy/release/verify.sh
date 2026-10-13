@@ -13,7 +13,7 @@
 # --no-signature skips steps 1 and 3 (checksums only, no cosign needed). Use it only for a quick check.
 set -eu
 
-repo="polipan/polipan"
+repo="OlexandrDevelop/polipan"
 signature=1
 images=""
 while [ $# -gt 0 ]; do

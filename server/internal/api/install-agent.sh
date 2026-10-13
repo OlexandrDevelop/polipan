@@ -10,7 +10,7 @@
 #   --token TOKEN          the one-use join token (required)
 #   --ca-fingerprint HEX   sha256 of the CA certificate of the panel (required): the join checks the server with it
 #   --agent-image REF      the agent image the binary is taken from. Default: the image of the release of this panel,
-#                          pinned by digest (a development build of the panel uses ghcr.io/polipan/polipan-agent:latest)
+#                          pinned by digest (a development build of the panel uses ghcr.io/olexandrdevelop/polipan-agent:latest)
 #   --require-signature    stop if the signature of the agent image cannot be checked (needs cosign)
 #   --public-ip IP         the address other servers use for WireGuard (default: the address of the default route)
 #   --wireguard-port PORT  the WireGuard UDP port (default: 51820)
@@ -67,7 +67,7 @@ if [ -z "$agent_image" ]; then
   if [ -n "$pinned" ]; then
     agent_image="$stamped_repo@$stamped_digest"
   else
-    agent_image="ghcr.io/polipan/polipan-agent:latest"
+    agent_image="ghcr.io/olexandrdevelop/polipan-agent:latest"
     say "Warning: this panel is not a release build, so the agent image is not pinned by digest."
   fi
 fi
@@ -79,7 +79,7 @@ verify_image() {
   if command -v cosign >/dev/null 2>&1; then
     say "Checking the signature of $1"
     cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-      --certificate-identity-regexp '^https://github\.com/polipan/polipan/\.github/workflows/release\.yml@refs/tags/v' \
+      --certificate-identity-regexp '^https://github\.com/OlexandrDevelop/polipan/\.github/workflows/release\.yml@refs/tags/v' \
       "$1" >/dev/null 2>&1 || fail "the signature of $1 is not valid"
   elif [ -n "$require_signature" ]; then
     fail "--require-signature needs cosign. Install it from https://docs.sigstore.dev/cosign/installation/"
