@@ -539,9 +539,9 @@ func TestServiceNameFallsBackToContainerAddress(t *testing.T) {
 func TestContainerSpecDNSSearch(t *testing.T) {
 	e, _ := newEngine(t, t.TempDir(), newFake())
 	w := wl("a", "live")
-	w.DnsSearch = []string{"e-x.polipan.internal"}
+	w.DnsSearch = []string{"e-x.env.polipan.internal"}
 	sp := e.containerSpec(w)
-	if len(sp.DNSSearch) != 1 || sp.DNSSearch[0] != "e-x.polipan.internal" {
+	if len(sp.DNSSearch) != 1 || sp.DNSSearch[0] != "e-x.env.polipan.internal" {
 		t.Fatalf("dns search: %v", sp.DNSSearch)
 	}
 }

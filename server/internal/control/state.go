@@ -53,12 +53,12 @@ func EnvDomain(envID string) string {
 // EnvServiceName is the name <service>.<env domain>. With the search domain of the environment, the short Compose
 // name of a service (app) resolves to it for the containers of the same environment only.
 func EnvServiceName(service, envID string) string {
-	return strings.ToLower(service) + "." + EnvDomain(envID)
+	return strings.ToLower(service) + "." + EnvDomain(envID) + ".env"
 }
 
 // EnvDNSSearch is the DNS search list of the containers of an environment.
 func EnvDNSSearch(envID string) []string {
-	return []string{EnvDomain(envID) + ".polipan.internal"}
+	return []string{EnvDomain(envID) + ".env.polipan.internal"}
 }
 
 // buildDesiredState makes the full document of a node from the database.

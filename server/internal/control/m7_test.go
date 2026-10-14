@@ -762,7 +762,7 @@ func TestAC_NODE_09_RemoteEndpointsSameEnvironmentOnly(t *testing.T) {
 		if w.Ip == "" || w.EnvironmentId != envID {
 			t.Fatalf("workload of b: %v", w)
 		}
-		if len(w.DnsSearch) != 1 || w.DnsSearch[0] != control.EnvDomain(envID)+".polipan.internal" {
+		if len(w.DnsSearch) != 1 || w.DnsSearch[0] != control.EnvDomain(envID)+".env.polipan.internal" {
 			t.Fatalf("dns search of b: %v", w.DnsSearch)
 		}
 		if got := w.NetworkAliases[len(w.NetworkAliases)-1]; got != control.EnvServiceName("client", envID) {
