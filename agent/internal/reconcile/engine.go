@@ -546,7 +546,7 @@ func (e *Engine) containerSpec(w *agentv1.WorkloadSpec) docker.ContainerSpec {
 	sp := docker.ContainerSpec{
 		Name: w.ContainerName, Image: w.ImageRef, Cmd: w.Command, Entrypoint: w.Entrypoint,
 		Env: w.Env, Labels: buildLabels(w), Network: e.Network, Aliases: aliases,
-		RestartPolicy: w.RestartPolicy, StopTimeout: int(w.StopGraceSeconds), DNS: e.DNSServers,
+		RestartPolicy: w.RestartPolicy, StopTimeout: int(w.StopGraceSeconds), DNS: e.DNSServers, DNSSearch: w.DnsSearch,
 		// No NET_RAW: a workload must not forge source addresses or ARP on the shared bridge (REQ-SEC-106).
 		CapDrop: []string{"NET_RAW"},
 	}

@@ -95,3 +95,20 @@ func TestREQ_NODE_009_SetMultiAnswersEveryAddress(t *testing.T) {
 		t.Fatalf("the answer order must be stable: %v", first)
 	}
 }
+
+// T-383: the same service name in two environments gives two different addresses, and a name of one environment
+// is not answered with the address of the other.
+func TestEnvironmentNamesStaySeparate(t *testing.T) {
+	s := &Server{Upstreams: []string{"127.0.0.1:1"}}
+	s.Set(map[string]string{"app.e-a": "172.30.0.5", "app.e-b": "172.30.0.6", "pp-1": "172.30.0.5"})
+	pc, _ := net.ListenPacket("udp", "127.0.0.1:0")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.Serve(ctx, pc)
+	for name, want := range map[string]byte{"app.e-a.polipan.internal.": 5, "app.e-b.polipan.internal.": 6} {
+		m := query(t, pc.LocalAddr().String(), name)
+		if len(m.Answers) != 1 || m.Answers[0].Body.(*dnsmessage.AResource).A != [4]byte{172, 30, 0, want} {
+			t.Fatalf("%s: %+v", name, m.Answers)
+		}
+	}
+}

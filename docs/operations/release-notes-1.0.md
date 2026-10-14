@@ -19,7 +19,7 @@ These risks are known and accepted for 1.0. Each one is linked from the
 
 | Id | Risk | Why it is accepted |
 |---|---|---|
-| AR-1 | The internal DNS name `<service>.<env>.polipan.internal` can be resolved by containers of other environments on the same node. The firewall blocks the traffic, so the name only tells that a service exists. (Open remark R4 of M7.) | Names leak no data and no traffic. Planned: answer DNS per source environment. |
+| AR-1 | The internal DNS name `<service>.<env>.polipan.internal` can be resolved by containers of other environments on the same node. The firewall blocks the traffic, so the name only tells that a service exists. (Open remark R4 of M7.) | Names leak no data and no traffic. Planned: answer DNS per source environment. The short name of a service (`app`) resolves only through the search domain of the own environment (`e-<env id>`), so it leaks nothing across environments. |
 | AR-2 | `NET_RAW` is dropped from every workload container, so `ping` and other raw ICMP tools do not work inside a container. | Safer default (no ARP or packet spoofing). Apps that need it can use TCP checks. |
 | AR-3 | The Caddy admin socket has mode 0660 inside a 0700 directory owned by the agent, not 0600. Caddy runs as another user in its container and needs group access. | The directory is the barrier: only root and the agent can enter it. It is never on a TCP port. |
 | AR-4 | Root on a node sees the secrets of the workloads placed on this node. | Known limit in the threat model: a node only gets its own workloads. |

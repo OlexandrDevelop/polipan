@@ -602,7 +602,7 @@ func (r *run) oneOff(ctx context.Context, kind string, cmd []string, reason stri
 	w := &pb.WorkloadSpec{
 		PlacementId: "oneoff-" + d.id + "-" + kind, ServiceId: d.serviceID, EnvironmentId: d.envID, ReleaseId: r.releaseID,
 		ContainerName: "pp-" + kind + "-" + d.id, ImageRef: r.imageRef, Command: cmd, RestartPolicy: "no",
-		RegistryAuthRef: c.registryAuthRef(r.imageRef), NetworkAliases: nil,
+		RegistryAuthRef: c.registryAuthRef(r.imageRef), NetworkAliases: nil, DnsSearch: EnvDNSSearch(d.envID),
 		Labels: map[string]string{"polipan.oneoff": kind, "polipan.service": d.serviceID},
 	}
 	if err := c.fillWorkload(ctx, c.DB, r.node, w); err != nil {

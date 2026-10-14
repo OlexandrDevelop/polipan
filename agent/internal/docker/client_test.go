@@ -144,3 +144,19 @@ func TestInspectNotFound(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// T-383: the search domain of the environment comes before the zone, so a short name finds the own environment.
+func TestDNSSearchEnvironmentFirst(t *testing.T) {
+	body := createBody(ContainerSpec{DNS: []string{"172.30.0.1"}, DNSSearch: []string{"e-x.polipan.internal"}})
+	got := body["HostConfig"].(map[string]any)["DnsSearch"].([]string)
+	if len(got) != 2 || got[0] != "e-x.polipan.internal" || got[1] != "polipan.internal" {
+		t.Fatalf("search list: %v", got)
+	}
+	old := dnsSearch([]string{"172.30.0.1"}, nil)
+	if len(old) != 1 || old[0] != "polipan.internal" {
+		t.Fatalf("old server: %v", old)
+	}
+	if dnsSearch(nil, []string{"e-x.polipan.internal"}) != nil {
+		t.Fatal("no agent DNS must give no search list")
+	}
+}

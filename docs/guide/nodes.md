@@ -32,6 +32,6 @@ Delete the node. Its certificate is revoked at once. If it still runs work, use 
 
 ## Network
 
-Containers get a name `<service>.<env>.polipan.internal` and reach each other over the mesh. An agent firewall lets
+Containers get a name `<service>.<env>.polipan.internal` and reach each other over the mesh. A container can also use the short name of a service of its own environment, for example `app` or `redis`, as in Docker Compose. This works in env variables and in config files. A container gets this after its next deploy. An agent firewall lets
 a container reach only containers of its own environment and the ingress. Services of different environments talk
 through public domains.

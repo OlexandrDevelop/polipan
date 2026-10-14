@@ -743,7 +743,7 @@ func TestAC_NODE_09_RemoteEndpointsSameEnvironmentOnly(t *testing.T) {
 		if e.Ip == webIP {
 			found = true
 			// The names are the replica, the service id and the stable name of the service (service.environment).
-			if e.EnvironmentId != envID || len(e.Names) != 3 || !strings.HasPrefix(e.Names[1], "svc-") || e.Names[2] != "web.prod" {
+			if e.EnvironmentId != envID || len(e.Names) != 4 || !strings.HasPrefix(e.Names[1], "svc-") || e.Names[2] != "web.prod" || e.Names[3] != control.EnvServiceName("web", envID) {
 				t.Fatalf("endpoint: %v", e)
 			}
 		}
@@ -757,10 +757,16 @@ func TestAC_NODE_09_RemoteEndpointsSameEnvironmentOnly(t *testing.T) {
 			t.Fatalf("unknown environment: %v", e)
 		}
 	}
-	// The workloads carry their fixed address.
+	// The workloads carry their fixed address and the search domain of their environment (T-383).
 	for _, w := range dsB.Workloads {
 		if w.Ip == "" || w.EnvironmentId != envID {
 			t.Fatalf("workload of b: %v", w)
+		}
+		if len(w.DnsSearch) != 1 || w.DnsSearch[0] != control.EnvDomain(envID)+".polipan.internal" {
+			t.Fatalf("dns search of b: %v", w.DnsSearch)
+		}
+		if got := w.NetworkAliases[len(w.NetworkAliases)-1]; got != control.EnvServiceName("client", envID) {
+			t.Fatalf("aliases of b: %v", w.NetworkAliases)
 		}
 	}
 }

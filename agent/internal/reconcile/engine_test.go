@@ -534,3 +534,14 @@ func TestServiceNameFallsBackToContainerAddress(t *testing.T) {
 		t.Fatalf("fallback: %v", got)
 	}
 }
+
+// T-383: the search domains of the server reach the container spec.
+func TestContainerSpecDNSSearch(t *testing.T) {
+	e, _ := newEngine(t, t.TempDir(), newFake())
+	w := wl("a", "live")
+	w.DnsSearch = []string{"e-x.polipan.internal"}
+	sp := e.containerSpec(w)
+	if len(sp.DNSSearch) != 1 || sp.DNSSearch[0] != "e-x.polipan.internal" {
+		t.Fatalf("dns search: %v", sp.DNSSearch)
+	}
+}

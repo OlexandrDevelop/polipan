@@ -243,6 +243,9 @@ message WorkloadSpec {
   // Placements on this node that must be healthy before this one is started by the agent (boot, self-heal).
   // The server resolves config.depends_on to the live and candidate placements of those services on the same node.
   repeated string start_after_placement_ids = 23;
+  // DNS search domains of the container, before polipan.internal. The server sets the domain of the environment, so a
+  // short Compose name (app) resolves to the service of the same environment only.
+  repeated string dns_search = 24;
 }
 
 message Mount {

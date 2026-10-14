@@ -38,6 +38,7 @@ type ContainerSpec struct {
 	CapAdd        []string
 	CapDrop       []string // capabilities removed from the container
 	DNS           []string // DNS servers for the container
+	DNSSearch     []string // extra search domains, put before polipan.internal when the agent DNS is used
 	IP            string   // fixed IPv4 address on Network (must be inside the subnet of the network). Empty = Docker picks.
 }
 

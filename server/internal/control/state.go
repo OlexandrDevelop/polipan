@@ -43,6 +43,24 @@ func ServiceName(service, envSlug string) string {
 	return strings.ToLower(service + "." + envSlug)
 }
 
+// EnvDomain is the DNS label of an environment. It comes from the environment id, not from the slug, because slugs
+// repeat across projects. Ids are unique and safe in DNS.
+func EnvDomain(envID string) string {
+	id := strings.TrimPrefix(strings.ToLower(envID), "env_")
+	return "e-" + strings.ReplaceAll(id, "_", "-")
+}
+
+// EnvServiceName is the name <service>.<env domain>. With the search domain of the environment, the short Compose
+// name of a service (app) resolves to it for the containers of the same environment only.
+func EnvServiceName(service, envID string) string {
+	return strings.ToLower(service) + "." + EnvDomain(envID)
+}
+
+// EnvDNSSearch is the DNS search list of the containers of an environment.
+func EnvDNSSearch(envID string) []string {
+	return []string{EnvDomain(envID) + ".polipan.internal"}
+}
+
 // buildDesiredState makes the full document of a node from the database.
 func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, version int64) (*pb.DesiredState, error) {
 	ds := &pb.DesiredState{Version: version, Ingress: &pb.IngressSpec{AcmeEmail: c.Config.ACMEEmail, AcmeCa: "letsencrypt"}, MeshCidr: c.Config.MeshCIDR}
@@ -94,7 +112,8 @@ func (c *Control) buildDesiredState(ctx context.Context, q dbq, nodeID string, v
 			Health:           cfg.healthSpec(),
 			StopGraceSeconds: uint32(cfg.stopGraceSeconds()),
 			RestartPolicy:    cfg.RestartPolicy,
-			NetworkAliases:   []string{name, dbengine.Alias(sid), ServiceName(svcName, envSlug)},
+			NetworkAliases:   []string{name, dbengine.Alias(sid), ServiceName(svcName, envSlug), EnvServiceName(svcName, eid)},
+			DnsSearch:        EnvDNSSearch(eid),
 			Ip:               ip,
 			Resources:        cfg.resourceSpec(),
 			Labels: map[string]string{
@@ -331,7 +350,7 @@ func (c *Control) addRemoteEndpoints(ctx context.Context, q dbq, nodeID string, 
 			return err
 		}
 		ds.RemoteEndpoints = append(ds.RemoteEndpoints, &pb.Endpoint{
-			Names: []string{ContainerName(pid), dbengine.Alias(sid), ServiceName(svcName, envSlug)}, Ip: ip, EnvironmentId: eid, ServiceId: sid,
+			Names: []string{ContainerName(pid), dbengine.Alias(sid), ServiceName(svcName, envSlug), EnvServiceName(svcName, eid)}, Ip: ip, EnvironmentId: eid, ServiceId: sid,
 		})
 	}
 	return rows.Err()
