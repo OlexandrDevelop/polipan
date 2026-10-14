@@ -65,6 +65,12 @@ type ComposeOptions struct {
 	// EnvExamples maps the path of an env file that is not in the repository to the path of an example file that is
 	// (.env.example, .env.sample, .env.dist). The content of the example is in EnvFiles under its own path.
 	EnvExamples map[string]string
+	// BindFiles are the files that services bind mount, read from the repository by path (ComposeBindSources).
+	BindFiles map[string][]byte
+	// BindDirs are small folders that services bind mount: the path of the folder, then the files by path inside it.
+	BindDirs map[string]map[string][]byte
+	// BindSkipped maps a bind source that is in the repository but was not read to the reason.
+	BindSkipped map[string]string
 	// Project is the project slug for the replacement polipan.yaml.
 	Project string
 }
@@ -287,7 +293,7 @@ func importCompose(data []byte, opts ComposeOptions) (*ComposeResult, error) {
 	}
 	extras := map[string]*composeExtra{} // by compose name
 	if opts.SkipUnsafe {
-		dropUnsafe(doc, res, extras)
+		dropUnsafe(doc, res, extras, bindInput{fromRepo: opts.Repo != nil, dir: repoDir(opts.Repo), opts: &opts})
 		services, _ = doc["services"].(map[string]any)
 		if len(services) == 0 {
 			return nil, Problems{{Path: "services", Message: "no service is left after the unsafe ones were skipped"}}
@@ -383,6 +389,7 @@ func importCompose(data []byte, opts ComposeOptions) (*ComposeResult, error) {
 		if git != nil && len(entry.Ports) == 0 && svc["restart"] == nil && svc["entrypoint"] != nil {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("%s looks like a command that runs once (it has an entrypoint, no port and no restart). Delete the service if it should not run all the time", path))
 		}
+		mergeImported(path, &entry, extras[raw], res)
 		res.Manifest.Services[name] = entry
 	}
 	if len(ps) == 0 {
@@ -415,6 +422,31 @@ func importCompose(data []byte, opts ComposeOptions) (*ComposeResult, error) {
 	res.ReplacementYAML = y
 	sortLosses(res.Losses)
 	return res, nil
+}
+
+// mergeImported adds the files that were read from the repository to the files of the service. A path that another
+// file or a volume of the service already uses is not imported.
+func mergeImported(where string, entry *ServiceEntry, x *composeExtra, res *ComposeResult) {
+	if x == nil {
+		return
+	}
+	used := map[string]bool{}
+	for _, f := range entry.Files {
+		used[f.Path] = true
+	}
+	for _, v := range entry.Volumes {
+		used[v.Path] = true
+	}
+	for _, f := range x.Imported {
+		if used[f.Path] {
+			res.Losses = append(res.Losses, Loss{Path: where + ".volumes", Key: "volumes", Disposition: LossDropped,
+				Lost:        "the file " + f.Path + " from the repository: another mount of the service uses this path",
+				Replacement: "Add the file in the Files tab of the service, with a path that no other mount uses."})
+			continue
+		}
+		used[f.Path] = true
+		entry.Files = append(entry.Files, f)
+	}
 }
 
 func repoDir(r *ComposeRepo) string {
@@ -607,7 +639,7 @@ func composeBuild(where string, b any, repo *ComposeRepo) (*GitSource, Problems)
 
 // dropUnsafe removes the services that mount the Docker socket or are privileged, and the bind mounts of host
 // folders. Each one is told in a warning and in a loss with its replacement.
-func dropUnsafe(doc map[string]any, res *ComposeResult, extras map[string]*composeExtra) {
+func dropUnsafe(doc map[string]any, res *ComposeResult, extras map[string]*composeExtra, in bindInput) {
 	warns := &res.Warnings
 	services, _ := doc["services"].(map[string]any)
 	volIndex := regexp.MustCompile(`\.volumes\[(\d+)\]$`)
@@ -642,7 +674,7 @@ func dropUnsafe(doc map[string]any, res *ComposeResult, extras map[string]*compo
 				if extras[name] == nil {
 					extras[name] = &composeExtra{}
 				}
-				res.Losses = append(res.Losses, bindLoss(fmt.Sprintf("services.%s.volumes[%d]", name, i), item, extras[name]))
+				res.Losses = append(res.Losses, bindLoss(fmt.Sprintf("services.%s.volumes[%d]", name, i), item, extras[name], in))
 				continue
 			}
 			kept = append(kept, item)

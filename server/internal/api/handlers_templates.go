@@ -427,6 +427,9 @@ func (h *Handlers) ImportComposeGit(w http.ResponseWriter, r *http.Request, envi
 	var data []byte
 	envFiles := map[string][]byte{}
 	examples := map[string]string{}
+	bindFiles := map[string][]byte{}
+	bindDirs := map[string]map[string][]byte{}
+	bindSkipped := map[string]string{}
 	err = h.withConfigClone(r.Context(), h.orgID(r), cac.ConfigSource{ConnectionID: src.ConnectionID, Repo: src.Repo, Branch: src.Branch}, "", func(root string) error {
 		var rerr error
 		if data, rerr = readRepoFile(root, file, false); rerr != nil {
@@ -446,6 +449,10 @@ func (h *Handlers) ImportComposeGit(w http.ResponseWriter, r *http.Request, envi
 				}
 			}
 		}
+		// A file or a small folder that a service bind mounts is read the same way. Why one is not read is told.
+		for _, p := range tpl.ComposeBindSources(data, vars, dir) {
+			readBindSource(root, p, bindFiles, bindDirs, bindSkipped)
+		}
 		return nil
 	})
 	if err != nil {
@@ -462,6 +469,9 @@ func (h *Handlers) ImportComposeGit(w http.ResponseWriter, r *http.Request, envi
 		Vars:        vars,
 		EnvFiles:    envFiles,
 		EnvExamples: examples,
+		BindFiles:   bindFiles,
+		BindDirs:    bindDirs,
+		BindSkipped: bindSkipped,
 		Project:     h.projectSlug(r, env),
 	})
 	if templateFailed(w, r, err) || fail(w, r, err) {

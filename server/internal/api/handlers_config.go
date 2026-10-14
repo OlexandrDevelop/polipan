@@ -3,18 +3,22 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -519,4 +523,95 @@ func normJSON(v any) any {
 	var out any
 	_ = json.Unmarshal(raw, &out)
 	return out
+}
+
+// Limits of a folder that a service bind mounts and that is imported as files.
+const (
+	maxBindDirFiles = 20
+	maxBindDirBytes = 256 << 10
+)
+
+// isText tells if the content is text that can be a file of a service: valid UTF-8, no NUL byte.
+func isText(b []byte) bool {
+	return utf8.Valid(b) && !bytes.Contains(b, []byte{0})
+}
+
+// readBindSource reads a bind source of a Compose file from the clone: a text file, or a small folder. A source
+// that is not in the repository is not listed. One that is there but is not read gets a reason in skipped.
+func readBindSource(root, p string, files map[string][]byte, dirs map[string]map[string][]byte, skipped map[string]string) {
+	fi, err := os.Lstat(filepath.Join(root, filepath.FromSlash(p)))
+	if err != nil {
+		return
+	}
+	switch {
+	case fi.Mode()&os.ModeSymlink != 0:
+		skipped[p] = "it is a symbolic link, which is not read"
+	case fi.IsDir():
+		d, err := readRepoDir(root, p)
+		if err != nil {
+			skipped[p] = err.Error()
+			return
+		}
+		dirs[p] = d
+	case fi.Mode().IsRegular():
+		b, err := readRepoFile(root, p, true)
+		switch {
+		case err != nil:
+			skipped[p] = err.Error()
+		case !isText(b):
+			skipped[p] = "the file is not text"
+		default:
+			files[p] = b
+		}
+	default:
+		skipped[p] = "it is not a regular file"
+	}
+}
+
+// readRepoDir reads all files of a small folder of a cloned repository, by path inside the folder. All or nothing: a
+// symbolic link, a file that is not text, too many files or too much data refuses the whole folder.
+func readRepoDir(root, dir string) (map[string][]byte, error) {
+	base, err := build.ResolveInside(root, dir)
+	if err != nil {
+		return nil, fmt.Errorf("the folder is not in the repository")
+	}
+	out := map[string][]byte{}
+	total := 0
+	err = filepath.WalkDir(base, func(full string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return errors.New("the folder has a symbolic link or a special file")
+		}
+		if len(out) >= maxBindDirFiles {
+			return fmt.Errorf("the folder has more than %d files", maxBindDirFiles)
+		}
+		rel, err := filepath.Rel(base, full)
+		if err != nil {
+			return err
+		}
+		b, err := readRepoFile(root, path.Join(dir, filepath.ToSlash(rel)), true)
+		if err != nil {
+			return err
+		}
+		if total += len(b); total > maxBindDirBytes {
+			return fmt.Errorf("the folder has more than %d KiB of files", maxBindDirBytes>>10)
+		}
+		if !isText(b) {
+			return fmt.Errorf("the folder has a file that is not text (%s)", filepath.ToSlash(rel))
+		}
+		out[filepath.ToSlash(rel)] = b
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return nil, errors.New("the folder has no files")
+	}
+	return out, nil
 }

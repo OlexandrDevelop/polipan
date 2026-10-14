@@ -35,9 +35,10 @@ const (
 
 // composeExtra is what the replacement polipan.yaml adds to a service for the parts that were dropped.
 type composeExtra struct {
-	Volumes []Volume
-	Files   []File
-	Secrets []secretRef
+	Volumes  []Volume
+	Files    []File // placeholders for the replacement YAML only. They are never deployed.
+	Secrets  []secretRef
+	Imported []File // files read from the repository. They become files of the service.
 }
 
 type secretRef struct {
@@ -288,9 +289,95 @@ func envFileReplacement(plain, secrets []string) string {
 	return b.String()
 }
 
+// bindInput is what bindLoss knows about the repository.
+type bindInput struct {
+	fromRepo bool
+	dir      string
+	opts     *ComposeOptions
+}
+
+// secretKeyExt are the file extensions of keys and certificates. Such a file is never read.
+var secretKeyExt = map[string]bool{".pem": true, ".key": true, ".p12": true, ".pfx": true, ".jks": true,
+	".keystore": true, ".crt": true, ".cer": true, ".der": true, ".kdbx": true}
+
+// secretFileNames are the names of files that hold secrets. Such a file is never read.
+var secretFileNames = map[string]bool{".env": true, ".htpasswd": true, "id_rsa": true, "id_ed25519": true,
+	"credentials": true, ".npmrc": true, ".pgpass": true}
+
+// secretishBind tells if a bind mount looks like it holds secrets, by its source and target. Such a file is never
+// read from the repository.
+func secretishBind(source, target string) bool {
+	if strings.HasPrefix(target, "/run/secrets") || strings.Contains(strings.ToLower(source), "secret") {
+		return true
+	}
+	for _, p := range []string{source, target} {
+		base := strings.ToLower(path.Base(p))
+		if secretFileNames[base] || secretKeyExt[path.Ext(base)] || strings.HasPrefix(base, ".env.") || IsSecretName(strings.ToUpper(strings.NewReplacer("-", "_", ".", "_").Replace(base))) {
+			return true
+		}
+	}
+	return false
+}
+
+// bindRepoPath is the repository path of a relative bind source. It is "" for any other source.
+func bindRepoPath(source, dir string) string {
+	if !strings.HasPrefix(source, ".") {
+		return ""
+	}
+	return envFileRepoPath(source, dir)
+}
+
+// ComposeBindSources lists the relative bind sources of the services of a Compose file, as paths inside the
+// repository. dir is the folder of the Compose file. Sources that look like secrets are not listed.
+func ComposeBindSources(data []byte, vars map[string]string, dir string) []string {
+	text, _ := composeInterpolate(string(data), vars)
+	var doc map[string]any
+	if yaml.Unmarshal([]byte(text), &doc) != nil {
+		return nil
+	}
+	services, _ := doc["services"].(map[string]any)
+	seen := map[string]bool{}
+	var out []string
+	for _, name := range sortedKeys(services) {
+		svc, _ := services[name].(map[string]any)
+		for _, item := range asList(svc["volumes"]) {
+			source, target, _ := bindParts(item)
+			p := bindRepoPath(source, dir)
+			if p == "" || seen[p] || secretishBind(source, target) {
+				continue
+			}
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// importedBind finds what was read from the repository for a bind source. It returns the files to mount, or a
+// reason why they are not imported ("" reason and no files: nothing was read).
+func importedBind(repoPath, target string, opts *ComposeOptions) ([]File, string) {
+	if b, ok := opts.BindFiles[repoPath]; ok {
+		if strings.Contains(string(b), "${{") {
+			return nil, "the file has ${{ in it, which Polipan would replace"
+		}
+		return []File{{Path: target, Content: string(b)}}, ""
+	}
+	if d, ok := opts.BindDirs[repoPath]; ok {
+		var out []File
+		for _, rel := range sortedKeys(d) {
+			if strings.Contains(string(d[rel]), "${{") {
+				return nil, "a file of the folder has ${{ in it, which Polipan would replace"
+			}
+			out = append(out, File{Path: path.Join(target, rel), Content: string(d[rel])})
+		}
+		return out, ""
+	}
+	return nil, opts.BindSkipped[repoPath]
+}
+
 // bindLoss tells what a dropped bind mount was and what replaces it in polipan.yaml. A host path that is not a
-// folder of the repository is never written in the message.
-func bindLoss(where string, item any, extra *composeExtra) Loss {
+// folder of the repository is never written in the message. A file or folder that is in the repository is imported.
+func bindLoss(where string, item any, extra *composeExtra, in bindInput) Loss {
 	source, target, readOnly := bindParts(item)
 	l := Loss{Path: where, Key: "volumes", Disposition: LossDropped}
 	label := "a folder of the host"
@@ -299,7 +386,27 @@ func bindLoss(where string, item any, extra *composeExtra) Loss {
 	}
 	base := path.Base(target)
 	isFile := strings.Contains(strings.TrimPrefix(base, "."), ".")
-	secretish := strings.HasPrefix(target, "/run/secrets") || strings.Contains(strings.ToLower(source), "secret")
+	secretish := secretishBind(source, target)
+	reason := ""
+	if in.fromRepo && !secretish {
+		if rp := bindRepoPath(source, in.dir); rp != "" {
+			files, why := importedBind(rp, target, in.opts)
+			if len(files) > 0 {
+				extra.Imported = append(extra.Imported, files...)
+				l.Disposition = LossImported
+				l.Lost = fmt.Sprintf("%s is not mounted from the host: it is imported from the repository as a read-only file at %s", label, target)
+				if len(files) > 1 || in.opts.BindDirs[rp] != nil {
+					l.Lost = fmt.Sprintf("%s is not mounted from the host: its %d files are imported from the repository as read-only files in %s", label, len(files), target)
+				}
+				l.Replacement = "Nothing to do. Change the files in the Files tab of the service."
+				return l
+			}
+			reason = why
+			if reason == "" {
+				reason = "it is not in the repository (often it is in .gitignore)"
+			}
+		}
+	}
 	switch {
 	case secretish:
 		name := strings.ToUpper(composeName.ReplaceAllString(strings.ToLower(strings.TrimSuffix(path.Base(source), path.Ext(source))), "_"))
@@ -330,6 +437,9 @@ func bindLoss(where string, item any, extra *composeExtra) Loss {
 		if readOnly {
 			l.Replacement += " The folder was read-only: if it holds code or fixed data, copy it into the image in the Dockerfile instead."
 		}
+	}
+	if reason != "" {
+		l.Lost += ". It is not imported from the repository: " + reason
 	}
 	return l
 }
