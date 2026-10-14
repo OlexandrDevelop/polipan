@@ -145,3 +145,21 @@ func TestComposeBindFolderAndMarker(t *testing.T) {
 		t.Fatalf("marker loss = %+v", l)
 	}
 }
+
+// A secret-like file inside a folder refuses the whole folder: nothing is imported, and the content is not in the YAML.
+func TestComposeBindFolderSecretLikeFile(t *testing.T) {
+	for _, rel := range []string{".htpasswd", "ssl/server.key", "ssl/site.pem", "api_token.conf"} {
+		res, err := tpl.ImportComposeWith([]byte(bindFile), bindOpts(tpl.ComposeOptions{
+			BindDirs: map[string]map[string][]byte{"docker/php": {"a.ini": []byte("a=1\n"), rel: []byte("TOPSECRET")}},
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := len(res.Manifest.Services["nginx"].Files); n != 0 || strings.Contains(res.ReplacementYAML, "TOPSECRET") {
+			t.Fatalf("%s: folder imported (%d files)", rel, n)
+		}
+		if l := lossAt(res, "3"); l == nil || l.Disposition != tpl.LossDropped || !strings.Contains(l.Lost, "looks like a secret") {
+			t.Fatalf("%s: loss = %+v", rel, l)
+		}
+	}
+}

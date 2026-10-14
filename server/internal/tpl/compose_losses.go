@@ -365,6 +365,9 @@ func importedBind(repoPath, target string, opts *ComposeOptions) ([]File, string
 	if d, ok := opts.BindDirs[repoPath]; ok {
 		var out []File
 		for _, rel := range sortedKeys(d) {
+			if secretishBind(rel, path.Join(target, rel)) {
+				return nil, "the folder has a file that looks like a secret (" + rel + ")"
+			}
 			if strings.Contains(string(d[rel]), "${{") {
 				return nil, "a file of the folder has ${{ in it, which Polipan would replace"
 			}
