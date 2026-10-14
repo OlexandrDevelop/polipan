@@ -185,7 +185,24 @@ func wireCompose(res *ComposeResult, ip interpolated, names map[string]string, f
 			// The database service says which user, database and password it was made with. The example file has
 			// the values of a local setup (DB_USERNAME=root), which do not exist in that database.
 			if from := sqlSource[kinds[sql[0]]][k]; from != "" {
-				if v := fmt.Sprint(m.Services[sql[0]].Env[from]); v != "" {
+				dbEnv := m.Services[sql[0]].Env
+				v := ""
+				if raw, ok := dbEnv[from]; ok && raw != nil {
+					v = fmt.Sprint(raw)
+				}
+				if v == "" && kinds[sql[0]] == "postgres" {
+					// The postgres image defaults: the user is postgres, the database has the name of the user.
+					switch from {
+					case "POSTGRES_USER":
+						v = "postgres"
+					case "POSTGRES_DB":
+						v = "postgres"
+						if raw, ok := dbEnv["POSTGRES_USER"]; ok && raw != nil && fmt.Sprint(raw) != "" {
+							v = fmt.Sprint(raw)
+						}
+					}
+				}
+				if v != "" {
 					env[k] = v
 				}
 			}

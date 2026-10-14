@@ -143,6 +143,29 @@ func TestComposeLaravelStack(t *testing.T) {
 	}
 }
 
+// The database service does not set POSTGRES_USER: the app gets the image default, never the text "<nil>".
+func TestComposeLaravelPostgresWithoutUser(t *testing.T) {
+	file := strings.Replace(laravelFile, "      POSTGRES_USER: laravel\n", "", 1)
+	res, err := tpl.ImportComposeWith([]byte(file), laravelOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"app", "worker"} {
+		env := res.Manifest.Services[name].Env
+		if got := fmt.Sprint(env["DB_USERNAME"]); got != "postgres" {
+			t.Errorf("%s DB_USERNAME = %q, want postgres", name, got)
+		}
+		if got := fmt.Sprint(env["DB_DATABASE"]); got != "laravel" {
+			t.Errorf("%s DB_DATABASE = %q, want laravel", name, got)
+		}
+		for k, v := range env {
+			if strings.Contains(fmt.Sprint(v), "<nil>") {
+				t.Errorf("%s %s has <nil>", name, k)
+			}
+		}
+	}
+}
+
 // No generated value is in any text of the answer, and no marker is left.
 func TestComposeGeneratedValueDoesNotLeak(t *testing.T) {
 	res, err := tpl.ImportComposeWith([]byte(laravelFile), laravelOpts())
