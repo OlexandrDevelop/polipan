@@ -18,18 +18,19 @@ import (
 type Loss struct {
 	Path        string `json:"path"`        // services.app.env_file, services.app.volumes[1]
 	Key         string `json:"key"`         // the Compose key: env_file, volumes, build, ports, or another key
-	Disposition string `json:"disposition"` // imported, replaced, ignored, dropped or manual
+	Disposition string `json:"disposition"` // imported, replaced, generated, ignored, dropped or manual
 	Lost        string `json:"lost"`        // what is lost, in one sentence
 	Replacement string `json:"replacement"` // a polipan.yaml part or one manual step
 }
 
 // The dispositions of a Loss.
 const (
-	LossImported = "imported" // the content was imported in another form (env_file values)
-	LossReplaced = "replaced" // Polipan does this in its own way, nothing to do
-	LossIgnored  = "ignored"  // not imported. The replacement says what to set
-	LossDropped  = "dropped"  // removed because it is not allowed (a bind mount of a host folder, an unsafe service)
-	LossManual   = "manual"   // a step that only the user can do
+	LossImported  = "imported"  // the content was imported in another form (env_file values)
+	LossReplaced  = "replaced"  // Polipan does this in its own way, nothing to do
+	LossIgnored   = "ignored"   // not imported. The replacement says what to set
+	LossDropped   = "dropped"   // removed because it is not allowed (a bind mount of a host folder, an unsafe service)
+	LossManual    = "manual"    // a step that only the user can do
+	LossGenerated = "generated" // a secret that Polipan made, because the file needs it and nobody gave it
 )
 
 // composeExtra is what the replacement polipan.yaml adds to a service for the parts that were dropped.
@@ -170,13 +171,23 @@ func parseEnvFile(data []byte) (map[string]string, []string, int) {
 
 // envFileLoss imports the env files of one service into env. The environment key of the service wins over the
 // files, and a later file wins over an earlier one, like in Compose. The values are never put in a message.
-func envFileLoss(where string, files []composeEnvFile, content map[string][]byte, fromRepo bool, env map[string]any) []Loss {
+// It also returns the names of the variables that came from an example file.
+func envFileLoss(where string, files []composeEnvFile, content map[string][]byte, examples map[string]string, fromRepo bool, env map[string]any) ([]Loss, []string) {
 	var out []Loss
 	fromFiles := map[string]string{}
 	var order []string
+	isExample := map[string]bool{}
 	for _, f := range files {
 		l := Loss{Path: where, Key: "env_file"}
 		data, ok := content[f.RepoPath]
+		example := ""
+		if !ok && fromRepo && f.RepoPath != "" {
+			if ex := examples[f.RepoPath]; ex != "" {
+				if d, found := content[ex]; found {
+					data, ok, example = d, true, ex
+				}
+			}
+		}
 		switch {
 		case f.RepoPath == "":
 			l.Disposition = LossManual
@@ -201,9 +212,13 @@ func envFileLoss(where string, files []composeEnvFile, content map[string][]byte
 					order = append(order, k)
 				}
 				fromFiles[k] = values[k]
+				isExample[k] = example != ""
 			}
 			l.Disposition = LossImported
 			l.Lost = fmt.Sprintf("%s is not mounted: its %d variables are imported as variables of the service", f.Name, len(names))
+			if example != "" {
+				l.Lost = fmt.Sprintf("%s is not in the repository, so the %d variables of %s are used as variables of the service", f.Name, len(names), path.Base(example))
+			}
 			if bad > 0 {
 				l.Lost += fmt.Sprintf(" (%d lines that are not NAME=value are skipped)", bad)
 			}
@@ -219,10 +234,31 @@ func envFileLoss(where string, files []composeEnvFile, content map[string][]byte
 		}
 		out = append(out, l)
 	}
+	var fromExample []string
 	for _, k := range order {
 		if _, set := env[k]; !set {
 			env[k] = fromFiles[k]
+			if isExample[k] {
+				fromExample = append(fromExample, k)
+			}
 		}
+	}
+	return out, fromExample
+}
+
+// EnvExampleCandidates lists the example files that can stand in for an env file that is not in the repository,
+// in the order they are tried. For dir/.env: .env.example, .env.sample and .env.dist in the same folder. For
+// another name (dir/x.env) the files with that name come first.
+func EnvExampleCandidates(repoPath string) []string {
+	dir, base := path.Split(repoPath)
+	var out []string
+	if base != ".env" {
+		for _, sfx := range []string{".example", ".sample", ".dist"} {
+			out = append(out, dir+base+sfx)
+		}
+	}
+	for _, sfx := range []string{".example", ".sample", ".dist"} {
+		out = append(out, dir+".env"+sfx)
 	}
 	return out
 }

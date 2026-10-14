@@ -1766,7 +1766,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. The env_file files that are in the repository are imported as variables, and the ones that look like secrets as secrets. dry_run returns the result only. */
+        /** Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. The env_file files that are in the repository are imported as variables, and the ones that look like secrets as secrets. A missing env_file uses .env.example, .env.sample or .env.dist of the same folder. A password or key that the file needs and nobody gave is generated and stored as one shared secret. The host of a database or a redis service of the file is filled in. dry_run returns the result only. */
         post: operations["importComposeGit"];
         delete?: never;
         options?: never;
@@ -2660,7 +2660,7 @@ export interface components {
             path: string;
             /** @description The Compose key, for example env_file, volumes, build, ports. */
             key: string;
-            /** @description One of imported, replaced, ignored, dropped, manual. imported: the content is imported in another form. replaced: Polipan does it in its own way. ignored: not imported. dropped: removed because it is not allowed. manual: a step for the user. */
+            /** @description One of imported, replaced, generated, ignored, dropped, manual. imported: the content is imported in another form. replaced: Polipan does it in its own way. generated: Polipan made a secret that the file needs and nobody gave. ignored: not imported. dropped: removed because it is not allowed. manual: a step for the user. */
             disposition: string;
             /** @description What is lost. Never a variable value or a host path. */
             lost: string;

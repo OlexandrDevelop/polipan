@@ -936,7 +936,7 @@ type ComposeImportResult struct {
 
 // ComposeLoss defines model for ComposeLoss.
 type ComposeLoss struct {
-	// Disposition One of imported, replaced, ignored, dropped, manual. imported: the content is imported in another form. replaced: Polipan does it in its own way. ignored: not imported. dropped: removed because it is not allowed. manual: a step for the user.
+	// Disposition One of imported, replaced, generated, ignored, dropped, manual. imported: the content is imported in another form. replaced: Polipan does it in its own way. generated: Polipan made a secret that the file needs and nobody gave. ignored: not imported. dropped: removed because it is not allowed. manual: a step for the user.
 	Disposition string `json:"disposition"`
 
 	// Key The Compose key, for example env_file, volumes, build, ports.
@@ -25479,7 +25479,7 @@ type ServerInterface interface {
 	// Convert a Docker Compose file to services (safety validated). dry_run returns the result only.
 	// (POST /environments/{environment_id}/import-compose)
 	ImportCompose(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId, params ImportComposeParams)
-	// Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. The env_file files that are in the repository are imported as variables, and the ones that look like secrets as secrets. dry_run returns the result only.
+	// Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. The env_file files that are in the repository are imported as variables, and the ones that look like secrets as secrets. A missing env_file uses .env.example, .env.sample or .env.dist of the same folder. A password or key that the file needs and nobody gave is generated and stored as one shared secret. The host of a database or a redis service of the file is filled in. dry_run returns the result only.
 	// (POST /environments/{environment_id}/import-compose-git)
 	ImportComposeGit(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId, params ImportComposeGitParams)
 	// Promote all services of this environment to another one (batch). Supports dry_run.
@@ -26169,7 +26169,7 @@ func (_ Unimplemented) ImportCompose(w http.ResponseWriter, r *http.Request, env
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. The env_file files that are in the repository are imported as variables, and the ones that look like secrets as secrets. dry_run returns the result only.
+// Read a Compose file from a Git repository and convert it to services. A service with build is built from the same repository. The env_file files that are in the repository are imported as variables, and the ones that look like secrets as secrets. A missing env_file uses .env.example, .env.sample or .env.dist of the same folder. A password or key that the file needs and nobody gave is generated and stored as one shared secret. The host of a database or a redis service of the file is filled in. dry_run returns the result only.
 // (POST /environments/{environment_id}/import-compose-git)
 func (_ Unimplemented) ImportComposeGit(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId, params ImportComposeGitParams) {
 	w.WriteHeader(http.StatusNotImplemented)

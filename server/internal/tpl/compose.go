@@ -62,6 +62,9 @@ type ComposeOptions struct {
 	// EnvFiles are the env files of the services read from the repository, by path inside it (ComposeEnvFiles).
 	// A file that is not here is not in the repository.
 	EnvFiles map[string][]byte
+	// EnvExamples maps the path of an env file that is not in the repository to the path of an example file that is
+	// (.env.example, .env.sample, .env.dist). The content of the example is in EnvFiles under its own path.
+	EnvExamples map[string]string
 	// Project is the project slug for the replacement polipan.yaml.
 	Project string
 }
@@ -72,28 +75,93 @@ func ImportCompose(data []byte) (*ComposeResult, error) {
 	return ImportComposeWith(data, ComposeOptions{})
 }
 
-var composeVar = regexp.MustCompile(`\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?-)([^}]*))?\}`)
+var composeVar = regexp.MustCompile(`\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?[-?+])([^}]*))?\}`)
 
-// composeInterpolate fills in ${NAME}, ${NAME:-default} and ${NAME-default}. $$ is a dollar sign.
+// genMarkerPrefix starts the marker that stands for a generated secret in the text of a file. The value is never
+// in the text: a later step swaps the marker for a reference to a secret input.
+const genMarkerPrefix = "__polipan_gen_"
+
+func genMarker(name string) string { return genMarkerPrefix + name + "__" }
+
+// genPassName and genNames are the variables that are generated when nobody gives a value.
+var genPassName = regexp.MustCompile(`(?i)PASS`)
+
+var genNames = map[string]bool{"APP_KEY": true, "SECRET_KEY": true, "SECRET_KEY_BASE": true, "JWT_SECRET": true,
+	"APP_SECRET": true, "SESSION_SECRET": true, "NEXTAUTH_SECRET": true}
+
+// generatable tells if a variable without a value gets a generated secret.
+func generatable(name string) bool { return genNames[name] || genPassName.MatchString(name) }
+
+// interpolated is the result of composeInterpolateGen.
+type interpolated struct {
+	Text      string
+	Unset     []string          // names with no value that cannot be generated
+	Generated []string          // names that got a marker
+	Resolved  map[string]string // the value of each variable that the file read (a marker for a generated one)
+}
+
+// composeInterpolate fills in ${NAME}, ${NAME:-default}, ${NAME-default} and ${NAME:?message}. $$ is a dollar sign.
 // It returns the names that had no value and no default.
 func composeInterpolate(text string, vars map[string]string) (string, []string) {
-	unset := map[string]bool{}
+	r := composeInterpolateGen(text, vars, false)
+	return r.Text, r.Unset
+}
+
+// composeInterpolateGen is composeInterpolate. With gen, a variable that has no value and can be generated gets a
+// marker instead of an empty text.
+func composeInterpolateGen(text string, vars map[string]string, gen bool) interpolated {
+	unset, generated := map[string]bool{}, map[string]bool{}
+	resolved := map[string]string{}
 	out := composeVar.ReplaceAllStringFunc(text, func(m string) string {
 		if m == "$$" {
 			return "$"
 		}
 		g := composeVar.FindStringSubmatch(m)
 		name, op, def := g[1], g[2], g[3]
-		if v, ok := vars[name]; ok && (v != "" || op != ":-") {
-			return v
-		}
-		if op != "" {
+		v, set := vars[name]
+		switch op {
+		case "-":
+			if set {
+				resolved[name] = v
+				return v
+			}
 			return def
+		case ":-":
+			if set && v != "" {
+				resolved[name] = v
+				return v
+			}
+			return def
+		case "+":
+			if set {
+				return def
+			}
+			return ""
+		case ":+":
+			if set && v != "" {
+				return def
+			}
+			return ""
+		case ":?":
+			if set && v != "" {
+				resolved[name] = v
+				return v
+			}
+		default: // "" and "?"
+			if set {
+				resolved[name] = v
+				return v
+			}
+		}
+		if gen && generatable(name) {
+			generated[name] = true
+			resolved[name] = genMarker(name)
+			return genMarker(name)
 		}
 		unset[name] = true
 		return ""
 	})
-	return out, sortedKeys(anyBoolMap(unset))
+	return interpolated{Text: out, Unset: sortedKeys(anyBoolMap(unset)), Generated: sortedKeys(anyBoolMap(generated)), Resolved: resolved}
 }
 
 func anyBoolMap(in map[string]bool) map[string]any {
@@ -108,7 +176,7 @@ func anyBoolMap(in map[string]bool) map[string]any {
 func ImportComposeWith(data []byte, opts ComposeOptions) (*ComposeResult, error) {
 	res, err := importCompose(data, opts)
 	if err != nil {
-		return nil, redactSecrets(err, rawSecrets(data, opts))
+		return nil, unmarkErr(redactSecrets(err, rawSecrets(data, opts)))
 	}
 	return res, nil
 }
@@ -152,7 +220,11 @@ func rawSecrets(data []byte, opts ComposeOptions) []secretValue {
 			addList(name, b["args"])
 		}
 		for _, f := range envFilesOf(svc["env_file"], repoDir(opts.Repo)) {
-			if content, ok := opts.EnvFiles[f.RepoPath]; ok && opts.Repo != nil {
+			content, ok := opts.EnvFiles[f.RepoPath]
+			if !ok {
+				content, ok = opts.EnvFiles[opts.EnvExamples[f.RepoPath]]
+			}
+			if ok && opts.Repo != nil {
 				values, _, _ := parseEnvFile(content)
 				for k, v := range values {
 					add(name, k, v)
@@ -199,7 +271,8 @@ func redactSecrets(err error, secrets []secretValue) error {
 
 // importCompose is ImportComposeWith without the redaction of secret values in its errors.
 func importCompose(data []byte, opts ComposeOptions) (*ComposeResult, error) {
-	text, unset := composeInterpolate(string(data), opts.Vars)
+	ip := composeInterpolateGen(string(data), opts.Vars, true)
+	text, unset := ip.Text, ip.Unset
 	var doc map[string]any
 	if err := yaml.Unmarshal([]byte(text), &doc); err != nil {
 		return nil, Problems{{Message: "the Compose file is not valid YAML: " + err.Error()}}
@@ -232,8 +305,9 @@ func importCompose(data []byte, opts ComposeOptions) (*ComposeResult, error) {
 		}
 	}
 	res.Losses = append(res.Losses, topLevelLosses(doc)...)
-	names := map[string]string{}        // compose name -> service name
-	secretVars := map[string][]string{} // service name -> the names of its secret variables
+	names := map[string]string{}                // compose name -> service name
+	secretVars := map[string][]string{}         // service name -> the names of its secret variables
+	fromExample := map[string]map[string]bool{} // service name -> the variables that came from an example env file
 	for _, raw := range sortedKeys(services) {
 		n := strings.Trim(composeName.ReplaceAllString(strings.ToLower(raw), "-"), "-")
 		if n == "" || len(n) > 40 {
@@ -274,6 +348,10 @@ func importCompose(data []byte, opts ComposeOptions) (*ComposeResult, error) {
 		if name == "" {
 			continue
 		}
+		if where, g := markerInKeys(svc, ip.Generated, "image", "ports", "volumes", "build", "deploy", "restart", "depends_on"); where != "" {
+			ps = append(ps, Problem{Path: path + "." + where, Message: "the generated secret " + g + " is used in " + where + ", which cannot hold a secret. Use it in a variable, or in a command (sh -c)"})
+			continue
+		}
 		entry, warns, losses, perr := convertComposeService(path, name, svc, names, git)
 		ps = append(ps, perr...)
 		res.Warnings = append(res.Warnings, warns...)
@@ -284,7 +362,14 @@ func importCompose(data []byte, opts ComposeOptions) (*ComposeResult, error) {
 				if entry.Env == nil {
 					entry.Env = map[string]any{}
 				}
-				res.Losses = append(res.Losses, envFileLoss(path+".env_file", envFilesOf(svc[k], repoDir(opts.Repo)), opts.EnvFiles, opts.Repo != nil, entry.Env)...)
+				ls, ex := envFileLoss(path+".env_file", envFilesOf(svc[k], repoDir(opts.Repo)), opts.EnvFiles, opts.EnvExamples, opts.Repo != nil, entry.Env)
+				res.Losses = append(res.Losses, ls...)
+				for _, key := range ex {
+					if fromExample[name] == nil {
+						fromExample[name] = map[string]bool{}
+					}
+					fromExample[name][key] = true
+				}
 				if len(entry.Env) == 0 {
 					entry.Env = nil
 				}
@@ -295,20 +380,28 @@ func importCompose(data []byte, opts ComposeOptions) (*ComposeResult, error) {
 				res.Losses = append(res.Losses, keyLoss(path, k))
 			}
 		}
-		if names := secretEnv(name, &entry, res); len(names) > 0 {
-			secretVars[name] = names
-		}
 		if git != nil && len(entry.Ports) == 0 && svc["restart"] == nil && svc["entrypoint"] != nil {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("%s looks like a command that runs once (it has an entrypoint, no port and no restart). Delete the service if it should not run all the time", path))
 		}
 		res.Manifest.Services[name] = entry
 	}
 	if len(ps) == 0 {
+		ps = wireCompose(res, ip, names, fromExample, secretVars)
+	}
+	if len(ps) == 0 {
+		for _, name := range sortedKeys(res.Manifest.Services) {
+			e := res.Manifest.Services[name]
+			if more := secretEnv(name, &e, res); len(more) > 0 {
+				secretVars[name] = append(secretVars[name], more...)
+			}
+			res.Manifest.Services[name] = e
+		}
 		ps = secretReuse(res, secretVars)
 	}
 	if len(ps) > 0 {
-		return nil, ps
+		return nil, unmarkProblems(ps)
 	}
+	unmarkResult(res)
 	byName := map[string]*composeExtra{}
 	for raw, x := range extras {
 		if n := names[raw]; n != "" {
@@ -342,7 +435,7 @@ func secretEnvIf(service string, e *ServiceEntry, res *ComposeResult, pick func(
 	var out []string
 	for _, k := range sortedKeys(e.Env) {
 		v := fmt.Sprint(e.Env[k])
-		if v == "" || strings.HasPrefix(v, "${{inputs.") || !pick(k, v) {
+		if v == "" || strings.Contains(v, "${{") || !pick(k, v) {
 			continue
 		}
 		// The number keeps the name unique: API_KEY and api_key are two variables, and the name is lower case.
@@ -380,8 +473,8 @@ func secretReuse(res *ComposeResult, secretVars map[string][]string) Problems {
 	for _, svc := range sortedKeys(res.Manifest.Services) {
 		e := res.Manifest.Services[svc]
 		for _, k := range sortedKeys(e.Env) {
-			if in, ok := strings.CutPrefix(fmt.Sprint(e.Env[k]), "${{inputs."); ok {
-				if v := fmt.Sprint(res.Inputs[strings.TrimSuffix(in, "}}")]); checkedSecret(v) {
+			if in, ok := wholeInputRef(fmt.Sprint(e.Env[k])); ok {
+				if v := fmt.Sprint(res.Inputs[in]); checkedSecret(v) {
 					secrets = append(secrets, secretValue{svc, k, v})
 				}
 			}
@@ -872,4 +965,22 @@ func (m *Manifest) MarshalYAML() ([]byte, error) {
 		return nil, err
 	}
 	return b.Bytes(), nil
+}
+
+// markerInKeys gives the first of the keys of a service that holds the marker of a generated secret, and the name
+// of the variable.
+func markerInKeys(svc map[string]any, generated []string, keys ...string) (string, string) {
+	for _, k := range keys {
+		if v, ok := svc[k]; ok {
+			if b, err := json.Marshal(v); err == nil && strings.Contains(string(b), genMarkerPrefix) {
+				for _, g := range generated {
+					if strings.Contains(string(b), genMarker(g)) {
+						return k, g
+					}
+				}
+				return k, "of the file"
+			}
+		}
+	}
+	return "", ""
 }

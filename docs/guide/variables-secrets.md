@@ -23,6 +23,17 @@ With the CLI the value is read from standard input, never from an argument:
 printf '%s' "$VALUE" | polipan secret set DB_PASSWORD --env production
 ```
 
+## Import a Compose file from Git
+
+When you import a Compose file from a repository, Polipan fills in what a person would type by hand:
+
+- A password or key that the file needs and nobody gave (`${DB_PASSWORD:?...}`, `APP_KEY`, `SECRET_KEY`, `JWT_SECRET`) is generated. It is stored as one secret. Every service that uses the same name gets the same value. You can see it in the Secrets tab.
+- If an `env_file` is not in the repository (often it is in `.gitignore`), Polipan reads `.env.example`, `.env.sample` or `.env.dist` from the same folder.
+- Host variables like `DB_HOST` and `REDIS_HOST` point to the database or redis service of the file.
+- A generated secret in a `command`, an `entrypoint` or a health check is read from the environment of the container (`${NAME}` in `sh -c`).
+
+Variables that cannot be guessed (a token, a DSN) are listed in the warnings. Set them in the Variables tab.
+
 ## Rotate keys
 
 On the control-plane host:

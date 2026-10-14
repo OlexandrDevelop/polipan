@@ -426,6 +426,7 @@ func (h *Handlers) ImportComposeGit(w http.ResponseWriter, r *http.Request, envi
 	// repository, and not through a symbolic link.
 	var data []byte
 	envFiles := map[string][]byte{}
+	examples := map[string]string{}
 	err = h.withConfigClone(r.Context(), h.orgID(r), cac.ConfigSource{ConnectionID: src.ConnectionID, Repo: src.Repo, Branch: src.Branch}, "", func(root string) error {
 		var rerr error
 		if data, rerr = readRepoFile(root, file, false); rerr != nil {
@@ -434,6 +435,15 @@ func (h *Handlers) ImportComposeGit(w http.ResponseWriter, r *http.Request, envi
 		for _, p := range tpl.ComposeEnvFiles(data, vars, dir) {
 			if b, err := readRepoFile(root, p, true); err == nil {
 				envFiles[p] = b
+				continue
+			}
+			// The file is not in the repository (often it is in .gitignore): an example file next to it stands in.
+			for _, ex := range tpl.EnvExampleCandidates(p) {
+				if b, err := readRepoFile(root, ex, true); err == nil {
+					envFiles[ex] = b
+					examples[p] = ex
+					break
+				}
 			}
 		}
 		return nil
@@ -447,11 +457,12 @@ func (h *Handlers) ImportComposeGit(w http.ResponseWriter, r *http.Request, envi
 		return
 	}
 	res, err := tpl.ImportComposeWith(data, tpl.ComposeOptions{
-		Repo:       &tpl.ComposeRepo{URL: src.Repo, Branch: src.Branch, ConnectionID: src.ConnectionID, Dir: dir},
-		SkipUnsafe: body.SkipUnsafe != nil && *body.SkipUnsafe,
-		Vars:       vars,
-		EnvFiles:   envFiles,
-		Project:    h.projectSlug(r, env),
+		Repo:        &tpl.ComposeRepo{URL: src.Repo, Branch: src.Branch, ConnectionID: src.ConnectionID, Dir: dir},
+		SkipUnsafe:  body.SkipUnsafe != nil && *body.SkipUnsafe,
+		Vars:        vars,
+		EnvFiles:    envFiles,
+		EnvExamples: examples,
+		Project:     h.projectSlug(r, env),
 	})
 	if templateFailed(w, r, err) || fail(w, r, err) {
 		return
