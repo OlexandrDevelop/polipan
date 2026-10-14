@@ -348,3 +348,26 @@ services:
 		}
 	}
 }
+
+// A secret in the example file is public. It is replaced by a generated value, never used as it is.
+func TestComposeExampleSecretsAreGenerated(t *testing.T) {
+	opts := laravelOpts()
+	opts.EnvFiles = map[string][]byte{".env.example": []byte(strings.Replace(laravelExample, "APP_KEY=\n", "APP_KEY=base64:PUBLICPUBLICPUBLIC\nJWT_SECRET=changeme\nSTRIPE_SECRET=sk_test_x\n", 1))}
+	res, err := tpl.ImportComposeWith([]byte(laravelFile), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := res.Manifest.Services["app"].Env
+	if fmt.Sprint(env["APP_KEY"]) != "${{inputs.g_app_key}}" || fmt.Sprint(env["JWT_SECRET"]) != "${{inputs.g_jwt_secret}}" {
+		t.Errorf("example secrets must be generated: %v %v", env["APP_KEY"], env["JWT_SECRET"])
+	}
+	if strings.Contains(fmt.Sprint(env["STRIPE_SECRET"]), "g_stripe") {
+		t.Errorf("an outside key is not generated: %v", env["STRIPE_SECRET"])
+	}
+	if fmt.Sprint(env["REDIS_PASSWORD"]) != "${{inputs.g_redis_password}}" {
+		t.Errorf("REDIS_PASSWORD: %v", env["REDIS_PASSWORD"])
+	}
+	if strings.Contains(fmt.Sprint(res.Manifest), "PUBLICPUBLIC") && fmt.Sprint(res.Inputs["g_app_key"]) == "base64:PUBLICPUBLICPUBLIC" {
+		t.Error("the public value is used")
+	}
+}

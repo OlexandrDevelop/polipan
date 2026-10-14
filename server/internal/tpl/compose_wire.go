@@ -179,32 +179,16 @@ func wireCompose(res *ComposeResult, ip interpolated, names map[string]string, f
 				env[k] = rv
 				continue
 			}
-			if len(sql) != 1 || sql[0] == n {
-				continue
+			if len(sql) == 1 && sql[0] != n {
+				if dbValue(m.Services[sql[0]].Env, kinds[sql[0]], k, env) {
+					continue
+				}
 			}
-			// The database service says which user, database and password it was made with. The example file has
-			// the values of a local setup (DB_USERNAME=root), which do not exist in that database.
-			if from := sqlSource[kinds[sql[0]]][k]; from != "" {
-				dbEnv := m.Services[sql[0]].Env
-				v := ""
-				if raw, ok := dbEnv[from]; ok && raw != nil {
-					v = fmt.Sprint(raw)
-				}
-				if v == "" && kinds[sql[0]] == "postgres" {
-					// The postgres image defaults: the user is postgres, the database has the name of the user.
-					switch from {
-					case "POSTGRES_USER":
-						v = "postgres"
-					case "POSTGRES_DB":
-						v = "postgres"
-						if raw, ok := dbEnv["POSTGRES_USER"]; ok && raw != nil && fmt.Sprint(raw) != "" {
-							v = fmt.Sprint(raw)
-						}
-					}
-				}
-				if v != "" {
-					env[k] = v
-				}
+			// A secret of an example file (APP_KEY=base64:..., JWT_SECRET=secret) is public in the repo. It must not
+			// reach a running service, so a value is generated. The Laravel "null" means "no password".
+			if v := strings.TrimSpace(fmt.Sprint(env[k])); generatable(k) && v != "" && !strings.EqualFold(v, "null") && !strings.Contains(v, genMarkerPrefix) {
+				env[k] = genMarker(k)
+				gen[k] = true
 			}
 		}
 	}
@@ -477,4 +461,34 @@ func markerElsewhere(e ServiceEntry, genList []string) (string, string) {
 		}
 	}
 	return "", ""
+}
+
+// dbValue sets env[k] from the database service (user, database, password of the image) and tells if it did.
+// The example file has the values of a local setup (DB_USERNAME=root), which do not exist in that database.
+func dbValue(dbEnv map[string]any, kind, k string, env map[string]any) bool {
+	from := sqlSource[kind][k]
+	if from == "" {
+		return false
+	}
+	v := ""
+	if raw, ok := dbEnv[from]; ok && raw != nil {
+		v = fmt.Sprint(raw)
+	}
+	if v == "" && kind == "postgres" {
+		// The postgres image defaults: the user is postgres, the database has the name of the user.
+		switch from {
+		case "POSTGRES_USER":
+			v = "postgres"
+		case "POSTGRES_DB":
+			v = "postgres"
+			if raw, ok := dbEnv["POSTGRES_USER"]; ok && raw != nil && fmt.Sprint(raw) != "" {
+				v = fmt.Sprint(raw)
+			}
+		}
+	}
+	if v == "" {
+		return false
+	}
+	env[k] = v
+	return true
 }
