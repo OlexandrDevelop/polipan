@@ -26,6 +26,9 @@ follows the newest release. By hand on the host: `sudo polipan-update check` and
 A database migration only moves forward: a rollback of the images does not undo it. Restore the copy of the database
 if you must go back after a migration.
 
+If `polipan-update` is missing or damaged, run the install command again. It writes the updater and its units again and
+keeps the master key, the `.env` file and your data.
+
 ## Update by hand
 
 ## Before you upgrade

@@ -117,7 +117,7 @@ test/vm/vm.sh verify-ui         # the web app in a headless browser (login, dash
 test/vm/vm.sh reset             # after the checks: remove the test data
 ```
 
-Stages of `verify`: `setup deploy gitbuild bluegreen rollback stopstart restart-server restart-agent reboot upgrade https`.
+Stages of `verify`: `setup deploy gitbuild bluegreen rollback stopstart restart-server restart-agent reboot upgrade updater https`.
 They check the first user, an image app, a build from a public Git repository (rootless BuildKit with the AppArmor profile of the installer), blue-green updates with 20 requests per second and no failed request,
 one-click rollback, stop and start, restart of the server and of the agent, a reboot of the whole VM, an upgrade by
 running `install.sh` again, and HTTPS.

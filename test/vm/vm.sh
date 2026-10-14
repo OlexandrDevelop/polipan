@@ -264,7 +264,7 @@ cmd_install() {
   say "Copying deploy/ to the VM"
   tar -C "$root" -c deploy | vm_ssh 'rm -rf /tmp/polipan && mkdir /tmp/polipan && tar -C /tmp/polipan -x'
   say "Running deploy/install.sh (local images, no domain)"
-  vm_ssh "sudo sh /tmp/polipan/deploy/install.sh --server-image polipan-server:dev --agent-image polipan-agent:dev --address 127.0.0.1:$http_port" | tee "$vmdir/install.log"
+  vm_ssh "cd /tmp/polipan/deploy && cat install.sh | sudo sh -s -- --server-image polipan-server:dev --agent-image polipan-agent:dev --address 127.0.0.1:$http_port" | tee "$vmdir/install.log"
   print_setup_url
 }
 
@@ -295,7 +295,7 @@ EOS
     vm_ssh "sudo docker image inspect $img >/dev/null 2>&1" || load_image "$img"
   done
   say "Installing again from the images in the VM"
-  vm_ssh "sudo sh /tmp/polipan/deploy/install.sh --server-image polipan-server:dev --agent-image polipan-agent:dev --address 127.0.0.1:$http_port" | tee "$vmdir/install.log"
+  vm_ssh "cd /tmp/polipan/deploy && cat install.sh | sudo sh -s -- --server-image polipan-server:dev --agent-image polipan-agent:dev --address 127.0.0.1:$http_port" | tee "$vmdir/install.log"
   print_setup_url
 }
 

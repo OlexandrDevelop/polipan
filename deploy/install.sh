@@ -50,6 +50,11 @@ allow_userns_sysctl=""
 say() { printf '==> %s\n' "$*"; }
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
+# The whole script is one function that runs on the last line. With "curl | sh" a cut download runs nothing.
+main() {
+# The commands inside must not read the script from the pipe (docker compose exec would eat it).
+exec </dev/null
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --domain) domain=$2; shift 2 ;;
@@ -175,6 +180,21 @@ for c in wg iptables ip; do
   fi
 done
 modprobe wireguard 2>/dev/null || true
+
+# check_updater: the updater is whole and its units work. Stop with a clear message when not.
+check_updater() {
+  upd=/usr/local/sbin/polipan-update
+  [ -x "$upd" ] || fail "the updater $upd is missing or not executable"
+  sh -n "$upd" || fail "the updater $upd is damaged (syntax error). Run this install command again"
+  [ "$(tail -n 1 "$upd")" = "exit 0" ] || fail "the updater $upd is cut short. Run this install command again"
+  for u in polipan-update.service polipan-update.path polipan-update.timer; do
+    [ -f "/etc/systemd/system/$u" ] || fail "the systemd unit $u is missing"
+  done
+  for u in polipan-update.path polipan-update.timer; do
+    systemctl is-enabled --quiet "$u" || fail "the systemd unit $u is not enabled"
+    systemctl is-active --quiet "$u" || fail "the systemd unit $u is not active"
+  done
+}
 
 # ---- Files ----
 umask 077
@@ -417,7 +437,8 @@ if [ ! -f /var/lib/polipan/updater/auto ]; then
   echo on > /var/lib/polipan/updater/auto
   chown 65532:65532 /var/lib/polipan/updater/auto
 fi
-cat > /usr/local/sbin/polipan-update <<'UPDATER'
+# The file is written next to the old one and moved over, so a cut write never leaves a half updater.
+cat > /usr/local/sbin/polipan-update.new <<'UPDATER'
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 # Updates Polipan on the control-plane host. The panel asks for it (Settings, Updates), and a timer runs it every
@@ -550,7 +571,8 @@ esac
 rm -rf "${tmpdir:-}"
 exit 0
 UPDATER
-chmod 0755 /usr/local/sbin/polipan-update
+chmod 0755 /usr/local/sbin/polipan-update.new
+mv -f /usr/local/sbin/polipan-update.new /usr/local/sbin/polipan-update
 cat > /etc/systemd/system/polipan-update.service <<'UNIT'
 [Unit]
 Description=Polipan update (a check, or an update)
@@ -587,7 +609,8 @@ Unit=polipan-update.service
 WantedBy=timers.target
 UNIT
 systemctl daemon-reload
-systemctl enable --now polipan-update.path polipan-update.timer >/dev/null 2>&1 || say "Note: could not start the update timer. Updates by hand: sudo polipan-update apply"
+systemctl enable --now polipan-update.path polipan-update.timer || fail "could not enable the update units (polipan-update.path and polipan-update.timer). Look at: journalctl -u polipan-update"
+check_updater
 # The first look at the version, so the panel has a status. It must not block the install.
 [ -n "${POLIPAN_UPDATING:-}" ] || rm -f /var/lib/polipan/updater/status.json
 [ -n "${POLIPAN_UPDATING:-}" ] || (/usr/local/sbin/polipan-update check >/dev/null 2>&1 &) || true
@@ -618,3 +641,6 @@ echo "  ${setup_url:-$external_url}"
 [ -z "$domain" ] || echo "DNS of $domain must point to this server so the certificate can be issued."
 echo
 echo "IMPORTANT: back up /etc/polipan/master.key. Without it the secrets cannot be read."
+}
+
+main "$@"

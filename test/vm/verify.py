@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Checks of Polipan in the test VM (see test/vm/README.md). Run it with: test/vm/vm.sh verify [stage ...]
 
-Stages, in this order: setup deploy bluegreen rollback stopstart restart-server restart-agent reboot upgrade https
+Stages, in this order: setup deploy bluegreen rollback stopstart restart-server restart-agent reboot upgrade updater https
 With no stage name, all stages run. The panel is reached on the forwarded port of this computer. The traffic
 generator runs inside the VM (load.py), so the numbers are not changed by the user-mode network of QEMU.
 Every check prints PASS or FAIL with a short text. The exit code is 1 when a check failed.
@@ -448,6 +448,39 @@ def stage_upgrade():
     no_failures(log, "upgrade: the app served all requests during the upgrade")
 
 
+def stage_updater():
+    """The install ran as "cat install.sh | sh": the updater and its units are whole. Then the updater is broken like on
+    the server of T-382 (a short file, no units), the install runs again, and the key and the .env stay the same."""
+    def files_ok(label):
+        mode = vm("stat -c %a /usr/local/sbin/polipan-update")
+        check(f"updater {label}: polipan-update has mode 755", mode == "755", mode)
+        check(f"updater {label}: polipan-update parses and ends with exit 0",
+              vm("sh -n /usr/local/sbin/polipan-update && tail -n 1 /usr/local/sbin/polipan-update") == "exit 0")
+        for u in ("service", "path", "timer"):
+            vm(f"test -f /etc/systemd/system/polipan-update.{u}")
+        check(f"updater {label}: the .service, .path and .timer files exist", True)
+        en = vm("systemctl is-enabled polipan-update.path polipan-update.timer | tr '\\n' ' '")
+        check(f"updater {label}: path and timer are enabled", en.split() == ["enabled"] * 2, en)
+        act = vm("systemctl is-active polipan-update.path polipan-update.timer | tr '\\n' ' '")
+        check(f"updater {label}: path and timer are active", act.split() == ["active"] * 2, act)
+        check(f"updater {label}: the updater folder and the auto file exist", vm("sudo test -f /var/lib/polipan/updater/auto && echo yes") == "yes")
+
+    files_ok("after the piped install")
+    key0 = vm("sudo sha256sum /etc/polipan/master.key /opt/polipan/.env")
+    vm("sudo sh -c 'head -c 536 /usr/local/sbin/polipan-update > /usr/local/sbin/polipan-update.cut && mv /usr/local/sbin/polipan-update.cut /usr/local/sbin/polipan-update"
+       " && chmod 0600 /usr/local/sbin/polipan-update && systemctl disable --now polipan-update.path polipan-update.timer"
+       " && rm -f /etc/systemd/system/polipan-update.* && systemctl daemon-reload'")
+    check("updater: the updater is broken like on the server (536 bytes, no units)", vm("stat -c %s /usr/local/sbin/polipan-update") == "536")
+    env = dict(os.environ, SKIP_BUILD="1")
+    r = subprocess.run([VM_SH, "install"], capture_output=True, text=True, env=env, timeout=1200)
+    check("updater: install.sh ran again on the broken server", r.returncode == 0, "" if r.returncode == 0 else r.stdout[-600:] + r.stderr[-600:])
+    files_ok("after the repair")
+    key1 = vm("sudo sha256sum /etc/polipan/master.key /opt/polipan/.env")
+    check("updater: the master key and the .env are the same after the repair", key0 == key1)
+    panel_ready()
+    check("updater: the panel answers after the repair", True)
+
+
 def stage_https():
     """HTTPS with a local test ACME server (Pebble). A real domain and a real certificate are not possible here."""
     p = logged_in()
@@ -519,7 +552,7 @@ EOS""")
 
 STAGES = [("setup", stage_setup), ("deploy", stage_deploy), ("gitbuild", stage_gitbuild), ("bluegreen", stage_bluegreen), ("rollback", stage_rollback),
           ("stopstart", stage_stopstart), ("restart-server", stage_restart_server), ("restart-agent", stage_restart_agent),
-          ("reboot", stage_reboot), ("upgrade", stage_upgrade), ("https", stage_https)]
+          ("reboot", stage_reboot), ("upgrade", stage_upgrade), ("updater", stage_updater), ("https", stage_https)]
 
 
 def main():

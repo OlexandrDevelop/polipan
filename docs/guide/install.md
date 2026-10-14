@@ -35,7 +35,8 @@ The script does these steps:
 3. Starts PostgreSQL, the server, the registry, BuildKit and the metric and log stores with Docker Compose in `/opt/polipan`.
 4. Installs the agent of this server and joins it to the panel.
 5. Sets up updates: a program on the host (`polipan-update`) and a nightly timer. Automatic updates are on. Change
-   this in **Settings, Organization, Updates**. See [Upgrade](upgrade.md).
+   this in **Settings, Organization, Updates**. See [Upgrade](upgrade.md). At the end the script checks that the updater and its units are whole and
+   enabled. If not, it stops with an error.
 6. Prints a one-time link. Open it and create the first user. This user is the owner of the organization.
 
 ### A fixed version (release)

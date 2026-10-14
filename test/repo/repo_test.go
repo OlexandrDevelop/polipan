@@ -129,3 +129,43 @@ func TestAC_OSS_06_GovernanceFilesExist(t *testing.T) {
 		t.Error("no issue templates")
 	}
 }
+
+// T-382: install.sh is started as "curl | sh". The shell reads a pipe in blocks, and a command that keeps stdin open
+// (docker compose exec) ate the rest of the script, so the updater was written half. These rules stop that.
+func TestInstallScriptIsSafeToPipe(t *testing.T) {
+	inst := read(t, "deploy/install.sh")
+	lines := strings.Split(strings.TrimRight(inst, "\n"), "\n")
+	if last := lines[len(lines)-1]; last != `main "$@"` {
+		t.Fatalf("the last line of install.sh must be main \"$@\", it is %q", last)
+	}
+	if !strings.Contains(inst, "\nmain() {\n# The commands inside must not read the script from the pipe (docker compose exec would eat it).\nexec </dev/null\n") {
+		t.Error("the first command of main must be exec </dev/null")
+	}
+	for _, want := range []string{"\nstamped_server_digest=\"", "\nstamped_version=\"", "\nregistry=\""} {
+		i := strings.Index(inst, want)
+		if i < 0 || i > strings.Index(inst, "\nmain() {\n") {
+			t.Errorf("%q must stay at the top level, before main", strings.TrimSpace(want))
+		}
+	}
+	if regexp.MustCompile(`systemctl enable[^\n]*polipan-update[^\n]*(>/dev/null|\|\| say)`).MatchString(inst) {
+		t.Error("the update units must not be enabled with a hidden error")
+	}
+	if !strings.Contains(inst, "\ncheck_updater\n") {
+		t.Error("install.sh does not call check_updater")
+	}
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh is needed")
+	}
+	syntax := func(body string) error {
+		cmd := exec.Command("sh", "-n")
+		cmd.Stdin = strings.NewReader(body)
+		return cmd.Run()
+	}
+	if err := syntax(inst); err != nil {
+		t.Fatalf("sh -n install.sh: %v", err)
+	}
+	// A cut copy (inside the updater heredoc) must not parse, so it runs nothing.
+	if err := syntax(inst[:strings.Index(inst, "UPDATER\n")+400]); err == nil {
+		t.Error("a cut copy of install.sh passes sh -n")
+	}
+}
