@@ -407,12 +407,77 @@ function parseVariables(text: string): Record<string, string> {
   return out
 }
 
+// The import, and then the deploy of each created service, in the order of the answer. When a deploy fails, the
+// services stay created: the page stays open and shows one banner.
+function useComposeRun(
+  base: Base,
+  environment: Environment,
+  send: (dry: boolean) => Promise<ComposeResult>,
+) {
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const [deployError, setDeployError] = useState<unknown>(null)
+  const run = useMutation({
+    mutationFn: async (deploy: boolean) => {
+      setDeployError(null)
+      const imported = await send(false)
+      let failure: unknown = null
+      if (deploy) {
+        try {
+          for (const service of (imported.services ?? []) as Service[]) {
+            await unwrap(
+              api.POST('/services/{service_id}/deploy', {
+                params: {
+                  path: { service_id: service.id ?? '' },
+                  header: { 'Idempotency-Key': newKey() },
+                },
+                body: { dry_run: false },
+              }),
+            )
+          }
+        } catch (err) {
+          failure = err ?? new Error('deploy failed')
+        }
+      }
+      return failure
+    },
+    onSuccess: async (failure) => {
+      await queryClient.invalidateQueries({ queryKey: ['services', environment.id] })
+      if (failure) {
+        setDeployError(failure)
+        return
+      }
+      await navigate({ to: '/o/$org/p/$project/e/$env', params: base })
+    },
+  })
+  return { run, deployError }
+}
+
+// The services stay created when the deploy fails. This says so once and links to the environment.
+function DeployFailed({ error, base }: { error: unknown; base: Base }) {
+  return (
+    <Banner variant="danger" title={t('compose.deploy_failed')}>
+      {error instanceof Error && <p className="text-muted">{error.message}</p>}
+      <p className="mt-2">
+        <Link to="/o/$org/p/$project/e/$env" params={base} className="underline">
+          {t('compose.open_environment')}
+        </Link>
+      </p>
+    </Banner>
+  )
+}
+
 // What the check or the import says: the services, the warnings, or the parts that cannot be imported.
 function ComposeOutcome({ error, result }: { error: unknown; result: ComposeResult | null }) {
   const problems = composeProblems(error instanceof Error ? error.message : undefined)
   return (
     <>
       {Boolean(error) && !problems && <ErrorBanner error={error} title={t('compose.failed')} />}
+      {(result?.losses ?? []).some((l) => l.disposition === 'manual') && (
+        <Banner variant="warning" title={t('compose.needs_input')}>
+          <p className="text-muted">{t('compose.losses_hint')}</p>
+        </Banner>
+      )}
       {problems && (
         <Banner variant="danger" title={t('compose.problems_title')}>
           <p className="text-muted">{t('compose.safe_tip')}</p>
@@ -515,8 +580,6 @@ export function ComposeGitPanel({
   file: string
   connectionId?: string
 }) {
-  const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const [variables, setVariables] = useState('')
   const [skipUnsafe, setSkipUnsafe] = useState(true)
   const [result, setResult] = useState<ComposeResult | null>(null)
@@ -538,13 +601,7 @@ export function ComposeGitPanel({
       }),
     ) as Promise<ComposeResult>
   const check = useMutation({ mutationFn: () => send(true), onSuccess: setResult })
-  const run = useMutation({
-    mutationFn: () => send(false),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['services', environment.id] })
-      await navigate({ to: '/o/$org/p/$project/e/$env', params: base })
-    },
-  })
+  const { run, deployError } = useComposeRun(base, environment, send)
   const ready = repo.trim() !== ''
   return (
     <div className="space-y-4">
@@ -572,6 +629,7 @@ export function ComposeGitPanel({
         />
       </Optional>
       <ComposeOutcome error={check.error ?? run.error} result={result} />
+      {Boolean(deployError) && <DeployFailed error={deployError} base={base} />}
       <div className="flex flex-wrap justify-end gap-2">
         <Button
           loading={check.isPending}
@@ -583,10 +641,10 @@ export function ComposeGitPanel({
         <Button
           variant="primary"
           loading={run.isPending}
-          reason={result ? undefined : t('compose.check_first')}
-          onClick={() => run.mutate()}
+          reason={ready ? undefined : t('compose.fill_first')}
+          onClick={() => run.mutate(true)}
         >
-          {t('compose.import')}
+          {t('compose.deploy')}
         </Button>
       </div>
     </div>
@@ -604,8 +662,6 @@ function ComposeWizard({
   environment: Environment
   initial?: { repo?: string; branch?: string; connection?: string }
 }) {
-  const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const [mode, setMode] = useState<'git' | 'paste'>('git')
   const [text, setText] = useState('')
   const [repo, setRepo] = useState(initial?.repo ?? '')
@@ -644,13 +700,7 @@ function ComposeWizard({
     mutationFn: () => send(true),
     onSuccess: setResult,
   })
-  const run = useMutation({
-    mutationFn: () => send(false),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['services', environment.id] })
-      await navigate({ to: '/o/$org/p/$project/e/$env', params: base })
-    },
-  })
+  const { run, deployError } = useComposeRun(base, environment, send)
   const failure = check.error ?? run.error
   const changed = () => setResult(null)
   return (
@@ -753,6 +803,7 @@ function ComposeWizard({
         </Optional>
       )}
       <ComposeOutcome error={failure} result={result} />
+      {Boolean(deployError) && <DeployFailed error={deployError} base={base} />}
       <div className="flex flex-wrap justify-end gap-2">
         <Button
           type="submit"
@@ -761,14 +812,25 @@ function ComposeWizard({
         >
           {t('compose.check')}
         </Button>
-        <Button
-          variant="primary"
-          loading={run.isPending}
-          reason={result ? undefined : t('compose.check_first')}
-          onClick={() => run.mutate()}
-        >
-          {t('compose.import')}
-        </Button>
+        {mode === 'git' ? (
+          <Button
+            variant="primary"
+            loading={run.isPending}
+            reason={ready ? undefined : t('compose.fill_first')}
+            onClick={() => run.mutate(true)}
+          >
+            {t('compose.deploy')}
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            loading={run.isPending}
+            reason={result ? undefined : t('compose.check_first')}
+            onClick={() => run.mutate(false)}
+          >
+            {t('compose.import')}
+          </Button>
+        )}
       </div>
     </form>
   )

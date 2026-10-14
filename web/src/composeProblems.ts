@@ -70,6 +70,8 @@ export function lossLabel(disposition: string): string {
       return t('compose.loss.ignored')
     case 'dropped':
       return t('compose.loss.dropped')
+    case 'generated':
+      return t('compose.loss.generated')
     case 'manual':
       return t('compose.loss.manual')
     default:
