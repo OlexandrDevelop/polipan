@@ -77,6 +77,9 @@ type Handlers struct {
 	// SSO has the test hooks of the identity providers (handlers_sso.go).
 	SSO SSODeps
 
+	// UpdaterDir is the folder shared with the updater of the host. Empty means DefaultUpdaterDir.
+	UpdaterDir string
+
 	syncWG       sync.WaitGroup
 	cookieSecure bool
 	perms        map[Route]string

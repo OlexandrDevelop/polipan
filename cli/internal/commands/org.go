@@ -13,7 +13,7 @@ import (
 )
 
 func (a *app) orgCommands() []*cobra.Command {
-	return []*cobra.Command{a.orgCmd(), a.memberCmd(), a.teamCmd(), a.ssoCmd(), a.auditCmd()}
+	return []*cobra.Command{a.orgCmd(), a.memberCmd(), a.teamCmd(), a.ssoCmd(), a.auditCmd(), a.updateCmd()}
 }
 
 func (a *app) orgCmd() *cobra.Command {
@@ -460,4 +460,22 @@ func (a *app) auditCmd() *cobra.Command {
 		return nil
 	})
 	return group("audit", "Audit log", ls, export, verify)
+}
+
+// updateCmd is the update of the panel itself: the host looks for a new version and updates, like the page
+// Settings, Updates of the web app.
+func (a *app) updateCmd() *cobra.Command {
+	status := a.cmd("status", "Show the version, the newest version and the state of the update", "getSystemUpdate", noArgs, func(cmd *cobra.Command, _ []string) error {
+		return a.send("getSystemUpdate", nil, nil, nil)
+	})
+	action := func(use, short, name string) *cobra.Command {
+		return a.cmd(use, short, "updateSystem", noArgs, func(cmd *cobra.Command, _ []string) error {
+			return a.send("updateSystem", nil, nil, map[string]any{"action": name})
+		})
+	}
+	check := action("check", "Ask the host to look for a new version", "check")
+	apply := action("apply", "Update the panel now. The panel restarts for a moment", "apply")
+	autoOn := action("auto-on", "Update the panel every night when a new version is out", "auto_on")
+	autoOff := action("auto-off", "Do not update the panel by itself", "auto_off")
+	return group("update", "Updates of the panel", status, check, apply, autoOn, autoOff)
 }

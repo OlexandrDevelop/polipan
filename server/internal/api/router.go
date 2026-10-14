@@ -27,9 +27,11 @@ import (
 
 // Deps are the parts the router needs.
 type Deps struct {
-	Log   *slog.Logger
-	DB    Pinger
-	Clock clock.Clock
+	// UpdaterDir is the folder shared with the updater of the host. Empty means DefaultUpdaterDir.
+	UpdaterDir string
+	Log        *slog.Logger
+	DB         Pinger
+	Clock      clock.Clock
 	// RateLimit is the number of requests per minute per client IP (api_rate_limit).
 	RateLimit int
 	// Web serves the web app for every path outside /api. Optional.
@@ -122,11 +124,12 @@ func NewRouter(d Deps) (http.Handler, error) {
 	r.Use(TrustedProxies(d.TrustedProxies), RequestID(d.Log), AccessLog, Recover, SecurityHeaders(hsts), BodyLimit(d.MaxBodyBytes))
 
 	h := &Handlers{
-		DB:       d.DB,
-		Orch:     d.Orchestrator,
-		Clock:    d.Clock,
-		Throttle: auth.NewThrottle(d.Clock),
-		Limiter:  NewRateLimiter(d.Clock, d.RateLimit),
+		UpdaterDir: d.UpdaterDir,
+		DB:         d.DB,
+		Orch:       d.Orchestrator,
+		Clock:      d.Clock,
+		Throttle:   auth.NewThrottle(d.Clock),
+		Limiter:    NewRateLimiter(d.Clock, d.RateLimit),
 		Settings: Settings{ExternalURL: d.ExternalURL, AgentListen: d.AgentListen, SetupToken: d.SetupToken,
 			SessionTTL: d.SessionTTL, SessionAbsoluteTTL: d.SessionAbsoluteTTL},
 		cookieSecure: secureCookies(d.ExternalURL),

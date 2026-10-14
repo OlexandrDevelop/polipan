@@ -331,10 +331,10 @@ const (
 
 // Defines values for PlacementHealth.
 const (
-	Healthy   PlacementHealth = "healthy"
-	Starting  PlacementHealth = "starting"
-	Unhealthy PlacementHealth = "unhealthy"
-	Unknown   PlacementHealth = "unknown"
+	PlacementHealthHealthy   PlacementHealth = "healthy"
+	PlacementHealthStarting  PlacementHealth = "starting"
+	PlacementHealthUnhealthy PlacementHealth = "unhealthy"
+	PlacementHealthUnknown   PlacementHealth = "unknown"
 )
 
 // Defines values for PlacementRole.
@@ -491,6 +491,24 @@ const (
 	BlueGreen Strategy = "blue_green"
 	Canary    Strategy = "canary"
 	Recreate  Strategy = "recreate"
+)
+
+// Defines values for SystemUpdateState.
+const (
+	SystemUpdateStateAvailable  SystemUpdateState = "available"
+	SystemUpdateStateError      SystemUpdateState = "error"
+	SystemUpdateStateRolledBack SystemUpdateState = "rolled_back"
+	SystemUpdateStateUnknown    SystemUpdateState = "unknown"
+	SystemUpdateStateUpToDate   SystemUpdateState = "up_to_date"
+	SystemUpdateStateUpdating   SystemUpdateState = "updating"
+)
+
+// Defines values for SystemUpdateRequestAction.
+const (
+	Apply   SystemUpdateRequestAction = "apply"
+	AutoOff SystemUpdateRequestAction = "auto_off"
+	AutoOn  SystemUpdateRequestAction = "auto_on"
+	Check   SystemUpdateRequestAction = "check"
 )
 
 // Defines values for VolumeAccessMode.
@@ -1775,6 +1793,41 @@ type StrategyOptions struct {
 	DrainSeconds               *int     `json:"drain_seconds,omitempty"`
 }
 
+// SystemUpdate defines model for SystemUpdate.
+type SystemUpdate struct {
+	// AutoUpdate The host updates the panel every night when a new version is out
+	AutoUpdate *bool `json:"auto_update,omitempty"`
+
+	// Available false when the panel was not installed with the install script, so no updater runs on the host
+	Available *bool      `json:"available,omitempty"`
+	CheckedAt *time.Time `json:"checked_at"`
+
+	// LatestVersion The newest version, a release tag or main
+	LatestVersion *string `json:"latest_version,omitempty"`
+	Message       *string `json:"message,omitempty"`
+
+	// Pending A request waits for the host
+	Pending *bool `json:"pending,omitempty"`
+
+	// State unknown until the first check
+	State     *SystemUpdateState `json:"state,omitempty"`
+	UpdatedAt *time.Time         `json:"updated_at"`
+
+	// Version The version of this panel
+	Version *string `json:"version,omitempty"`
+}
+
+// SystemUpdateState unknown until the first check
+type SystemUpdateState string
+
+// SystemUpdateRequest defines model for SystemUpdateRequest.
+type SystemUpdateRequest struct {
+	Action SystemUpdateRequestAction `json:"action"`
+}
+
+// SystemUpdateRequestAction defines model for SystemUpdateRequest.Action.
+type SystemUpdateRequestAction string
+
 // Team defines model for Team.
 type Team struct {
 	Id        *string   `json:"id,omitempty"`
@@ -2603,6 +2656,9 @@ type UpdateSsoProviderJSONRequestBody = SsoProviderWrite
 // ReplaceGroupMappingsJSONRequestBody defines body for ReplaceGroupMappings for application/json ContentType.
 type ReplaceGroupMappingsJSONRequestBody = ReplaceGroupMappingsJSONBody
 
+// UpdateSystemJSONRequestBody defines body for UpdateSystem for application/json ContentType.
+type UpdateSystemJSONRequestBody = SystemUpdateRequest
+
 // CreateTeamJSONRequestBody defines body for CreateTeam for application/json ContentType.
 type CreateTeamJSONRequestBody CreateTeamJSONBody
 
@@ -3258,6 +3314,14 @@ type ClientInterface interface {
 	ReplaceGroupMappingsWithBody(ctx context.Context, providerId ProviderId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	ReplaceGroupMappings(ctx context.Context, providerId ProviderId, body ReplaceGroupMappingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSystemUpdate request
+	GetSystemUpdate(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSystemWithBody request with any body
+	UpdateSystemWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateSystem(ctx context.Context, body UpdateSystemJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListTeams request
 	ListTeams(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5777,6 +5841,42 @@ func (c *Client) ReplaceGroupMappingsWithBody(ctx context.Context, providerId Pr
 
 func (c *Client) ReplaceGroupMappings(ctx context.Context, providerId ProviderId, body ReplaceGroupMappingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReplaceGroupMappingsRequest(c.Server, providerId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSystemUpdate(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSystemUpdateRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateSystemWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSystemRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateSystem(ctx context.Context, body UpdateSystemJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSystemRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -13128,6 +13228,73 @@ func NewReplaceGroupMappingsRequestWithBody(server string, providerId ProviderId
 	return req, nil
 }
 
+// NewGetSystemUpdateRequest generates requests for GetSystemUpdate
+func NewGetSystemUpdateRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/system/update")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateSystemRequest calls the generic UpdateSystem builder with application/json body
+func NewUpdateSystemRequest(server string, body UpdateSystemJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSystemRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewUpdateSystemRequestWithBody generates requests for UpdateSystem with any type of body
+func NewUpdateSystemRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/system/update")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListTeamsRequest generates requests for ListTeams
 func NewListTeamsRequest(server string) (*http.Request, error) {
 	var err error
@@ -14605,6 +14772,14 @@ type ClientWithResponsesInterface interface {
 	ReplaceGroupMappingsWithBodyWithResponse(ctx context.Context, providerId ProviderId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceGroupMappingsResponse, error)
 
 	ReplaceGroupMappingsWithResponse(ctx context.Context, providerId ProviderId, body ReplaceGroupMappingsJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceGroupMappingsResponse, error)
+
+	// GetSystemUpdateWithResponse request
+	GetSystemUpdateWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetSystemUpdateResponse, error)
+
+	// UpdateSystemWithBodyWithResponse request with any body
+	UpdateSystemWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSystemResponse, error)
+
+	UpdateSystemWithResponse(ctx context.Context, body UpdateSystemJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSystemResponse, error)
 
 	// ListTeamsWithResponse request
 	ListTeamsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListTeamsResponse, error)
@@ -18104,6 +18279,51 @@ func (r ReplaceGroupMappingsResponse) StatusCode() int {
 	return 0
 }
 
+type GetSystemUpdateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SystemUpdate
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSystemUpdateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSystemUpdateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateSystemResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *SystemUpdate
+	JSON409      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSystemResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSystemResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListTeamsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -20347,6 +20567,32 @@ func (c *ClientWithResponses) ReplaceGroupMappingsWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseReplaceGroupMappingsResponse(rsp)
+}
+
+// GetSystemUpdateWithResponse request returning *GetSystemUpdateResponse
+func (c *ClientWithResponses) GetSystemUpdateWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetSystemUpdateResponse, error) {
+	rsp, err := c.GetSystemUpdate(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSystemUpdateResponse(rsp)
+}
+
+// UpdateSystemWithBodyWithResponse request with arbitrary body returning *UpdateSystemResponse
+func (c *ClientWithResponses) UpdateSystemWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSystemResponse, error) {
+	rsp, err := c.UpdateSystemWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSystemResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateSystemWithResponse(ctx context.Context, body UpdateSystemJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSystemResponse, error) {
+	rsp, err := c.UpdateSystem(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSystemResponse(rsp)
 }
 
 // ListTeamsWithResponse request returning *ListTeamsResponse
@@ -24506,6 +24752,65 @@ func ParseReplaceGroupMappingsResponse(rsp *http.Response) (*ReplaceGroupMapping
 	return response, nil
 }
 
+// ParseGetSystemUpdateResponse parses an HTTP response from a GetSystemUpdateWithResponse call
+func ParseGetSystemUpdateResponse(rsp *http.Response) (*GetSystemUpdateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSystemUpdateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SystemUpdate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSystemResponse parses an HTTP response from a UpdateSystemWithResponse call
+func ParseUpdateSystemResponse(rsp *http.Response) (*UpdateSystemResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSystemResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest SystemUpdate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListTeamsResponse parses an HTTP response from a ListTeamsWithResponse call
 func ParseListTeamsResponse(rsp *http.Response) (*ListTeamsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -25465,6 +25770,12 @@ type ServerInterface interface {
 	// Replace all group mappings of a provider
 	// (PUT /sso-providers/{provider_id}/group-mappings)
 	ReplaceGroupMappings(w http.ResponseWriter, r *http.Request, providerId ProviderId)
+	// The version of the panel, the newest version and the state of the update
+	// (GET /system/update)
+	GetSystemUpdate(w http.ResponseWriter, r *http.Request)
+	// Look for a new version, update the panel now, or turn the nightly automatic update on or off
+	// (POST /system/update)
+	UpdateSystem(w http.ResponseWriter, r *http.Request)
 	// List teams
 	// (GET /teams)
 	ListTeams(w http.ResponseWriter, r *http.Request)
@@ -26437,6 +26748,18 @@ func (_ Unimplemented) ListGroupMappings(w http.ResponseWriter, r *http.Request,
 // Replace all group mappings of a provider
 // (PUT /sso-providers/{provider_id}/group-mappings)
 func (_ Unimplemented) ReplaceGroupMappings(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// The version of the panel, the newest version and the state of the update
+// (GET /system/update)
+func (_ Unimplemented) GetSystemUpdate(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Look for a new version, update the panel now, or turn the nightly automatic update on or off
+// (POST /system/update)
+func (_ Unimplemented) UpdateSystem(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -32014,6 +32337,50 @@ func (siw *ServerInterfaceWrapper) ReplaceGroupMappings(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// GetSystemUpdate operation middleware
+func (siw *ServerInterfaceWrapper) GetSystemUpdate(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerTokenScopes, []string{})
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSystemUpdate(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateSystem operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSystem(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerTokenScopes, []string{})
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateSystem(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTeams operation middleware
 func (siw *ServerInterfaceWrapper) ListTeams(w http.ResponseWriter, r *http.Request) {
 
@@ -33263,6 +33630,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/sso-providers/{provider_id}/group-mappings", wrapper.ReplaceGroupMappings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/system/update", wrapper.GetSystemUpdate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/system/update", wrapper.UpdateSystem)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/teams", wrapper.ListTeams)

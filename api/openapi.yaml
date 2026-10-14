@@ -234,6 +234,23 @@ paths:
       parameters: [{name: confirm, in: query, required: true, schema: {type: string}}]
       responses:
         '204': {description: Deleted}
+  /system/update:
+    get:
+      operationId: getSystemUpdate
+      summary: The version of the panel, the newest version and the state of the update
+      tags: [org]
+      x-permission: org:read
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/SystemUpdate'}}}}
+    post:
+      operationId: updateSystem
+      summary: Look for a new version, update the panel now, or turn the nightly automatic update on or off
+      tags: [org]
+      x-permission: org:update
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SystemUpdateRequest'}}}}
+      responses:
+        '202': {description: Accepted. The host does the work and the state changes, content: {application/json: {schema: {$ref: '#/components/schemas/SystemUpdate'}}}}
+        '409': {$ref: '#/components/responses/Error'}
   /org/tokens/{token_id}:
     delete:
       operationId: revokeOrgToken
@@ -1716,6 +1733,23 @@ components:
     Session:
       type: object
       properties: {id: {type: string}, ip: {type: string}, user_agent: {type: string}, created_at: {type: string, format: date-time}, expires_at: {type: string, format: date-time}, current: {type: boolean}}
+    SystemUpdate:
+      type: object
+      properties:
+        available: {type: boolean, description: "false when the panel was not installed with the install script, so no updater runs on the host"}
+        state: {type: string, enum: [unknown, up_to_date, available, updating, rolled_back, error], description: "unknown until the first check"}
+        message: {type: string}
+        version: {type: string, description: "The version of this panel"}
+        latest_version: {type: string, description: "The newest version, a release tag or main"}
+        auto_update: {type: boolean, description: "The host updates the panel every night when a new version is out"}
+        pending: {type: boolean, description: "A request waits for the host"}
+        checked_at: {type: [string, 'null'], format: date-time}
+        updated_at: {type: [string, 'null'], format: date-time}
+    SystemUpdateRequest:
+      type: object
+      required: [action]
+      properties:
+        action: {type: string, enum: [check, apply, auto_on, auto_off]}
     Org:
       type: object
       properties:

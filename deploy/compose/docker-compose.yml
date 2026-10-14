@@ -88,6 +88,8 @@ services:
       - registry-files:/var/lib/polipan/registry
       - buildkit-certs:/var/lib/polipan/buildkit-certs
       - build-work:/var/lib/polipan/build
+      # The panel asks the host for a check or an update through this folder (deploy/install.sh, polipan-update).
+      - /var/lib/polipan/updater:/var/lib/polipan/updater
     ports:
       # Only the agent on this host uses the gateway in M1 and M2.
       - "127.0.0.1:9443:9443"

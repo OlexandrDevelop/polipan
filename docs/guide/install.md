@@ -34,7 +34,9 @@ The script does these steps:
 2. Creates the master key in `/etc/polipan/master.key`. **Back this file up.** Without it the secrets cannot be read.
 3. Starts PostgreSQL, the server, the registry, BuildKit and the metric and log stores with Docker Compose in `/opt/polipan`.
 4. Installs the agent of this server and joins it to the panel.
-5. Prints a one-time link. Open it and create the first user. This user is the owner of the organization.
+5. Sets up updates: a program on the host (`polipan-update`) and a nightly timer. Automatic updates are on. Change
+   this in **Settings, Organization, Updates**. See [Upgrade](upgrade.md).
+6. Prints a one-time link. Open it and create the first user. This user is the owner of the organization.
 
 ### A fixed version (release)
 

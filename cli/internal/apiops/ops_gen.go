@@ -232,6 +232,9 @@ var calls = map[string]func(ctx context.Context, c *gen.Client, in Input, ed gen
 	"getServiceMetrics": func(ctx context.Context, c *gen.Client, in Input, ed gen.RequestEditorFn) (*http.Response, error) {
 		return c.GetServiceMetrics(ctx, in.Str(0), &gen.GetServiceMetricsParams{}, ed)
 	},
+	"getSystemUpdate": func(ctx context.Context, c *gen.Client, in Input, ed gen.RequestEditorFn) (*http.Response, error) {
+		return c.GetSystemUpdate(ctx, ed)
+	},
 	"getTemplate": func(ctx context.Context, c *gen.Client, in Input, ed gen.RequestEditorFn) (*http.Response, error) {
 		return c.GetTemplate(ctx, in.Str(0), ed)
 	},
@@ -516,6 +519,9 @@ var calls = map[string]func(ctx context.Context, c *gen.Client, in Input, ed gen
 	},
 	"updateSsoProvider": func(ctx context.Context, c *gen.Client, in Input, ed gen.RequestEditorFn) (*http.Response, error) {
 		return c.UpdateSsoProviderWithBody(ctx, in.Str(0), in.ContentType, bytes.NewReader(in.Body), ed)
+	},
+	"updateSystem": func(ctx context.Context, c *gen.Client, in Input, ed gen.RequestEditorFn) (*http.Response, error) {
+		return c.UpdateSystemWithBody(ctx, in.ContentType, bytes.NewReader(in.Body), ed)
 	},
 	"updateTeam": func(ctx context.Context, c *gen.Client, in Input, ed gen.RequestEditorFn) (*http.Response, error) {
 		return c.UpdateTeamWithBody(ctx, in.Str(0), in.ContentType, bytes.NewReader(in.Body), ed)

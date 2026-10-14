@@ -313,6 +313,24 @@ export interface paths {
         patch: operations["updateOrg"];
         trace?: never;
     };
+    "/system/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The version of the panel, the newest version and the state of the update */
+        get: operations["getSystemUpdate"];
+        put?: never;
+        /** Look for a new version, update the panel now, or turn the nightly automatic update on or off */
+        post: operations["updateSystem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/org/tokens/{token_id}": {
         parameters: {
             query?: never;
@@ -2258,6 +2276,32 @@ export interface components {
             expires_at?: string;
             current?: boolean;
         };
+        SystemUpdate: {
+            /** @description false when the panel was not installed with the install script, so no updater runs on the host */
+            available?: boolean;
+            /**
+             * @description unknown until the first check
+             * @enum {string}
+             */
+            state?: "unknown" | "up_to_date" | "available" | "updating" | "rolled_back" | "error";
+            message?: string;
+            /** @description The version of this panel */
+            version?: string;
+            /** @description The newest version, a release tag or main */
+            latest_version?: string;
+            /** @description The host updates the panel every night when a new version is out */
+            auto_update?: boolean;
+            /** @description A request waits for the host */
+            pending?: boolean;
+            /** Format: date-time */
+            checked_at?: string | null;
+            /** Format: date-time */
+            updated_at?: string | null;
+        };
+        SystemUpdateRequest: {
+            /** @enum {string} */
+            action: "check" | "apply" | "auto_on" | "auto_off";
+        };
         Org: {
             id?: string;
             name?: string;
@@ -3830,6 +3874,51 @@ export interface operations {
                     "application/json": components["schemas"]["Org"];
                 };
             };
+        };
+    };
+    getSystemUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemUpdate"];
+                };
+            };
+        };
+    };
+    updateSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SystemUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted. The host does the work and the state changes */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemUpdate"];
+                };
+            };
+            409: components["responses"]["Error"];
         };
     };
     revokeOrgToken: {

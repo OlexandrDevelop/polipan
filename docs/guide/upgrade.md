@@ -1,5 +1,33 @@
 # Upgrade guide
 
+## Update from the panel (the easy way)
+
+A panel that was installed with the install script updates itself. Open **Settings, Organization, Updates**:
+
+- **Check for updates** asks the server to look for a new version. The panel shows the version that is ready.
+- **Update now** updates the panel. The panel is not available for about a minute. Your apps keep running.
+- **Update automatically every night** is on after a new install. The server looks for a new version every night
+  (at about 03:30 server time) and updates when there is one.
+
+The same from a terminal: `polipan update status`, `polipan update check`, `polipan update apply`,
+`polipan update auto-on` and `polipan update auto-off`.
+
+How it works: the install script sets up a small program on the host, `polipan-update`, and a systemd timer and path
+unit (`polipan-update.timer`, `polipan-update.path`). The panel does not update itself. It writes a request in
+`/var/lib/polipan/updater`, and the host does the work as root:
+
+1. It makes a copy of the database, `/var/lib/polipan/backups/pre-update-<time>.sql.gz` (the last three are kept).
+2. It runs the install script of the newest version again, with the options of the first install.
+3. When the new server does not become healthy, it puts the old images back. The state is then `rolled_back`, and
+   `/var/lib/polipan/updater/update.log` says why.
+
+A pre-release or a development install (the script from `main`) follows the images of `main`. A release install
+follows the newest release. By hand on the host: `sudo polipan-update check` and `sudo polipan-update apply`.
+A database migration only moves forward: a rollback of the images does not undo it. Restore the copy of the database
+if you must go back after a migration.
+
+## Update by hand
+
 ## Before you upgrade
 
 1. Read the release notes of the new version.
@@ -12,7 +40,7 @@
 On the control-plane host run the install script of the new release again:
 
 ```sh
-curl -fsSL https://github.com/polipan/polipan/releases/download/v1.1.0/install.sh | sudo sh -s -- --domain panel.example.com
+curl -fsSL https://github.com/OlexandrDevelop/polipan/releases/download/v1.1.0/install.sh | sudo sh -s -- --domain panel.example.com
 ```
 
 Use the same `--domain` and `--dir` as the first time. The script keeps the master key, the `.env` file and the data,

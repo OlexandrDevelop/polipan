@@ -25,6 +25,8 @@ Every operation of [openapi.yaml](../openapi.yaml) with method, path and permiss
 | `getOrg` | GET | `/org` | `org:read` |
 | `updateOrg` | PATCH | `/org` | `org:update` |
 | `deleteOrg` | DELETE | `/org` | `org:delete` |
+| `getSystemUpdate` | GET | `/system/update` | `org:read` |
+| `updateSystem` | POST | `/system/update` | `org:update` |
 | `revokeOrgToken` | DELETE | `/org/tokens/{token_id}` | `token:manage` |
 | `listMembers` | GET | `/members` | `member:read` |
 | `inviteMember` | POST | `/members/invitations` | `member:manage` |

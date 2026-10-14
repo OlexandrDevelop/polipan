@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { components } from '@api/schema'
 import { api, setCsrfToken } from '@/api/client'
@@ -21,7 +21,7 @@ import {
   Skeleton,
   TextField,
 } from '@/components/ui'
-import { t } from '@/i18n'
+import { formatRelative, t } from '@/i18n'
 import { useAccess } from '@/permissions'
 import { queryClient } from '@/queryClient'
 
@@ -314,23 +314,115 @@ function GeneralForm({ org }: { org: Org }) {
   )
 }
 
-// The version of the panel. There is no update check in the API yet, so there is no notice.
-function VersionCard() {
-  const version = useQuery({ queryKey: ['version'], queryFn: () => unwrap(api.GET('/version')) })
+type SystemUpdate = components['schemas']['SystemUpdate']
+
+// The update of the panel itself. The host does the work (polipan-update): the panel only asks. While it updates,
+// the panel restarts, so the page keeps asking until the panel answers again, then loads the new web app.
+function UpdateCard() {
+  const allowed = useAccess('org:update') === 'allow'
+  const qc = useQueryClient()
+  const [confirming, setConfirming] = useState(false)
+  const [waiting, setWaiting] = useState(false)
+  const first = useRef<string | undefined>(undefined)
+  const status = useQuery({
+    queryKey: ['system-update'],
+    queryFn: () => unwrap(api.GET('/system/update')),
+    refetchInterval: (query) => {
+      const d = query.state.data
+      return waiting || d?.pending || d?.state === 'updating' ? 3_000 : 60_000
+    },
+    retry: true,
+  })
+  const data: SystemUpdate | undefined = status.data
+  const busy = Boolean(data?.pending) || data?.state === 'updating' || waiting
+  if (data?.version && first.current === undefined) first.current = data.version
+  useEffect(() => {
+    if (data?.state === 'updating') setWaiting(true)
+    // The panel answers again with a new version: load the new web app.
+    if (waiting && data && data.state !== 'updating' && !data.pending) {
+      setWaiting(false)
+      if (first.current && data.version && data.version !== first.current) window.location.reload()
+    }
+  }, [data, waiting])
+  const ask = useMutation({
+    mutationFn: (action: 'check' | 'apply' | 'auto_on' | 'auto_off') =>
+      unwrap(api.POST('/system/update', { body: { action } })),
+    onSuccess: (next, action) => {
+      qc.setQueryData(['system-update'], next)
+      if (action === 'apply') setWaiting(true)
+    },
+  })
+  const state = data?.state ?? 'unknown'
+  const message =
+    state === 'available'
+      ? t('update.state.available', { version: data?.latest_version ?? '' })
+      : t(`update.state.${state}`)
   return (
-    <Card>
-      <h2 className="font-semibold">{t('org.version_title')}</h2>
-      {version.isPending && <Skeleton lines={1} />}
-      {version.isError && (
-        <ErrorBanner error={version.error} onRetry={() => void version.refetch()} />
+    <Card className="space-y-4">
+      <h2 className="font-semibold">{t('update.title')}</h2>
+      {status.isPending && <Skeleton lines={2} />}
+      {status.isError && !waiting && (
+        <ErrorBanner error={status.error} onRetry={() => void status.refetch()} />
       )}
-      {version.data && (
-        <p className="mt-2 font-mono text-sm">
-          {t('org.version_value', {
-            version: version.data.version ?? '-',
-            api: version.data.api ?? '-',
-          })}
-        </p>
+      {waiting && status.isError && <Banner>{t('update.restarting')}</Banner>}
+      {data && data.available === false && (
+        <Banner variant="warning" title={t('update.unavailable_title')}>
+          {t('update.unavailable_text')}
+        </Banner>
+      )}
+      {data && data.available !== false && (
+        <>
+          <div className="update-state" data-state={state}>
+            <p className="update-version">
+              {t('update.version', { version: data.version ?? '-' })}
+            </p>
+            <p className="update-message">
+              {busy && state !== 'updating' ? t('update.waiting') : message}
+            </p>
+            {data.checked_at && (
+              <p className="update-checked">
+                {t('update.checked', { time: formatRelative(data.checked_at) })}
+              </p>
+            )}
+          </div>
+          {ask.error && <ErrorBanner error={ask.error} />}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              loading={ask.isPending && ask.variables === 'check'}
+              reason={!allowed ? t('common.needs_admin') : busy ? t('update.busy') : undefined}
+              onClick={() => ask.mutate('check')}
+            >
+              {t('update.check')}
+            </Button>
+            {state === 'available' && (
+              <Button
+                variant="primary"
+                reason={!allowed ? t('common.needs_admin') : busy ? t('update.busy') : undefined}
+                onClick={() => setConfirming(true)}
+              >
+                {t('update.apply')}
+              </Button>
+            )}
+          </div>
+          <CheckboxField
+            label={t('update.auto')}
+            hint={t('update.auto_hint')}
+            checked={Boolean(data.auto_update)}
+            disabled={!allowed || ask.isPending}
+            onChange={(e) => ask.mutate(e.target.checked ? 'auto_on' : 'auto_off')}
+          />
+        </>
+      )}
+      {confirming && (
+        <ConfirmDialog
+          title={t('update.confirm_title')}
+          text={t('update.confirm_text')}
+          confirmLabel={t('update.apply')}
+          busy={ask.isPending}
+          error={ask.error ? <ErrorBanner error={ask.error} /> : undefined}
+          onConfirm={() => ask.mutate('apply', { onSuccess: () => setConfirming(false) })}
+          onClose={() => setConfirming(false)}
+        />
       )}
     </Card>
   )
@@ -397,12 +489,12 @@ export function OrgSettingsPage() {
             {
               id: 'general',
               label: t('org.general'),
-              content: (
-                <>
-                  {org.data && <GeneralForm org={org.data} />}
-                  <VersionCard />
-                </>
-              ),
+              content: <>{org.data && <GeneralForm org={org.data} />}</>,
+            },
+            {
+              id: 'updates',
+              label: t('update.title'),
+              content: <UpdateCard />,
             },
             {
               id: 'retention',

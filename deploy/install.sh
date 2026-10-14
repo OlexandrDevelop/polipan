@@ -68,6 +68,10 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# What the user gave is saved for the updates. The images of a release are not: a later update picks its own.
+user_server_image=$server_image
+user_agent_image=$agent_image
+
 [ "$(id -u)" -eq 0 ] || fail "run this script as root (use sudo)"
 [ "$(uname -s)" = "Linux" ] || fail "Polipan needs Linux"
 command -v systemctl >/dev/null 2>&1 || fail "systemd is required"
@@ -175,6 +179,10 @@ modprobe wireguard 2>/dev/null || true
 # ---- Files ----
 umask 077
 mkdir -p /etc/polipan "$dir" /var/lib/polipan-agent
+# The panel and the updater talk through this folder (Settings, Updates). The server container runs as uid 65532.
+mkdir -p /var/lib/polipan/updater
+chown 65532:65532 /var/lib/polipan/updater
+chmod 0750 /var/lib/polipan/updater
 if [ ! -s /etc/polipan/master.key ]; then
   say "Creating the master key /etc/polipan/master.key"
   head -c 32 /dev/urandom | base64 > /etc/polipan/master.key
@@ -377,6 +385,212 @@ systemctl daemon-reload
 systemctl enable polipan-agent
 # Start it, or restart it when it runs: a running agent must use the new binary and the new settings.
 systemctl restart polipan-agent
+
+# ---- Updates: the panel can update itself, like a hosting panel (Settings, Updates) ----
+# polipan-update runs this install script again with the options of this install. A timer runs it every night and
+# updates when automatic updates are on. The panel asks for a check or an update through /var/lib/polipan/updater.
+say "Setting up updates"
+if [ -n "$pinned" ]; then
+  source_url="https://github.com/OlexandrDevelop/polipan/releases/latest/download/install.sh"
+else
+  source_url="https://raw.githubusercontent.com/OlexandrDevelop/polipan/main/deploy/install.sh"
+fi
+cat > /etc/polipan/update.conf <<CONF
+SOURCE_URL=$source_url
+DIR=$dir
+CONF
+{
+  [ -z "$domain" ] || printf '%s\n%s\n' --domain "$domain"
+  [ -z "$address" ] || printf '%s\n%s\n' --address "$address"
+  [ -z "$acme_email" ] || printf '%s\n%s\n' --acme-email "$acme_email"
+  [ -z "$acme_ca_url" ] || printf '%s\n%s\n' --acme-ca-url "$acme_ca_url"
+  [ "$dir" = /opt/polipan ] || printf '%s\n%s\n' --dir "$dir"
+  [ "$registry" = "ghcr.io/olexandrdevelop" ] || printf '%s\n%s\n' --registry "$registry"
+  [ -z "$user_server_image" ] || printf '%s\n%s\n' --server-image "$user_server_image"
+  [ -z "$user_agent_image" ] || printf '%s\n%s\n' --agent-image "$user_agent_image"
+  [ -z "$require_signature" ] || printf '%s\n' --require-signature
+  [ -z "$allow_userns_sysctl" ] || printf '%s\n' --allow-userns-sysctl
+} > /etc/polipan/update.args
+chmod 0600 /etc/polipan/update.conf /etc/polipan/update.args
+# Automatic updates are on for a new install. A choice made in the panel stays.
+if [ ! -f /var/lib/polipan/updater/auto ]; then
+  echo on > /var/lib/polipan/updater/auto
+  chown 65532:65532 /var/lib/polipan/updater/auto
+fi
+cat > /usr/local/sbin/polipan-update <<'UPDATER'
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Updates Polipan on the control-plane host. The panel asks for it (Settings, Updates), and a timer runs it every
+# night when automatic updates are on. An update runs the install script again, with the options of the first
+# install: the script keeps the master key, the .env file and the data. Before it starts, the database is dumped.
+# When the new server does not become healthy, the old images come back.
+#
+#   polipan-update run      do what the panel asked for, or the nightly pass (used by systemd)
+#   polipan-update check    look for a new version
+#   polipan-update apply    update now
+set -u
+
+CONF=${POLIPAN_UPDATE_CONF:-/etc/polipan/update.conf}
+ARGS=${POLIPAN_UPDATE_ARGS:-/etc/polipan/update.args}
+STATE=${POLIPAN_UPDATE_STATE:-/var/lib/polipan/updater}
+LOCK=${POLIPAN_UPDATE_LOCK:-/run/polipan-update.lock}
+BACKUPS=${POLIPAN_UPDATE_BACKUPS:-/var/lib/polipan/backups}
+[ -f "$CONF" ] || exit 0
+# shellcheck disable=SC1090
+. "$CONF"
+: "${DIR:=/opt/polipan}"
+mkdir -p "$STATE" "$BACKUPS"
+exec 9>"$LOCK"
+flock -n 9 || exit 0
+
+now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+clean() { printf '%s' "$1" | tr -d '"\\' | tr '\n\r\t' '   ' | cut -c1-300; }
+
+# write_status STATE MESSAGE: the panel reads this file.
+write_status() {
+  tmp="$STATE/status.json.new"
+  printf '{"state":"%s","message":"%s","current":"%s","latest":"%s","version":"%s","checked_at":"%s","updated_at":"%s"}\n' \
+    "$1" "$(clean "$2")" "${current:-}" "${latest:-}" "${version:-}" "${checked_at:-}" "$(now)" > "$tmp"
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "$STATE/status.json"
+}
+
+# digest_of REF: the digest of an image of ghcr.io in the registry, without pulling it.
+digest_of() {
+  repo=${1#ghcr.io/}
+  repo=${repo%%:*}
+  tag=${1##*:}
+  token=$(curl -fsS "https://ghcr.io/token?scope=repository:$repo:pull" 2>/dev/null | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+  [ -n "$token" ] || return 1
+  curl -fsSI -H "Authorization: Bearer $token" \
+    -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+    "https://ghcr.io/v2/$repo/manifests/$tag" 2>/dev/null | tr -d '\r' | sed -n 's/^[Dd]ocker-[Cc]ontent-[Dd]igest: //p' | head -n 1
+}
+
+# check: sets current, latest, version and the downloaded script in $tmpdir. Returns 0 when it could look.
+check() {
+  checked_at=$(now)
+  tmpdir=$(mktemp -d)
+  if ! curl -fsSL "$SOURCE_URL" -o "$tmpdir/install.sh" 2>/dev/null; then
+    write_status error "Could not download the install script from $SOURCE_URL"
+    return 1
+  fi
+  image=$(sed -n 's/^POLIPAN_SERVER_IMAGE=//p' "$DIR/.env")
+  case "$image" in
+    *@sha256:*) current=${image##*@} ;;
+    *) current=$(docker image inspect -f '{{index .RepoDigests 0}}' "$image" 2>/dev/null | sed 's/.*@//') ;;
+  esac
+  stamped=$(sed -n 's/^stamped_server_digest="\(sha256:[0-9a-f]*\)"$/\1/p' "$tmpdir/install.sh")
+  if [ -n "$stamped" ]; then
+    latest=$stamped
+    version=$(sed -n 's/^stamped_version="\(v[^"]*\)"$/\1/p' "$tmpdir/install.sh")
+  else
+    registry=$(sed -n 's/^registry="\([^"]*\)"$/\1/p' "$tmpdir/install.sh")
+    latest=$(digest_of "$registry/polipan-server:latest")
+    version=main
+  fi
+  if [ -z "$latest" ]; then
+    write_status error "Could not read the newest version from the registry"
+    return 1
+  fi
+  if [ "$latest" = "$current" ]; then
+    write_status up_to_date "Polipan is up to date."
+  else
+    write_status available "A new version is ready: ${version:-main}."
+  fi
+  return 0
+}
+
+# apply: dump the database, run the install script, go back to the old images when it fails.
+apply() {
+  write_status updating "Updating. The panel restarts for a moment."
+  stamp=$(date -u +%Y%m%d-%H%M%S)
+  dump="$BACKUPS/pre-update-$stamp.sql.gz"
+  if (cd "$DIR" && docker compose exec -T postgres pg_dump -U polipan polipan) 2>/dev/null | gzip > "$dump" && [ -s "$dump" ]; then
+    chmod 0600 "$dump"
+    # Keep the last three dumps.
+    ls -1t "$BACKUPS"/pre-update-*.sql.gz 2>/dev/null | tail -n +4 | while read -r old; do rm -f "$old"; done
+  else
+    rm -f "$dump"
+  fi
+  cp "$DIR/.env" "$DIR/.env.prev"
+  cp "$DIR/docker-compose.yml" "$DIR/docker-compose.yml.prev"
+  set --
+  if [ -f "$ARGS" ]; then
+    while IFS= read -r line; do [ -n "$line" ] && set -- "$@" "$line"; done < "$ARGS"
+  fi
+  if POLIPAN_UPDATING=1 sh "$tmpdir/install.sh" "$@" > "$STATE/update.log" 2>&1; then
+    check || true
+    write_status up_to_date "Updated to ${version:-main}."
+    return 0
+  fi
+  cp "$DIR/.env.prev" "$DIR/.env"
+  cp "$DIR/docker-compose.yml.prev" "$DIR/docker-compose.yml"
+  (cd "$DIR" && docker compose up -d) >> "$STATE/update.log" 2>&1
+  write_status rolled_back "The update failed and the old version is running again. See $STATE/update.log."
+  return 1
+}
+
+action=${1:-run}
+if [ "$action" = run ]; then
+  action=nightly
+  if [ -s "$STATE/request" ]; then
+    action=$(head -n 1 "$STATE/request" | tr -cd 'a-z_')
+    rm -f "$STATE/request"
+  fi
+fi
+
+case "$action" in
+  check) check ;;
+  apply) check && [ "$latest" != "$current" ] && apply ;;
+  nightly)
+    check && [ "$latest" != "$current" ] && [ "$(cat "$STATE/auto" 2>/dev/null)" = on ] && apply
+    ;;
+esac
+rm -rf "${tmpdir:-}"
+exit 0
+UPDATER
+chmod 0755 /usr/local/sbin/polipan-update
+cat > /etc/systemd/system/polipan-update.service <<'UNIT'
+[Unit]
+Description=Polipan update (a check, or an update)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/polipan-update run
+TimeoutStartSec=30min
+UNIT
+cat > /etc/systemd/system/polipan-update.path <<'UNIT'
+[Unit]
+Description=Polipan update request from the panel
+
+[Path]
+PathExists=/var/lib/polipan/updater/request
+Unit=polipan-update.service
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat > /etc/systemd/system/polipan-update.timer <<'UNIT'
+[Unit]
+Description=Polipan nightly update check
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=45min
+Persistent=true
+Unit=polipan-update.service
+
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now polipan-update.path polipan-update.timer >/dev/null 2>&1 || say "Note: could not start the update timer. Updates by hand: sudo polipan-update apply"
+# The first look at the version, so the panel has a status. It must not block the install.
+[ -n "${POLIPAN_UPDATING:-}" ] || rm -f /var/lib/polipan/updater/status.json
+[ -n "${POLIPAN_UPDATING:-}" ] || (/usr/local/sbin/polipan-update check >/dev/null 2>&1 &) || true
 
 # ---- Wait for the panel behind Caddy ----
 say "Waiting for the panel at $external_url"

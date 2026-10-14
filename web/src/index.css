@@ -2729,3 +2729,33 @@ div:focus-within > .row-hint {
   background: var(--card-bg);
   box-shadow: var(--shadow-card);
 }
+
+/* The update card: the version, the state of the update and the time of the last check. */
+.update-state {
+  padding: 1rem 1.25rem;
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+.update-state[data-state='available'] {
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--card-bg));
+}
+.update-state[data-state='rolled_back'],
+.update-state[data-state='error'] {
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--card-bg));
+}
+.update-version {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.update-message {
+  margin-top: 0.25rem;
+}
+.update-checked {
+  margin-top: 0.35rem;
+  color: var(--color-muted);
+  font-size: var(--fs-sm);
+}
+input[type='checkbox']:checked::before,
+input[type='radio']:checked::before {
+  color: var(--color-bg);
+}
