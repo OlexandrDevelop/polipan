@@ -26,6 +26,7 @@ import (
 var browserOnly = map[string]string{
 	"receiveGitWebhook": "inbound webhook of a Git provider",
 	"receiveDeployHook": "inbound deploy hook for CI systems (a plain HTTP call)",
+	"revealSecret":      "shows a secret to a signed-in admin; an API token is refused, so the CLI cannot call it (REQ-SEC-002)",
 }
 
 func opts(t *testing.T, url string, out, errw *bytes.Buffer) commands.Options {
