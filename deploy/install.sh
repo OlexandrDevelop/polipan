@@ -346,6 +346,8 @@ fi
 
 # ---- Agent of this host ----
 say "Installing the agent"
+# docker create uses an old copy of a tag it already has, so the image is pulled first. A digest is a no-op.
+docker pull --quiet "$agent_image" >/dev/null || fail "could not pull the agent image $agent_image"
 cid=$(docker create "$agent_image")
 # A running agent keeps its old binary open: write the new file next to it and move it over (atomic).
 docker cp "$cid:/polipan-agent" /usr/local/bin/polipan-agent.new
