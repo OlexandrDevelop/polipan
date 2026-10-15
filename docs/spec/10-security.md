@@ -94,6 +94,7 @@ Roles are fixed: `owner`, `admin`, `developer`, `viewer` (org level). A project 
 | `secret:list` | Y | Y | Y | - | names, versions, no values |
 | `secret:write` | Y | Y | P | - | create, new version, delete |
 | `secret:destroy` | Y | Y | - | - | destroy an old version for good |
+| `secret:reveal` | Y | Y | - | - | show the current value once, audited (`secret.reveal`), browser session only |
 | `domain:manage` | Y | Y | P | - | |
 | `volume:manage` | Y | Y | P | - | |
 | `backup:read` | Y | Y | Y | Y | |
@@ -115,7 +116,7 @@ The API server checks the permission of every endpoint before any work, using it
 
 - **Key hierarchy:** KEK (master key, 32 random bytes, in `/etc/polipan/master.key` mode 0400 or env `POLIPAN_MASTER_KEY`, base64) → one DEK per project (`data_keys.dek_enc`, AES-256-GCM wrapped) → secret versions (`secret_versions`, AES-256-GCM, fresh 96-bit nonce per version, AAD = `secret_id || version`).
 - **KEK rotation:** `polipan admin rotate-kek` re-wraps all DEKs. It does not re-encrypt secret values. DEK rotation (`rotate-dek --project`) re-encrypts that project's values. Both are server CLI commands run on the control-plane host, are audited, and are tested.
-- **Write-only:** the API never returns a secret value. `GET` returns name, scope, current version, flags, timestamps and the actor who set it.
+- **Write-only:** the list and read calls never return a secret value. `GET` returns name, scope, current version, flags, timestamps and the actor who set it. The one exception is `POST /secrets/{id}/reveal` (`secret:reveal`, owner and admin). It needs a browser session (an API token is refused), writes `secret.reveal` to the audit log before it answers, and sends `Cache-Control: no-store`.
 - **Versions:** each write makes a new version. A Release stores the version numbers it used. The last `retain_releases` versions are kept. Older versions not used by a retained Release can be destroyed (`secret:destroy`).
 - **Use is audited:** a Release that resolves secrets writes `secret.use` (secret ids, versions, release id). Writes, deletes and destroys write their own events. Diffs show `***` for values.
 - **Injection:** secrets are injected as container environment variables (default) or as files on a tmpfs mount (`secret_files` in config). Build-time secrets are only used if the secret has `build_time = true` and are passed as BuildKit secret mounts, never as build args, so they do not land in image layers.

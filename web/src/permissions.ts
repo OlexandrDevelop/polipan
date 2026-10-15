@@ -31,6 +31,7 @@ export type Permission =
   | 'secret:list'
   | 'secret:write'
   | 'secret:destroy'
+  | 'secret:reveal'
   | 'volume:manage'
   | 'git:manage'
   | 'backup:manage'
@@ -72,6 +73,7 @@ const rules: Record<Permission, 'all' | 'dev' | 'admin' | 'p' | 'owner'> = {
   'secret:list': 'dev',
   'secret:write': 'p',
   'secret:destroy': 'admin',
+  'secret:reveal': 'admin',
   'volume:manage': 'p',
   'git:manage': 'admin',
   'backup:manage': 'p',

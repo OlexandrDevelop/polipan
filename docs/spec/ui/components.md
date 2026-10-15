@@ -22,7 +22,7 @@ Base: shadcn/ui (Radix primitives) wrapped in a Polipan `ui/` package. Screens u
 | Input, Textarea | text, password, number, search | error, readonly, disabled | Label, `autocomplete`, `inputmode`. Password has a show/hide button with `aria-pressed`. |
 | Select, Combobox | single, multi, async search | empty, loading, error | ARIA combobox pattern. Typeahead. Native select on phone for plain lists. |
 | Switch, Checkbox, Radio | - | indeterminate (checkbox) | Switch has `role="switch"`. State is also text ("On", "Off") when it controls a risk. |
-| SecretInput | new, replace | "Set, v3" (read), editing | Write-only ([REQ-UI-005](../11-ui.md#4-rules-and-requirements)). Never has a reveal button. Value cleared after save. Autocomplete off. |
+| SecretInput | new, replace | "Set, v3" (read), editing | Write-only input ([REQ-UI-005](../11-ui.md#4-rules-and-requirements)). The input has no reveal button. Owners and admins read a stored value with the "Show" button on the secret row (a separate window, audited). Value cleared after save. Autocomplete off. |
 | KeyValueEditor | rows, bulk paste (not on phone) | row error, duplicate key | Each row labeled "Name, row 3". Add and remove by buttons. Paste of `.env` text. |
 | StatusBadge | per state of [design-system](design-system.md#4-status-vocabulary), sizes sm, md | live (updates with polite announcement) | Icon plus word. Color is never alone. |
 | EnvironmentBadge | production, staging, preview, custom, protected | - | Text "Production" for the kind; lock and text "Protected" for the protected flag (any kind). Same rule as [design-system](design-system.md#4-status-vocabulary). |

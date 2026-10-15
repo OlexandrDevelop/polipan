@@ -57,6 +57,7 @@ var matrix = map[string]string{
 	"secret:list":       "YYY-",
 	"secret:write":      "YYP-",
 	"secret:destroy":    "YY--",
+	"secret:reveal":     "YY--",
 	"domain:manage":     "YYP-",
 	"volume:manage":     "YYP-",
 	"backup:read":       "YYYY",

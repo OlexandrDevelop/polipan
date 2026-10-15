@@ -94,6 +94,7 @@ Every operation of [openapi.yaml](../openapi.yaml) with method, path and permiss
 | `listSecretVersions` | GET | `/secrets/{secret_id}/versions` | `secret:list` |
 | `restoreSecretVersion` | POST | `/secrets/{secret_id}/versions/{version}/restore` | `secret:write` |
 | `destroySecretVersion` | DELETE | `/secrets/{secret_id}/versions/{version}` | `secret:destroy` |
+| `revealSecret` | POST | `/secrets/{secret_id}/reveal` | `secret:reveal` |
 | `listServices` | GET | `/environments/{environment_id}/services` | `service:read` |
 | `createService` | POST | `/environments/{environment_id}/services` | `service:create` |
 | `getService` | GET | `/services/{service_id}` | `service:read` |

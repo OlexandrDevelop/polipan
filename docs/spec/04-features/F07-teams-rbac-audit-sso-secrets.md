@@ -57,7 +57,7 @@ Four parts: (7a) users, teams and roles; (7b) audit log; (7c) single sign-on; (7
 ## 7d Secrets
 
 - **REQ-SEC-001** (MUST) The built-in secrets store uses envelope encryption: KEK → one DEK per project → AES-256-GCM per secret version ([10](../10-security.md#4-secrets)).
-- **REQ-SEC-002** (MUST) Secrets are write-only. No endpoint, CLI command, UI element or Terraform attribute returns a value.
+- **REQ-SEC-002** (MUST) Secrets are write-only for every list and read call, the CLI and Terraform. The one exception is `revealSecret` (`secret:reveal`, owner and admin, browser session only, audited as `secret.reveal`, never cached). It is the "Show" button on the variables page.
 - **REQ-SEC-003** (MUST) Every write creates a new version. Releases record the version numbers. A user can see versions (number, who, when) and set an earlier version as current (creates a new version with the old value, so history stays linear). `secret:destroy` removes the ciphertext of an old version.
 - **REQ-SEC-004** (MUST) Use is audited (`secret.use` per Release, with ids and versions). Reads of metadata are not secret reads and are not audited per call.
 - **REQ-SEC-005** (MUST) Injection as env vars (default) or as tmpfs files; build-time secrets only via BuildKit secret mounts.

@@ -3194,6 +3194,9 @@ type ClientInterface interface {
 
 	SetSecretValue(ctx context.Context, secretId SecretId, body SetSecretValueJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// RevealSecret request
+	RevealSecret(ctx context.Context, secretId SecretId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListSecretVersions request
 	ListSecretVersions(ctx context.Context, secretId SecretId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -5313,6 +5316,18 @@ func (c *Client) SetSecretValueWithBody(ctx context.Context, secretId SecretId, 
 
 func (c *Client) SetSecretValue(ctx context.Context, secretId SecretId, body SetSecretValueJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetSecretValueRequest(c.Server, secretId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevealSecret(ctx context.Context, secretId SecretId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevealSecretRequest(c.Server, secretId)
 	if err != nil {
 		return nil, err
 	}
@@ -11657,6 +11672,40 @@ func NewSetSecretValueRequestWithBody(server string, secretId SecretId, contentT
 	return req, nil
 }
 
+// NewRevealSecretRequest generates requests for RevealSecret
+func NewRevealSecretRequest(server string, secretId SecretId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "secret_id", runtime.ParamLocationPath, secretId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/secrets/%s/reveal", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListSecretVersionsRequest generates requests for ListSecretVersions
 func NewListSecretVersionsRequest(server string, secretId SecretId) (*http.Request, error) {
 	var err error
@@ -14652,6 +14701,9 @@ type ClientWithResponsesInterface interface {
 
 	SetSecretValueWithResponse(ctx context.Context, secretId SecretId, body SetSecretValueJSONRequestBody, reqEditors ...RequestEditorFn) (*SetSecretValueResponse, error)
 
+	// RevealSecretWithResponse request
+	RevealSecretWithResponse(ctx context.Context, secretId SecretId, reqEditors ...RequestEditorFn) (*RevealSecretResponse, error)
+
 	// ListSecretVersionsWithResponse request
 	ListSecretVersionsWithResponse(ctx context.Context, secretId SecretId, reqEditors ...RequestEditorFn) (*ListSecretVersionsResponse, error)
 
@@ -17539,6 +17591,32 @@ func (r SetSecretValueResponse) StatusCode() int {
 	return 0
 }
 
+type RevealSecretResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Value   string `json:"value"`
+		Version int    `json:"version"`
+	}
+	JSON409 *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RevealSecretResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevealSecretResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListSecretVersionsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -20182,6 +20260,15 @@ func (c *ClientWithResponses) SetSecretValueWithResponse(ctx context.Context, se
 		return nil, err
 	}
 	return ParseSetSecretValueResponse(rsp)
+}
+
+// RevealSecretWithResponse request returning *RevealSecretResponse
+func (c *ClientWithResponses) RevealSecretWithResponse(ctx context.Context, secretId SecretId, reqEditors ...RequestEditorFn) (*RevealSecretResponse, error) {
+	rsp, err := c.RevealSecret(ctx, secretId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevealSecretResponse(rsp)
 }
 
 // ListSecretVersionsWithResponse request returning *ListSecretVersionsResponse
@@ -23907,6 +23994,42 @@ func ParseSetSecretValueResponse(rsp *http.Response) (*SetSecretValueResponse, e
 	return response, nil
 }
 
+// ParseRevealSecretResponse parses an HTTP response from a RevealSecretWithResponse call
+func ParseRevealSecretResponse(rsp *http.Response) (*RevealSecretResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevealSecretResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Value   string `json:"value"`
+			Version int    `json:"version"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListSecretVersionsResponse parses an HTTP response from a ListSecretVersionsWithResponse call
 func ParseListSecretVersionsResponse(rsp *http.Response) (*ListSecretVersionsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -25671,6 +25794,9 @@ type ServerInterface interface {
 	// Write a new version of the value (and optionally change flags)
 	// (PUT /secrets/{secret_id})
 	SetSecretValue(w http.ResponseWriter, r *http.Request, secretId SecretId)
+	// Return the current value of a secret once. Owner and admin only. Every call is audited. The answer is never cached.
+	// (POST /secrets/{secret_id}/reveal)
+	RevealSecret(w http.ResponseWriter, r *http.Request, secretId SecretId)
 	// List versions (number, who, when, destroyed)
 	// (GET /secrets/{secret_id}/versions)
 	ListSecretVersions(w http.ResponseWriter, r *http.Request, secretId SecretId)
@@ -26550,6 +26676,12 @@ func (_ Unimplemented) DeleteSecret(w http.ResponseWriter, r *http.Request, secr
 // Write a new version of the value (and optionally change flags)
 // (PUT /secrets/{secret_id})
 func (_ Unimplemented) SetSecretValue(w http.ResponseWriter, r *http.Request, secretId SecretId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Return the current value of a secret once. Owner and admin only. Every call is audited. The answer is never cached.
+// (POST /secrets/{secret_id}/reveal)
+func (_ Unimplemented) RevealSecret(w http.ResponseWriter, r *http.Request, secretId SecretId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -31047,6 +31179,39 @@ func (siw *ServerInterfaceWrapper) SetSecretValue(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// RevealSecret operation middleware
+func (siw *ServerInterfaceWrapper) RevealSecret(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "secret_id" -------------
+	var secretId SecretId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "secret_id", chi.URLParam(r, "secret_id"), &secretId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "secret_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerTokenScopes, []string{})
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevealSecret(w, r, secretId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListSecretVersions operation middleware
 func (siw *ServerInterfaceWrapper) ListSecretVersions(w http.ResponseWriter, r *http.Request) {
 
@@ -33531,6 +33696,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/secrets/{secret_id}", wrapper.SetSecretValue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/secrets/{secret_id}/reveal", wrapper.RevealSecret)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/secrets/{secret_id}/versions", wrapper.ListSecretVersions)

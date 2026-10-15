@@ -211,6 +211,49 @@ func TestAC_ENV_02_AC_SEC_01_SecretsAreWriteOnly(t *testing.T) {
 	}
 }
 
+// A secret is shown only to an owner or an admin with a session. Every call is audited and never cached.
+func TestRevealSecret(t *testing.T) {
+	e := newM2Env(t)
+	c := e.owner()
+	prj, envs := c.project("Shop")
+	value := "sk_live_reveal_value"
+	x := c.ok(201, "POST", "/api/v1/projects/"+prj+"/secrets", map[string]any{"name": "STRIPE_KEY", "value": value, "environment_id": envs["staging"]})
+	id := str(x, "id")
+	rec := c.do("POST", "/api/v1/secrets/"+id+"/reveal", nil)
+	if rec.Code != 200 || rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("reveal: %d %v %s", rec.Code, rec.Header(), rec.Body)
+	}
+	var got map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &got)
+	if got["value"] != value || got["version"] != float64(1) {
+		t.Fatalf("reveal answer: %v", got)
+	}
+	// The call is in the audit log, without the value.
+	var n int
+	var diff string
+	if err := e.pool.QueryRow(context.Background(), `SELECT count(*), COALESCE(max(diff::text), '') FROM audit_events WHERE action = 'secret.reveal' AND target_id = $1`, id).Scan(&n, &diff); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || strings.Contains(diff, value) {
+		t.Fatalf("audit: %d %s", n, diff)
+	}
+	// The list answers still have no value.
+	if rec := c.do("GET", "/api/v1/projects/"+prj+"/secrets", nil); strings.Contains(rec.Body.String(), value) {
+		t.Fatalf("list shows the value: %s", rec.Body)
+	}
+	// A developer and a viewer are refused. The value is not in the answer.
+	for _, role := range []string{"developer", "viewer"} {
+		u := e.userClient("usr_"+role, role+"@example.com", role)
+		if rec := u.do("POST", "/api/v1/secrets/"+id+"/reveal", nil); rec.Code != 403 || strings.Contains(rec.Body.String(), value) {
+			t.Fatalf("%s: %d %s", role, rec.Code, rec.Body)
+		}
+	}
+	// A destroyed or missing secret gives no value.
+	if rec := c.do("POST", "/api/v1/secrets/sec_missing/reveal", nil); rec.Code != 404 {
+		t.Fatalf("missing: %d", rec.Code)
+	}
+}
+
 // AC-ENV-03: a variable change does not touch the running containers; the service shows pending changes.
 func TestAC_ENV_03_PendingChanges(t *testing.T) {
 	e := newM2Env(t)

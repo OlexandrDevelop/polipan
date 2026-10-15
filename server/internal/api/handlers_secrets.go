@@ -178,6 +178,38 @@ func (h *Handlers) DestroySecretVersion(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// RevealSecret returns the current value of a secret to an owner or an admin who is signed in with a browser session.
+// It is the one place where a value leaves the store, so it is narrow: an API token is refused, the call is written
+// to the audit log before the value is sent, and the answer is never cached.
+func (h *Handlers) RevealSecret(w http.ResponseWriter, r *http.Request, secretID gen.SecretId) {
+	if !h.secretsReady(w, r) {
+		return
+	}
+	p := PrincipalFrom(r.Context())
+	if p == nil || p.User == nil || p.Token != nil {
+		WriteError(w, r, http.StatusForbidden, CodeForbidden, "a secret is shown only to a signed-in user, not to an API token",
+			map[string]any{"permission": "secret:reveal", "reason": "session_required"})
+		return
+	}
+	cur, err := h.Store.GetSecret(r.Context(), h.orgID(r), secretID)
+	if fail(w, r, err) {
+		return
+	}
+	value, err := h.provider().Get(r.Context(), h.Store.Pool, cur.ProjectID, cur.ID, cur.CurrentVersion)
+	if secretFailed(w, r, err) {
+		return
+	}
+	if err := secrets.WriteAudit(r.Context(), h.Store.Pool, secrets.AuditEvent{OrgID: cur.OrgID, ActorType: "user", ActorID: p.User.ID,
+		Action: "secret.reveal", TargetType: "secret", TargetID: cur.ID, ProjectID: cur.ProjectID,
+		Diff: map[string]any{"name": cur.Name, "version": cur.CurrentVersion},
+		IP:   clientKey(r), RequestID: RequestIDFrom(r.Context())}); err != nil {
+		internalError(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	WriteJSON(w, http.StatusOK, map[string]any{"value": string(value), "version": cur.CurrentVersion})
+}
+
 // maskerFor returns a masker with the secret values of a service. On an error the lines are
 // not shown as they are: the caller gets a masker that hides nothing only when there are no secrets.
 func (h *Handlers) maskerFor(r *http.Request, serviceID string) (*mask.Masker, error) {

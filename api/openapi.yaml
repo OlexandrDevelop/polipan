@@ -842,6 +842,16 @@ paths:
       parameters: [{$ref: '#/components/parameters/SecretId'}]
       responses:
         '204': {description: Deleted}
+  /secrets/{secret_id}/reveal:
+    post:
+      operationId: revealSecret
+      summary: Return the current value of a secret once. Owner and admin only. Every call is audited. The answer is never cached.
+      tags: [secrets]
+      x-permission: secret:reveal
+      parameters: [{$ref: '#/components/parameters/SecretId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, required: [value, version], properties: {value: {type: string}, version: {type: integer}}}}}}
+        '409': {$ref: '#/components/responses/Error'}
   /secrets/{secret_id}/versions:
     get:
       operationId: listSecretVersions

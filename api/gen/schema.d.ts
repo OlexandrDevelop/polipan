@@ -1051,6 +1051,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/secrets/{secret_id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Return the current value of a secret once. Owner and admin only. Every call is audited. The answer is never cached. */
+        post: operations["revealSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/secrets/{secret_id}/versions": {
         parameters: {
             query?: never;
@@ -5542,6 +5559,32 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    revealSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                secret_id: components["parameters"]["SecretId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        value: string;
+                        version: number;
+                    };
+                };
+            };
+            409: components["responses"]["Error"];
         };
     };
     listSecretVersions: {

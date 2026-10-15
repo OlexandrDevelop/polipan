@@ -10,8 +10,10 @@ Flags: `preview` (also given to preview environments) and `build` (given to the 
 
 A secret is for passwords and keys. Rules:
 
-- The API never returns the value. You can write a new version, list the versions, restore an old version and
-  destroy a version.
+- The list and read calls never return the value. You can write a new version, list the versions, restore an old
+  version and destroy a version.
+- An owner or an admin can press **Show** next to a secret in the panel to read its current value. The panel needs
+  a browser session for this: an API token is refused. Every view is written to the audit log (`secret.reveal`).
 - A secret is encrypted with a key of its project. That key is wrapped by the master key in `/etc/polipan/master.key`.
 - Values are masked in build logs, deployment logs and audit diffs.
 - A release records which versions it used. Rolling back uses those versions again.

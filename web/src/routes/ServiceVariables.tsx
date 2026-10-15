@@ -7,6 +7,7 @@ import type { components } from '@api/schema'
 import { api } from '@/api/client'
 import { ApiError, unwrap } from '@/api/errors'
 import { useMe } from '@/auth'
+import { CopyButton } from '@/components/Copy'
 import { DataList } from '@/components/DataList'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { ConfirmDialog, Modal, TypedConfirmDialog } from '@/components/Modal'
@@ -535,6 +536,48 @@ function WhereUsedDialog({
   )
 }
 
+// The value of one secret, for an owner or an admin. It is read when the window opens, kept only in this window
+// and gone when it closes. The server writes the view to the audit log and does not cache the answer.
+function RevealDialog({
+  row,
+  onClose,
+}: {
+  row: Extract<Row, { kind: 'secret' }>
+  onClose: () => void
+}) {
+  const reveal = useQuery({
+    queryKey: ['secret-reveal', row.id],
+    queryFn: () =>
+      unwrap(api.POST('/secrets/{secret_id}/reveal', { params: { path: { secret_id: row.id } } })),
+    gcTime: 0,
+    staleTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+  })
+  const value = reveal.data?.value
+  return (
+    <Modal title={t('secret.reveal_title', { name: row.name })} onClose={onClose}>
+      <div className="space-y-3">
+        <Hint>{t('secret.reveal_hint')}</Hint>
+        {reveal.isPending && <Skeleton />}
+        {reveal.error && <ErrorBanner error={reveal.error} title={t('secret.reveal_failed')} />}
+        {value !== undefined && (
+          <div className="space-y-2">
+            <pre
+              tabIndex={0}
+              aria-label={t('secret.reveal_title', { name: row.name })}
+              className="whitespace-pre-wrap break-all rounded-sm border border-border bg-surface p-3 font-mono text-sm"
+            >
+              {value}
+            </pre>
+            <CopyButton text={value} />
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 // UI-49: the versions of one secret. Never a value.
 function VersionsPanel({
   row,
@@ -748,6 +791,7 @@ export function ServiceVariables({
   const secretList = accessFor(role, 'secret:list', environment.protected)
   const secretWrite = accessFor(role, 'secret:write', environment.protected)
   const secretDestroy = accessFor(role, 'secret:destroy', environment.protected)
+  const secretReveal = accessFor(role, 'secret:reveal', environment.protected)
   const variables = useVariables(ctx)
   const secrets = useSecrets(ctx, secretList !== 'hidden')
   const invalidate = useInvalidate(ctx, onChanged)
@@ -758,6 +802,7 @@ export function ServiceVariables({
   const [deleting, setDeleting] = useState<Row | null>(null)
   const [whereUsed, setWhereUsed] = useState<Row | null>(null)
   const [versionsOf, setVersionsOf] = useState<Extract<Row, { kind: 'secret' }> | null>(null)
+  const [revealing, setRevealing] = useState<Extract<Row, { kind: 'secret' }> | null>(null)
 
   const remove = useMutation({
     mutationFn: (row: Row) =>
@@ -893,6 +938,9 @@ export function ServiceVariables({
                 )}
               </div>
               <div className="var-actions">
+                {r.kind === 'secret' && secretReveal === 'allow' && (
+                  <Button onClick={() => setRevealing(r)}>{t('secret.reveal')}</Button>
+                )}
                 {access !== 'hidden' && !locked && (
                   <Button
                     reason={blocked(access)}
@@ -964,6 +1012,7 @@ export function ServiceVariables({
           onClose={() => setWhereUsed(null)}
         />
       )}
+      {revealing && <RevealDialog row={revealing} onClose={() => setRevealing(null)} />}
       {versionsOf && (
         <VersionsPanel
           row={versionsOf}
